@@ -13,6 +13,123 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
+ * Argument type enumeration
+ */
+typedef NS_ENUM(NSInteger, CSArgumentType) {
+    CSArgumentTypeString,
+    CSArgumentTypeInteger,
+    CSArgumentTypeNumber,
+    CSArgumentTypeBoolean,
+    CSArgumentTypeArray,
+    CSArgumentTypeObject
+};
+
+/**
+ * Response type enumeration
+ */
+typedef NS_ENUM(NSInteger, CSResponseType) {
+    CSResponseTypeJson,
+    CSResponseTypeBinary,
+    CSResponseTypeText,
+    CSResponseTypeBoolean
+};
+
+/**
+ * Argument validation rules
+ */
+@interface CSArgumentValidation : NSObject <NSCopying, NSCoding>
+
+@property (nonatomic, readonly, nullable) NSNumber *min;
+@property (nonatomic, readonly, nullable) NSNumber *max;
+@property (nonatomic, readonly, nullable) NSNumber *minLength;
+@property (nonatomic, readonly, nullable) NSNumber *maxLength;
+@property (nonatomic, readonly, nullable) NSString *pattern;
+@property (nonatomic, readonly, nullable) NSArray<NSString *> *allowedValues;
+
++ (instancetype)validationWithMin:(nullable NSNumber *)min
+                              max:(nullable NSNumber *)max
+                        minLength:(nullable NSNumber *)minLength
+                        maxLength:(nullable NSNumber *)maxLength
+                          pattern:(nullable NSString *)pattern
+                    allowedValues:(nullable NSArray<NSString *> *)allowedValues;
+
+@end
+
+/**
+ * Capability argument definition
+ */
+@interface CSCapabilityArgument : NSObject <NSCopying, NSCoding>
+
+@property (nonatomic, readonly) NSString *name;
+@property (nonatomic, readonly) CSArgumentType type;
+@property (nonatomic, readonly) NSString *argumentDescription;
+@property (nonatomic, readonly, nullable) NSString *cliFlag;
+@property (nonatomic, readonly, nullable) NSNumber *position;
+@property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
+@property (nonatomic, readonly, nullable) id defaultValue;
+
++ (instancetype)argumentWithName:(NSString *)name
+                            type:(CSArgumentType)type
+                     description:(NSString *)description
+                         cliFlag:(nullable NSString *)cliFlag
+                        position:(nullable NSNumber *)position
+                      validation:(nullable CSArgumentValidation *)validation
+                    defaultValue:(nullable id)defaultValue;
+
+@end
+
+/**
+ * Capability arguments collection
+ */
+@interface CSCapabilityArguments : NSObject <NSCopying, NSCoding>
+
+@property (nonatomic, readonly) NSArray<CSCapabilityArgument *> *required;
+@property (nonatomic, readonly) NSArray<CSCapabilityArgument *> *optional;
+
++ (instancetype)arguments;
++ (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> *)required
+                             optional:(NSArray<CSCapabilityArgument *> *)optional;
+
+- (void)addRequiredArgument:(CSCapabilityArgument *)argument;
+- (void)addOptionalArgument:(CSCapabilityArgument *)argument;
+- (nullable CSCapabilityArgument *)findArgumentWithName:(NSString *)name;
+- (NSArray<CSCapabilityArgument *> *)positionalArguments;
+- (NSArray<CSCapabilityArgument *> *)flagArguments;
+- (BOOL)isEmpty;
+
+@end
+
+/**
+ * Command interface definition
+ */
+@interface CSCommandInterface : NSObject <NSCopying, NSCoding>
+
+@property (nonatomic, readonly) NSString *cliFlag;
+@property (nonatomic, readonly) NSString *usagePattern;
+
++ (instancetype)interfaceWithCliFlag:(NSString *)cliFlag
+                        usagePattern:(NSString *)usagePattern;
+
+@end
+
+/**
+ * Response definition
+ */
+@interface CSCapabilityResponse : NSObject <NSCopying, NSCoding>
+
+@property (nonatomic, readonly) CSResponseType type;
+@property (nonatomic, readonly, nullable) NSString *schemaRef;
+@property (nonatomic, readonly, nullable) NSString *contentType;
+@property (nonatomic, readonly) NSString *responseDescription;
+
++ (instancetype)responseWithType:(CSResponseType)type
+                       schemaRef:(nullable NSString *)schemaRef
+                     contentType:(nullable NSString *)contentType
+                     description:(NSString *)description;
+
+@end
+
+/**
  * Formal capability definition
  */
 @interface CSCapability : NSObject <NSCopying, NSCoding>
@@ -28,6 +145,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Optional metadata as key-value pairs
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *metadata;
+
+/// Command interface definition
+@property (nonatomic, readonly, nullable) CSCommandInterface *commandInterface;
+
+/// Capability arguments
+@property (nonatomic, readonly) CSCapabilityArguments *arguments;
+
+/// Response definition
+@property (nonatomic, readonly, nullable) CSCapabilityResponse *response;
 
 /**
  * Create a new capability
@@ -73,6 +199,36 @@ NS_ASSUME_NONNULL_BEGIN
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata;
 
 /**
+ * Create a new capability with arguments
+ * @param capabilityId The capability identifier
+ * @param version The capability version
+ * @param arguments The capability arguments
+ * @return A new CSCapability instance
+ */
++ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
+                         version:(NSString *)version
+                       arguments:(CSCapabilityArguments *)arguments;
+
+/**
+ * Create a fully specified capability
+ * @param capabilityId The capability identifier
+ * @param version The capability version
+ * @param description The capability description
+ * @param metadata The capability metadata
+ * @param commandInterface The command interface
+ * @param arguments The capability arguments
+ * @param response The response definition
+ * @return A new CSCapability instance
+ */
++ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
+                         version:(NSString *)version
+                     description:(nullable NSString *)description
+                        metadata:(NSDictionary<NSString *, NSString *> *)metadata
+                commandInterface:(nullable CSCommandInterface *)commandInterface
+                       arguments:(CSCapabilityArguments *)arguments
+                        response:(nullable CSCapabilityResponse *)response;
+
+/**
  * Check if this capability matches a request string
  * @param request The request string
  * @return YES if this capability matches the request
@@ -112,6 +268,36 @@ NS_ASSUME_NONNULL_BEGIN
  * @return The capability identifier string
  */
 - (NSString *)idString;
+
+/**
+ * Get the command interface if defined
+ * @return The command interface or nil
+ */
+- (nullable CSCommandInterface *)getCommandInterface;
+
+/**
+ * Get the arguments
+ * @return The capability arguments
+ */
+- (CSCapabilityArguments *)getArguments;
+
+/**
+ * Get the response definition if defined
+ * @return The response definition or nil
+ */
+- (nullable CSCapabilityResponse *)getResponse;
+
+/**
+ * Add a required argument
+ * @param argument The argument to add
+ */
+- (void)addRequiredArgument:(CSCapabilityArgument *)argument;
+
+/**
+ * Add an optional argument
+ * @param argument The argument to add
+ */
+- (void)addOptionalArgument:(CSCapabilityArgument *)argument;
 
 @end
 

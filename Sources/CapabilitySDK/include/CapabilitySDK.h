@@ -20,3 +20,4 @@ FOUNDATION_EXPORT const unsigned char CapabilitySDKVersionString[];
 #import "CSCapability.h"
 #import "CSCapabilityMatcher.h"
 #import "CSPluginCapabilities.h"
+#import "CSStandardCapabilities.h"
