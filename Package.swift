@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "capability-sdk-objc",
+    name: "capdef-objc",
     platforms: [
         .macOS(.v10_15),
         .iOS(.v13)
