@@ -145,7 +145,7 @@
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
-                         command:(nullable NSString *)command
+                         command:(NSString *)command
                        arguments:(CSCapabilityArguments *)arguments
                           output:(nullable CSCapabilityOutput *)output {
     CSCapability *capability = [[CSCapability alloc] init];
@@ -251,7 +251,7 @@
 + (instancetype)argumentWithName:(NSString *)name
                             type:(CSArgumentType)type
                      description:(NSString *)description
-                         cliFlag:(nullable NSString *)cliFlag
+                         cliFlag:(NSString *)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue {
