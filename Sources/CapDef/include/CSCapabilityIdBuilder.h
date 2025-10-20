@@ -42,14 +42,14 @@ NS_ASSUME_NONNULL_BEGIN
  * @param segment The segment to add
  * @return Self for method chaining
  */
-- (instancetype)addSegment:(NSString *)segment;
+- (instancetype)sub:(NSString *)segment;
 
 /**
  * Add multiple segments to the capability ID
  * @param segments Array of segments to add
  * @return Self for method chaining
  */
-- (instancetype)addSegments:(NSArray<NSString *> *)segments;
+- (instancetype)subs:(NSArray<NSString *> *)segments;
 
 /**
  * Replace a segment at the given index

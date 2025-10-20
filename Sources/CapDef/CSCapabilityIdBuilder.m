@@ -39,14 +39,14 @@
     return self;
 }
 
-- (instancetype)addSegment:(NSString *)segment {
+- (instancetype)sub:(NSString *)segment {
     if (segment) {
         [self.mutableSegments addObject:segment];
     }
     return self;
 }
 
-- (instancetype)addSegments:(NSArray<NSString *> *)segments {
+- (instancetype)subs:(NSArray<NSString *> *)segments {
     if (segments) {
         [self.mutableSegments addObjectsFromArray:segments];
     }
@@ -76,7 +76,7 @@
 }
 
 - (instancetype)addWildcard {
-    return [self addSegment:@"*"];
+    return [self sub:@"*"];
 }
 
 - (instancetype)makeWildcard {

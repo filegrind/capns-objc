@@ -14,8 +14,8 @@
 - (void)testBuilderBasicConstruction {
     NSError *error;
     CSCapabilityIdBuilder *builder = [CSCapabilityIdBuilder builder];
-    [[builder addSegment:@"data_processing"] addSegment:@"transform"];
-    [builder addSegment:@"json"];
+    [[builder sub:@"data_processing"] sub:@"transform"];
+    [builder sub:@"json"];
     CSCapabilityId *capabilityId = [builder build:&error];
     
     XCTAssertNotNil(capabilityId);
@@ -60,7 +60,7 @@
 - (void)testBuilderAddWildcard {
     NSError *error;
     CSCapabilityIdBuilder *builder = [CSCapabilityIdBuilder builder];
-    [[builder addSegment:@"data_processing"] addWildcard];
+    [[builder sub:@"data_processing"] addWildcard];
     CSCapabilityId *capabilityId = [builder build:&error];
     
     XCTAssertNotNil(capabilityId);
@@ -79,10 +79,10 @@
     XCTAssertEqualObjects([capabilityId toString], @"extract:metadata:xml");
 }
 
-- (void)testBuilderAddSegments {
+- (void)testBuilderSubs {
     NSError *error;
     CSCapabilityIdBuilder *builder = [CSCapabilityIdBuilder builder];
-    [[builder addSegments:@[@"data", @"processing"]] addSegment:@"json"];
+    [[builder subs:@[@"data", @"processing"]] sub:@"json"];
     CSCapabilityId *capabilityId = [builder build:&error];
     
     XCTAssertNotNil(capabilityId);
@@ -139,7 +139,7 @@
     CSCapabilityIdBuilder *clone = [original clone];
     
     // Modify original
-    [original addSegment:@"json"];
+    [original sub:@"json"];
     
     // Clone should remain unchanged
     CSCapabilityId *originalId = [original build:&error];
@@ -154,8 +154,8 @@
 - (void)testBuilderBuildString {
     NSError *error;
     CSCapabilityIdBuilder *builder = [[CSCapabilityIdBuilder builder]
-                                      addSegment:@"extract"];
-    [builder addSegment:@"metadata"];
+                                      sub:@"extract"];
+    [builder sub:@"metadata"];
     [builder addWildcard];
     
     NSString *str = [builder buildString:&error];
@@ -192,7 +192,7 @@
     NSError *error;
     
     // Test replace segment with invalid index
-    CSCapabilityIdBuilder *builder = [[CSCapabilityIdBuilder builder] addSegment:@"test"];
+    CSCapabilityIdBuilder *builder = [[CSCapabilityIdBuilder builder] sub:@"test"];
     [builder replaceSegmentAtIndex:5 withSegment:@"invalid"]; // Should not crash
     CSCapabilityId *capId = [builder build:&error];
     XCTAssertNotNil(capId);
