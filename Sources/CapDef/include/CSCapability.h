@@ -67,7 +67,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly) NSString *name;
 @property (nonatomic, readonly) CSArgumentType type;
 @property (nonatomic, readonly) NSString *argumentDescription;
-@property (nonatomic, readonly, nullable) NSString *command;
+@property (nonatomic, readonly, nullable) NSString *cliFlag;
 @property (nonatomic, readonly, nullable) NSNumber *position;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly, nullable) id defaultValue;
@@ -75,7 +75,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 + (instancetype)argumentWithName:(NSString *)name
                             type:(CSArgumentType)type
                      description:(NSString *)description
-                         command:(nullable NSString *)command
+                         cliFlag:(nullable NSString *)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue;

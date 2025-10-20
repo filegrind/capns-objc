@@ -707,15 +707,15 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Validate CLI flag uniqueness
     NSMutableSet<NSString *> *cliFlags = [NSMutableSet set];
     for (CSCapabilityArgument *arg in allArgs) {
-        if (arg.command) {
-            if ([cliFlags containsObject:arg.command]) {
+        if (arg.cliFlag) {
+            if ([cliFlags containsObject:arg.cliFlag]) {
                 if (error) {
-                    NSString *issue = [NSString stringWithFormat:@"Duplicate CLI flag '%@' for argument '%@'", arg.command, arg.name];
+                    NSString *issue = [NSString stringWithFormat:@"Duplicate CLI flag '%@' for argument '%@'", arg.cliFlag, arg.name];
                     *error = [CSValidationError invalidCapabilitySchemaError:capabilityId issue:issue];
                 }
                 return NO;
             }
-            [cliFlags addObject:arg.command];
+            [cliFlags addObject:arg.cliFlag];
         }
     }
     

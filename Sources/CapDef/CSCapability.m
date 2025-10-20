@@ -251,7 +251,7 @@
 + (instancetype)argumentWithName:(NSString *)name
                             type:(CSArgumentType)type
                      description:(NSString *)description
-                         command:(nullable NSString *)command
+                         cliFlag:(nullable NSString *)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue {
@@ -259,7 +259,7 @@
     argument->_name = [name copy];
     argument->_type = type;
     argument->_argumentDescription = [description copy];
-    argument->_command = [command copy];
+    argument->_cliFlag = [cliFlag copy];
     argument->_position = position;
     argument->_validation = validation;
     argument->_defaultValue = defaultValue;
@@ -270,7 +270,7 @@
     return [CSCapabilityArgument argumentWithName:self.name
                                               type:self.type
                                        description:self.argumentDescription
-                                           command:self.command
+                                           cliFlag:self.cliFlag
                                           position:self.position
                                         validation:self.validation
                                       defaultValue:self.defaultValue];
@@ -280,7 +280,7 @@
     [coder encodeObject:self.name forKey:@"name"];
     [coder encodeInteger:self.type forKey:@"type"];
     [coder encodeObject:self.argumentDescription forKey:@"argumentDescription"];
-    [coder encodeObject:self.command forKey:@"command"];
+    [coder encodeObject:self.cliFlag forKey:@"cli_flag"];
     [coder encodeObject:self.position forKey:@"position"];
     [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
@@ -298,7 +298,7 @@
         _name = name;
         _type = type;
         _argumentDescription = description;
-        _command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
+        _cliFlag = [coder decodeObjectOfClass:[NSString class] forKey:@"cli_flag"];
         _position = [coder decodeObjectOfClass:[NSNumber class] forKey:@"position"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
@@ -389,12 +389,12 @@
     NSMutableArray *flags = [[NSMutableArray alloc] init];
     
     for (CSCapabilityArgument *arg in self.required) {
-        if (arg.command) {
+        if (arg.cliFlag) {
             [flags addObject:arg];
         }
     }
     for (CSCapabilityArgument *arg in self.optional) {
-        if (arg.command) {
+        if (arg.cliFlag) {
             [flags addObject:arg];
         }
     }
