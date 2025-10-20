@@ -21,7 +21,8 @@ typedef NS_ENUM(NSInteger, CSArgumentType) {
     CSArgumentTypeNumber,
     CSArgumentTypeBoolean,
     CSArgumentTypeArray,
-    CSArgumentTypeObject
+    CSArgumentTypeObject,
+    CSArgumentTypeBinary
 };
 
 /**
