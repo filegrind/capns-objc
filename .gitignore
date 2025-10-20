@@ -1,0 +1,51 @@
+test_files/
+dist/
+
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcarchive
+*.xcuserstate
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.xccheckout
+*.xcscmblueprints
+
+# Workspaces / user schemes (if you don't want to commit them)
+*.xcworkspace
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# Swift Package Manager
+.build/
+Packages/
+
+# Archives / distribution
+*.ipa
+
+# Signing
+*.mobileprovision
+*.cer
+*.p12
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+
+# Editor/IDE
+*.swp
+*.swo
+.idea/
+.vscode/
