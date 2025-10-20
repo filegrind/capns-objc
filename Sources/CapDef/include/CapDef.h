@@ -19,5 +19,3 @@ FOUNDATION_EXPORT const unsigned char CapDefVersionString[];
 #import "CSCapabilityIdBuilder.h"
 #import "CSCapability.h"
 #import "CSCapabilityMatcher.h"
-#import "CSPluginCapabilities.h"
-#import "CSStandardCapabilities.h"
