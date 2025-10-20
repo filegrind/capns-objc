@@ -67,7 +67,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly) NSString *name;
 @property (nonatomic, readonly) CSArgumentType type;
 @property (nonatomic, readonly) NSString *argumentDescription;
-@property (nonatomic, readonly, nullable) NSString *cliFlag;
+@property (nonatomic, readonly, nullable) NSString *command;
 @property (nonatomic, readonly, nullable) NSNumber *position;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly, nullable) id defaultValue;
@@ -75,7 +75,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 + (instancetype)argumentWithName:(NSString *)name
                             type:(CSArgumentType)type
                      description:(NSString *)description
-                         cliFlag:(nullable NSString *)cliFlag
+                         command:(nullable NSString *)command
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue;
@@ -103,18 +103,6 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 @end
 
-/**
- * Command interface definition
- */
-@interface CSCommandInterface : NSObject <NSCopying, NSCoding>
-
-@property (nonatomic, readonly) NSString *cliFlag;
-@property (nonatomic, readonly) NSString *usagePattern;
-
-+ (instancetype)interfaceWithCliFlag:(NSString *)cliFlag
-                        usagePattern:(NSString *)usagePattern;
-
-@end
 
 /**
  * Output definition
@@ -152,8 +140,8 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Optional metadata as key-value pairs
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *metadata;
 
-/// Command interface definition
-@property (nonatomic, readonly, nullable) CSCommandInterface *commandInterface;
+/// Command string for CLI execution
+@property (nonatomic, readonly, nullable) NSString *command;
 
 /// Capability arguments
 @property (nonatomic, readonly) CSCapabilityArguments *arguments;
@@ -221,7 +209,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param version The capability version
  * @param description The capability description
  * @param metadata The capability metadata
- * @param commandInterface The command interface
+ * @param command The command string
  * @param arguments The capability arguments
  * @param output The output definition
  * @return A new CSCapability instance
@@ -230,7 +218,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
-                commandInterface:(nullable CSCommandInterface *)commandInterface
+                         command:(nullable NSString *)command
                        arguments:(CSCapabilityArguments *)arguments
                           output:(nullable CSCapabilityOutput *)output;
 
@@ -276,10 +264,10 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 - (NSString *)idString;
 
 /**
- * Get the command interface if defined
- * @return The command interface or nil
+ * Get the command if defined
+ * @return The command string or nil
  */
-- (nullable CSCommandInterface *)getCommandInterface;
+- (nullable NSString *)getCommand;
 
 /**
  * Get the arguments

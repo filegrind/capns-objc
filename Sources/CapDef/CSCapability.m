@@ -145,7 +145,7 @@
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
-                commandInterface:(nullable CSCommandInterface *)commandInterface
+                         command:(nullable NSString *)command
                        arguments:(CSCapabilityArguments *)arguments
                           output:(nullable CSCapabilityOutput *)output {
     CSCapability *capability = [[CSCapability alloc] init];
@@ -153,14 +153,14 @@
     capability->_version = [version copy];
     capability->_capabilityDescription = [description copy];
     capability->_metadata = [metadata copy] ?: @{};
-    capability->_commandInterface = commandInterface;
+    capability->_command = [command copy];
     capability->_arguments = arguments ?: [CSCapabilityArguments arguments];
     capability->_output = output;
     return capability;
 }
 
-- (nullable CSCommandInterface *)getCommandInterface {
-    return self.commandInterface;
+- (nullable NSString *)getCommand {
+    return self.command;
 }
 
 - (CSCapabilityArguments *)getArguments {
@@ -251,7 +251,7 @@
 + (instancetype)argumentWithName:(NSString *)name
                             type:(CSArgumentType)type
                      description:(NSString *)description
-                         cliFlag:(nullable NSString *)cliFlag
+                         command:(nullable NSString *)command
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue {
@@ -259,7 +259,7 @@
     argument->_name = [name copy];
     argument->_type = type;
     argument->_argumentDescription = [description copy];
-    argument->_cliFlag = [cliFlag copy];
+    argument->_command = [command copy];
     argument->_position = position;
     argument->_validation = validation;
     argument->_defaultValue = defaultValue;
@@ -270,7 +270,7 @@
     return [CSCapabilityArgument argumentWithName:self.name
                                               type:self.type
                                        description:self.argumentDescription
-                                           cliFlag:self.cliFlag
+                                           command:self.command
                                           position:self.position
                                         validation:self.validation
                                       defaultValue:self.defaultValue];
@@ -280,7 +280,7 @@
     [coder encodeObject:self.name forKey:@"name"];
     [coder encodeInteger:self.type forKey:@"type"];
     [coder encodeObject:self.argumentDescription forKey:@"argumentDescription"];
-    [coder encodeObject:self.cliFlag forKey:@"cliFlag"];
+    [coder encodeObject:self.command forKey:@"command"];
     [coder encodeObject:self.position forKey:@"position"];
     [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
@@ -298,7 +298,7 @@
         _name = name;
         _type = type;
         _argumentDescription = description;
-        _cliFlag = [coder decodeObjectOfClass:[NSString class] forKey:@"cliFlag"];
+        _command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
         _position = [coder decodeObjectOfClass:[NSNumber class] forKey:@"position"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
@@ -389,12 +389,12 @@
     NSMutableArray *flags = [[NSMutableArray alloc] init];
     
     for (CSCapabilityArgument *arg in self.required) {
-        if (arg.cliFlag) {
+        if (arg.command) {
             [flags addObject:arg];
         }
     }
     for (CSCapabilityArgument *arg in self.optional) {
-        if (arg.cliFlag) {
+        if (arg.command) {
             [flags addObject:arg];
         }
     }
@@ -422,42 +422,6 @@
         _optional = [coder decodeObjectOfClass:[NSArray class] forKey:@"optional"] ?: @[];
     }
     return self;
-}
-
-+ (BOOL)supportsSecureCoding {
-    return YES;
-}
-
-@end
-
-#pragma mark - CSCommandInterface Implementation
-
-@implementation CSCommandInterface
-
-+ (instancetype)interfaceWithCliFlag:(NSString *)cliFlag
-                        usagePattern:(NSString *)usagePattern {
-    CSCommandInterface *interface = [[CSCommandInterface alloc] init];
-    interface->_cliFlag = [cliFlag copy];
-    interface->_usagePattern = [usagePattern copy];
-    return interface;
-}
-
-- (id)copyWithZone:(NSZone *)zone {
-    return [CSCommandInterface interfaceWithCliFlag:self.cliFlag usagePattern:self.usagePattern];
-}
-
-- (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.cliFlag forKey:@"cliFlag"];
-    [coder encodeObject:self.usagePattern forKey:@"usagePattern"];
-}
-
-- (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    NSString *cliFlag = [coder decodeObjectOfClass:[NSString class] forKey:@"cliFlag"];
-    NSString *usagePattern = [coder decodeObjectOfClass:[NSString class] forKey:@"usagePattern"];
-    
-    if (!cliFlag || !usagePattern) return nil;
-    
-    return [CSCommandInterface interfaceWithCliFlag:cliFlag usagePattern:usagePattern];
 }
 
 + (BOOL)supportsSecureCoding {
