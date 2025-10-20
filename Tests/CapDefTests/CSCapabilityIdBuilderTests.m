@@ -4,7 +4,7 @@
 //
 
 #import <XCTest/XCTest.h>
-#import "CapabilitySDK.h"
+#import "CapDef.h"
 
 @interface CSCapabilityIdBuilderTests : XCTestCase
 @end

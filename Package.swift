@@ -9,18 +9,18 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "CapabilitySDK",
-            targets: ["CapabilitySDK"]),
+            name: "CapDef",
+            targets: ["CapDef"]),
     ],
     targets: [
         .target(
-            name: "CapabilitySDK",
+            name: "CapDef",
             dependencies: [],
-            path: "Sources/CapabilitySDK",
+            path: "Sources/CapDef",
             publicHeadersPath: "include"
         ),
         .testTarget(
-            name: "CapabilitySDKTests",
-            dependencies: ["CapabilitySDK"]),
+            name: "CapDefTests",
+            dependencies: ["CapDef"]),
     ]
 )

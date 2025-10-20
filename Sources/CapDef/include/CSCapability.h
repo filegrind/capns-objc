@@ -25,13 +25,16 @@ typedef NS_ENUM(NSInteger, CSArgumentType) {
 };
 
 /**
- * Response type enumeration
+ * Output type enumeration
  */
-typedef NS_ENUM(NSInteger, CSResponseType) {
-    CSResponseTypeJson,
-    CSResponseTypeBinary,
-    CSResponseTypeText,
-    CSResponseTypeBoolean
+typedef NS_ENUM(NSInteger, CSOutputType) {
+    CSOutputTypeString,
+    CSOutputTypeInteger,
+    CSOutputTypeNumber,
+    CSOutputTypeBoolean,
+    CSOutputTypeArray,
+    CSOutputTypeObject,
+    CSOutputTypeBinary
 };
 
 /**
@@ -113,19 +116,21 @@ typedef NS_ENUM(NSInteger, CSResponseType) {
 @end
 
 /**
- * Response definition
+ * Output definition
  */
-@interface CSCapabilityResponse : NSObject <NSCopying, NSCoding>
+@interface CSCapabilityOutput : NSObject <NSCopying, NSCoding>
 
-@property (nonatomic, readonly) CSResponseType type;
+@property (nonatomic, readonly) CSOutputType type;
 @property (nonatomic, readonly, nullable) NSString *schemaRef;
 @property (nonatomic, readonly, nullable) NSString *contentType;
-@property (nonatomic, readonly) NSString *responseDescription;
+@property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
+@property (nonatomic, readonly) NSString *outputDescription;
 
-+ (instancetype)responseWithType:(CSResponseType)type
-                       schemaRef:(nullable NSString *)schemaRef
-                     contentType:(nullable NSString *)contentType
-                     description:(NSString *)description;
++ (instancetype)outputWithType:(CSOutputType)type
+                     schemaRef:(nullable NSString *)schemaRef
+                   contentType:(nullable NSString *)contentType
+                    validation:(nullable CSArgumentValidation *)validation
+                   description:(NSString *)description;
 
 @end
 
@@ -152,8 +157,8 @@ typedef NS_ENUM(NSInteger, CSResponseType) {
 /// Capability arguments
 @property (nonatomic, readonly) CSCapabilityArguments *arguments;
 
-/// Response definition
-@property (nonatomic, readonly, nullable) CSCapabilityResponse *response;
+/// Output definition
+@property (nonatomic, readonly, nullable) CSCapabilityOutput *output;
 
 /**
  * Create a new capability
@@ -217,7 +222,7 @@ typedef NS_ENUM(NSInteger, CSResponseType) {
  * @param metadata The capability metadata
  * @param commandInterface The command interface
  * @param arguments The capability arguments
- * @param response The response definition
+ * @param output The output definition
  * @return A new CSCapability instance
  */
 + (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
@@ -226,7 +231,7 @@ typedef NS_ENUM(NSInteger, CSResponseType) {
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
                 commandInterface:(nullable CSCommandInterface *)commandInterface
                        arguments:(CSCapabilityArguments *)arguments
-                        response:(nullable CSCapabilityResponse *)response;
+                          output:(nullable CSCapabilityOutput *)output;
 
 /**
  * Check if this capability matches a request string
@@ -282,10 +287,10 @@ typedef NS_ENUM(NSInteger, CSResponseType) {
 - (CSCapabilityArguments *)getArguments;
 
 /**
- * Get the response definition if defined
- * @return The response definition or nil
+ * Get the output definition if defined
+ * @return The output definition or nil
  */
-- (nullable CSCapabilityResponse *)getResponse;
+- (nullable CSCapabilityOutput *)getOutput;
 
 /**
  * Add a required argument
