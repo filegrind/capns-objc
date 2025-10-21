@@ -30,7 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Error if the string format is invalid
  * @return A new CSCapabilityId instance or nil if invalid
  */
-+ (nullable instancetype)fromString:(NSString *)string error:(NSError **)error;
++ (nullable instancetype)fromString:(NSString * _Nonnull)string error:(NSError * _Nullable * _Nullable)error;
 
 /**
  * Create a capability identifier from segments
@@ -38,28 +38,28 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Error if segments are invalid
  * @return A new CSCapabilityId instance or nil if invalid
  */
-+ (nullable instancetype)fromSegments:(NSArray<NSString *> *)segments error:(NSError **)error;
++ (nullable instancetype)fromSegments:(NSArray<NSString *> * _Nonnull)segments error:(NSError * _Nullable * _Nullable)error;
 
 /**
  * Check if this capability can handle a request
  * @param request The requested capability
  * @return YES if this capability can handle the request
  */
-- (BOOL)canHandle:(CSCapabilityId *)request;
+- (BOOL)canHandle:(CSCapabilityId * _Nonnull)request;
 
 /**
  * Check if this capability is compatible with another
  * @param other The other capability to check compatibility with
  * @return YES if the capabilities are compatible
  */
-- (BOOL)isCompatibleWith:(CSCapabilityId *)other;
+- (BOOL)isCompatibleWith:(CSCapabilityId * _Nonnull)other;
 
 /**
  * Check if this capability is more specific than another
  * @param other The other capability to compare specificity with
  * @return YES if this capability is more specific
  */
-- (BOOL)isMoreSpecificThan:(CSCapabilityId *)other;
+- (BOOL)isMoreSpecificThan:(CSCapabilityId * _Nonnull)other;
 
 /**
  * Get the specificity level of this capability

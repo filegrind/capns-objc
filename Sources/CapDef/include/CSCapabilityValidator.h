@@ -11,6 +11,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Error domain for validation errors
+FOUNDATION_EXPORT NSErrorDomain const CSValidationErrorDomain;
+
 /// Validation error types
 typedef NS_ENUM(NSInteger, CSValidationErrorType) {
     CSValidationErrorTypeUnknownCapability,
@@ -65,9 +68,9 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSInputValidator : NSObject
 
 /// Validate arguments against capability input schema
-+ (BOOL)validateArguments:(NSArray *)arguments 
-               capability:(CSCapability *)capability 
-                    error:(NSError **)error;
++ (BOOL)validateArguments:(NSArray * _Nonnull)arguments 
+               capability:(CSCapability * _Nonnull)capability 
+                    error:(NSError * _Nullable * _Nullable)error;
 
 @end
 
@@ -75,9 +78,9 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSOutputValidator : NSObject
 
 /// Validate output against capability output schema
-+ (BOOL)validateOutput:(id)output 
-            capability:(CSCapability *)capability 
-                 error:(NSError **)error;
++ (BOOL)validateOutput:(id _Nonnull)output 
+            capability:(CSCapability * _Nonnull)capability 
+                 error:(NSError * _Nullable * _Nullable)error;
 
 @end
 
@@ -85,8 +88,8 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSCapabilityValidator : NSObject
 
 /// Validate a capability definition itself
-+ (BOOL)validateCapability:(CSCapability *)capability 
-                     error:(NSError **)error;
++ (BOOL)validateCapability:(CSCapability * _Nonnull)capability 
+                     error:(NSError * _Nullable * _Nullable)error;
 
 @end
 
@@ -94,24 +97,24 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSSchemaValidator : NSObject
 
 /// Register a capability schema for validation
-- (void)registerCapability:(CSCapability *)capability;
+- (void)registerCapability:(CSCapability * _Nonnull)capability;
 
 /// Get a capability by ID
-- (nullable CSCapability *)getCapability:(NSString *)capabilityId;
+- (nullable CSCapability *)getCapability:(NSString * _Nonnull)capabilityId;
 
 /// Validate arguments against a capability's input schema
-- (BOOL)validateInputs:(NSArray *)arguments 
-          capabilityId:(NSString *)capabilityId 
-                 error:(NSError **)error;
+- (BOOL)validateInputs:(NSArray * _Nonnull)arguments 
+          capabilityId:(NSString * _Nonnull)capabilityId 
+                 error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate output against a capability's output schema
-- (BOOL)validateOutput:(id)output 
-          capabilityId:(NSString *)capabilityId 
-                 error:(NSError **)error;
+- (BOOL)validateOutput:(id _Nonnull)output 
+          capabilityId:(NSString * _Nonnull)capabilityId 
+                 error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate a capability definition itself  
-- (BOOL)validateCapabilitySchema:(CSCapability *)capability 
-                           error:(NSError **)error;
+- (BOOL)validateCapabilitySchema:(CSCapability * _Nonnull)capability 
+                           error:(NSError * _Nullable * _Nullable)error;
 
 @end
 

@@ -27,7 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param capabilityId The base capability ID to start with
  * @return A new CSCapabilityIdBuilder instance
  */
-+ (instancetype)builderFromCapabilityId:(CSCapabilityId *)capabilityId;
++ (instancetype)builderFromCapabilityId:(CSCapabilityId * _Nonnull)capabilityId;
 
 /**
  * Create a builder from a capability string
@@ -35,21 +35,21 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Error if the string format is invalid
  * @return A new CSCapabilityIdBuilder instance or nil if invalid
  */
-+ (nullable instancetype)builderFromString:(NSString *)string error:(NSError **)error;
++ (nullable instancetype)builderFromString:(NSString * _Nonnull)string error:(NSError * _Nullable * _Nullable)error;
 
 /**
  * Add a segment to the capability ID
  * @param segment The segment to add
  * @return Self for method chaining
  */
-- (instancetype)sub:(NSString *)segment;
+- (instancetype)sub:(NSString * _Nonnull)segment;
 
 /**
  * Add multiple segments to the capability ID
  * @param segments Array of segments to add
  * @return Self for method chaining
  */
-- (instancetype)subs:(NSArray<NSString *> *)segments;
+- (instancetype)subs:(NSArray<NSString *> * _Nonnull)segments;
 
 /**
  * Replace a segment at the given index
@@ -57,7 +57,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param segment The new segment value
  * @return Self for method chaining
  */
-- (instancetype)replaceSegmentAtIndex:(NSUInteger)index withSegment:(NSString *)segment;
+- (instancetype)replaceSegmentAtIndex:(NSUInteger)index withSegment:(NSString * _Nonnull)segment;
 
 /**
  * Remove the last segment (make more general)
@@ -126,14 +126,14 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Error if the segments are invalid
  * @return A new CSCapabilityId instance or nil if invalid
  */
-- (nullable CSCapabilityId *)build:(NSError **)error;
+- (nullable CSCapabilityId *)build:(NSError * _Nullable * _Nullable)error;
 
 /**
  * Build the final CSCapabilityId as a string
  * @param error Error if the segments are invalid
  * @return The capability identifier string or nil if invalid
  */
-- (nullable NSString *)buildString:(NSError **)error;
+- (nullable NSString *)buildString:(NSError * _Nullable * _Nullable)error;
 
 /**
  * Get the current capability ID as a string (for debugging)
@@ -153,7 +153,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Error if the string format is invalid
  * @return A new CSCapabilityIdBuilder instance or nil if invalid
  */
-- (nullable CSCapabilityIdBuilder *)cs_intoBuilder:(NSError **)error;
+- (nullable CSCapabilityIdBuilder *)cs_intoBuilder:(NSError * _Nullable * _Nullable)error;
 
 @end
 

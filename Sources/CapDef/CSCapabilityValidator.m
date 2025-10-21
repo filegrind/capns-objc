@@ -9,7 +9,7 @@
 #import "CSCapabilityValidator.h"
 
 // Error domain
-NSString * const CSValidationErrorDomain = @"CSValidationErrorDomain";
+NSErrorDomain const CSValidationErrorDomain = @"CSValidationErrorDomain";
 
 // Error user info keys
 NSString * const CSValidationErrorCapabilityIdKey = @"CSValidationErrorCapabilityIdKey";

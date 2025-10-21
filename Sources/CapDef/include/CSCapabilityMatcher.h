@@ -22,8 +22,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param request The requested capability
  * @return The best matching capability or nil if none can handle the request
  */
-+ (nullable CSCapabilityId *)findBestMatchInCapabilities:(NSArray<CSCapabilityId *> *)capabilities 
-                                              forRequest:(CSCapabilityId *)request;
++ (nullable CSCapabilityId *)findBestMatchInCapabilities:(NSArray<CSCapabilityId *> * _Nonnull)capabilities 
+                                              forRequest:(CSCapabilityId * _Nonnull)request;
 
 /**
  * Find all capabilities that can handle a request
@@ -31,15 +31,15 @@ NS_ASSUME_NONNULL_BEGIN
  * @param request The requested capability
  * @return Array of capabilities that can handle the request, sorted by specificity (most specific first)
  */
-+ (NSArray<CSCapabilityId *> *)findAllMatchesInCapabilities:(NSArray<CSCapabilityId *> *)capabilities 
-                                                  forRequest:(CSCapabilityId *)request;
++ (NSArray<CSCapabilityId *> * _Nonnull)findAllMatchesInCapabilities:(NSArray<CSCapabilityId *> * _Nonnull)capabilities 
+                                                  forRequest:(CSCapabilityId * _Nonnull)request;
 
 /**
  * Sort capabilities by specificity
  * @param capabilities Array of capabilities to sort
  * @return Array sorted by specificity (most specific first)
  */
-+ (NSArray<CSCapabilityId *> *)sortCapabilitiesBySpecificity:(NSArray<CSCapabilityId *> *)capabilities;
++ (NSArray<CSCapabilityId *> * _Nonnull)sortCapabilitiesBySpecificity:(NSArray<CSCapabilityId *> * _Nonnull)capabilities;
 
 /**
  * Check if a capability can handle a request with additional context
@@ -48,8 +48,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param context Additional context for matching (optional)
  * @return YES if the capability can handle the request
  */
-+ (BOOL)capability:(CSCapabilityId *)capability 
-    canHandleRequest:(CSCapabilityId *)request 
++ (BOOL)capability:(CSCapabilityId * _Nonnull)capability 
+    canHandleRequest:(CSCapabilityId * _Nonnull)request 
          withContext:(nullable NSDictionary<NSString *, id> *)context;
 
 @end

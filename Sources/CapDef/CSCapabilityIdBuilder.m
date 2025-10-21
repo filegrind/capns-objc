@@ -6,7 +6,7 @@
 #import "CSCapabilityIdBuilder.h"
 
 @interface CSCapabilityIdBuilder ()
-@property (nonatomic, strong) NSMutableArray<NSString *> *mutableSegments;
+@property (nonatomic, strong, nonnull) NSMutableArray<NSString *> *mutableSegments;
 @end
 
 @implementation CSCapabilityIdBuilder

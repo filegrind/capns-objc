@@ -72,10 +72,10 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly, nullable) id defaultValue;
 
-+ (instancetype)argumentWithName:(NSString *)name
++ (instancetype)argumentWithName:(NSString * _Nonnull)name
                             type:(CSArgumentType)type
-                     description:(NSString *)description
-                         cliFlag:(NSString *)cliFlag
+                     description:(NSString * _Nonnull)description
+                         cliFlag:(NSString * _Nonnull)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue;
@@ -91,12 +91,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly) NSArray<CSCapabilityArgument *> *optional;
 
 + (instancetype)arguments;
-+ (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> *)required
-                             optional:(NSArray<CSCapabilityArgument *> *)optional;
++ (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> * _Nonnull)required
+                             optional:(NSArray<CSCapabilityArgument *> * _Nonnull)optional;
 
-- (void)addRequiredArgument:(CSCapabilityArgument *)argument;
-- (void)addOptionalArgument:(CSCapabilityArgument *)argument;
-- (nullable CSCapabilityArgument *)findArgumentWithName:(NSString *)name;
+- (void)addRequiredArgument:(CSCapabilityArgument * _Nonnull)argument;
+- (void)addOptionalArgument:(CSCapabilityArgument * _Nonnull)argument;
+- (nullable CSCapabilityArgument *)findArgumentWithName:(NSString * _Nonnull)name;
 - (NSArray<CSCapabilityArgument *> *)positionalArguments;
 - (NSArray<CSCapabilityArgument *> *)flagArguments;
 - (BOOL)isEmpty;
@@ -119,7 +119,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                      schemaRef:(nullable NSString *)schemaRef
                    contentType:(nullable NSString *)contentType
                     validation:(nullable CSArgumentValidation *)validation
-                   description:(NSString *)description;
+                   description:(NSString * _Nonnull)description;
 
 @end
 
@@ -155,7 +155,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param version The capability version
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId version:(NSString *)version command:(NSString *)command;
++ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId version:(NSString * _Nonnull)version command:(NSString * _Nonnull)command;
 
 /**
  * Create a new capability with description
@@ -164,10 +164,10 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param description The capability description
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId 
-                         version:(NSString *)version
-                         command:(NSString *)command
-                     description:(NSString *)description;
++ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId 
+                         version:(NSString * _Nonnull)version
+                         command:(NSString * _Nonnull)command
+                     description:(NSString * _Nonnull)description;
 
 /**
  * Create a new capability with metadata
@@ -176,10 +176,10 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param metadata The capability metadata
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId 
-                         version:(NSString *)version
-                         command:(NSString *)command
-                        metadata:(NSDictionary<NSString *, NSString *> *)metadata;
++ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId 
+                         version:(NSString * _Nonnull)version
+                         command:(NSString * _Nonnull)command
+                        metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata;
 
 /**
  * Create a new capability with description and metadata
@@ -189,11 +189,11 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param metadata The capability metadata
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId 
-                         version:(NSString *)version
-                         command:(NSString *)command
++ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId 
+                         version:(NSString * _Nonnull)version
+                         command:(NSString * _Nonnull)command
                      description:(nullable NSString *)description 
-                        metadata:(NSDictionary<NSString *, NSString *> *)metadata;
+                        metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata;
 
 /**
  * Create a new capability with arguments
@@ -202,10 +202,10 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param arguments The capability arguments
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
-                         version:(NSString *)version
-                         command:(NSString *)command
-                       arguments:(CSCapabilityArguments *)arguments;
++ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId
+                         version:(NSString * _Nonnull)version
+                         command:(NSString * _Nonnull)command
+                       arguments:(CSCapabilityArguments * _Nonnull)arguments;
 
 /**
  * Create a fully specified capability
@@ -218,12 +218,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param output The output definition
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
-                         version:(NSString *)version
++ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId
+                         version:(NSString * _Nonnull)version
                      description:(nullable NSString *)description
-                        metadata:(NSDictionary<NSString *, NSString *> *)metadata
-                         command:(NSString *)command
-                       arguments:(CSCapabilityArguments *)arguments
+                        metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
+                         command:(NSString * _Nonnull)command
+                       arguments:(CSCapabilityArguments * _Nonnull)arguments
                           output:(nullable CSCapabilityOutput *)output;
 
 /**
@@ -231,35 +231,35 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param request The request string
  * @return YES if this capability matches the request
  */
-- (BOOL)matchesRequest:(NSString *)request;
+- (BOOL)matchesRequest:(NSString * _Nonnull)request;
 
 /**
  * Check if this capability can handle a request
  * @param request The request capability identifier
  * @return YES if this capability can handle the request
  */
-- (BOOL)canHandleRequest:(CSCapabilityId *)request;
+- (BOOL)canHandleRequest:(CSCapabilityId * _Nonnull)request;
 
 /**
  * Check if this capability is more specific than another
  * @param other The other capability to compare with
  * @return YES if this capability is more specific
  */
-- (BOOL)isMoreSpecificThan:(CSCapability *)other;
+- (BOOL)isMoreSpecificThan:(CSCapability * _Nonnull)other;
 
 /**
  * Get a metadata value by key
  * @param key The metadata key
  * @return The metadata value or nil if not found
  */
-- (nullable NSString *)metadataForKey:(NSString *)key;
+- (nullable NSString *)metadataForKey:(NSString * _Nonnull)key;
 
 /**
  * Check if this capability has specific metadata
  * @param key The metadata key to check
  * @return YES if the metadata key exists
  */
-- (BOOL)hasMetadataForKey:(NSString *)key;
+- (BOOL)hasMetadataForKey:(NSString * _Nonnull)key;
 
 /**
  * Get the capability identifier as a string
@@ -289,13 +289,13 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * Add a required argument
  * @param argument The argument to add
  */
-- (void)addRequiredArgument:(CSCapabilityArgument *)argument;
+- (void)addRequiredArgument:(CSCapabilityArgument * _Nonnull)argument;
 
 /**
  * Add an optional argument
  * @param argument The argument to add
  */
-- (void)addOptionalArgument:(CSCapabilityArgument *)argument;
+- (void)addOptionalArgument:(CSCapabilityArgument * _Nonnull)argument;
 
 @end
 
