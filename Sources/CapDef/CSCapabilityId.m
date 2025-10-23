@@ -183,4 +183,8 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
     return YES;
 }
 
+- (BOOL)isBinary {
+    return self.segments.count > 0 && [self.segments.firstObject isEqualToString:@"bin"];
+}
+
 @end

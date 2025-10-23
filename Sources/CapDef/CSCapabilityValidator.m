@@ -773,6 +773,64 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     return [CSOutputValidator validateOutput:output capability:capability error:error];
 }
 
+- (BOOL)validateBinaryOutput:(NSData *)outputData 
+                capabilityId:(NSString *)capabilityId 
+                       error:(NSError **)error {
+    CSCapability *capability = [self getCapability:capabilityId];
+    if (!capability) {
+        if (error) {
+            *error = [CSValidationError unknownCapabilityError:capabilityId];
+        }
+        return NO;
+    }
+    
+    // For binary outputs, we primarily validate existence and basic constraints
+    CSCapabilityOutput *output = [capability getOutput];
+    if (!output) {
+        // No output definition means any output is acceptable
+        return YES;
+    }
+    
+    // Verify output type is binary
+    if (output.type != CSOutputTypeBinary) {
+        if (error) {
+            *error = [CSValidationError invalidOutputTypeError:capabilityId
+                                                  expectedType:output.type
+                                                    actualType:@"binary"
+                                                   actualValue:outputData];
+        }
+        return NO;
+    }
+    
+    // Validate binary data size constraints if defined
+    CSArgumentValidation *validation = output.validation;
+    if (validation && validation.min) {
+        if (outputData.length < [validation.min integerValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"minimum size %@ bytes", validation.min];
+                *error = [CSValidationError outputValidationFailedError:capabilityId
+                                                         validationRule:rule
+                                                            actualValue:@(outputData.length)];
+            }
+            return NO;
+        }
+    }
+    
+    if (validation && validation.max) {
+        if (outputData.length > [validation.max integerValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"maximum size %@ bytes", validation.max];
+                *error = [CSValidationError outputValidationFailedError:capabilityId
+                                                         validationRule:rule
+                                                            actualValue:@(outputData.length)];
+            }
+            return NO;
+        }
+    }
+    
+    return YES;
+}
+
 - (BOOL)validateCapabilitySchema:(CSCapability *)capability 
                            error:(NSError **)error {
     return [CSCapabilityValidator validateCapability:capability error:error];

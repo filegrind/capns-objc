@@ -112,6 +112,11 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
           capabilityId:(NSString * _Nonnull)capabilityId 
                  error:(NSError * _Nullable * _Nullable)error;
 
+/// Validate binary output against a capability's output schema
+- (BOOL)validateBinaryOutput:(NSData * _Nonnull)outputData 
+                capabilityId:(NSString * _Nonnull)capabilityId 
+                       error:(NSError * _Nullable * _Nullable)error;
+
 /// Validate a capability definition itself  
 - (BOOL)validateCapabilitySchema:(CSCapability * _Nonnull)capability 
                            error:(NSError * _Nullable * _Nullable)error;

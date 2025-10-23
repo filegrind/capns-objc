@@ -80,6 +80,12 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (NSString *)toString;
 
+/**
+ * Check if this capability produces binary output
+ * @return YES if the capability has the "bin:" prefix
+ */
+- (BOOL)isBinary;
+
 @end
 
 /// Error domain for capability identifier errors
