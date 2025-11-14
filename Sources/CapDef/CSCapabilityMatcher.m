@@ -7,17 +7,17 @@
 
 @implementation CSCapabilityMatcher
 
-+ (nullable CSCapabilityId *)findBestMatchInCapabilities:(NSArray<CSCapabilityId *> *)capabilities 
-                                              forRequest:(CSCapabilityId *)request {
-    NSArray<CSCapabilityId *> *matches = [self findAllMatchesInCapabilities:capabilities forRequest:request];
++ (nullable CSCapabilityKey *)findBestMatchInCapabilities:(NSArray<CSCapabilityKey *> *)capabilities 
+                                              forRequest:(CSCapabilityKey *)request {
+    NSArray<CSCapabilityKey *> *matches = [self findAllMatchesInCapabilities:capabilities forRequest:request];
     return matches.firstObject;
 }
 
-+ (NSArray<CSCapabilityId *> *)findAllMatchesInCapabilities:(NSArray<CSCapabilityId *> *)capabilities 
-                                                  forRequest:(CSCapabilityId *)request {
-    NSMutableArray<CSCapabilityId *> *matches = [NSMutableArray array];
++ (NSArray<CSCapabilityKey *> *)findAllMatchesInCapabilities:(NSArray<CSCapabilityKey *> *)capabilities 
+                                                  forRequest:(CSCapabilityKey *)request {
+    NSMutableArray<CSCapabilityKey *> *matches = [NSMutableArray array];
     
-    for (CSCapabilityId *capability in capabilities) {
+    for (CSCapabilityKey *capability in capabilities) {
         if ([capability canHandle:request]) {
             [matches addObject:capability];
         }
@@ -26,8 +26,8 @@
     return [self sortCapabilitiesBySpecificity:matches];
 }
 
-+ (NSArray<CSCapabilityId *> *)sortCapabilitiesBySpecificity:(NSArray<CSCapabilityId *> *)capabilities {
-    return [capabilities sortedArrayUsingComparator:^NSComparisonResult(CSCapabilityId *cap1, CSCapabilityId *cap2) {
++ (NSArray<CSCapabilityKey *> *)sortCapabilitiesBySpecificity:(NSArray<CSCapabilityKey *> *)capabilities {
+    return [capabilities sortedArrayUsingComparator:^NSComparisonResult(CSCapabilityKey *cap1, CSCapabilityKey *cap2) {
         // Sort by specificity level first (higher specificity first)
         NSUInteger spec1 = [cap1 specificityLevel];
         NSUInteger spec2 = [cap2 specificityLevel];
@@ -49,8 +49,8 @@
     }];
 }
 
-+ (BOOL)capability:(CSCapabilityId *)capability 
-    canHandleRequest:(CSCapabilityId *)request 
++ (BOOL)capability:(CSCapabilityKey *)capability 
+    canHandleRequest:(CSCapabilityKey *)request 
          withContext:(nullable NSDictionary<NSString *, id> *)context {
     // Basic capability matching
     if (![capability canHandle:request]) {

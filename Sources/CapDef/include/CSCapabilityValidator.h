@@ -31,36 +31,36 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSValidationError : NSError
 
 @property (nonatomic, readonly) CSValidationErrorType validationType;
-@property (nonatomic, readonly, copy) NSString *capabilityId;
+@property (nonatomic, readonly, copy) NSString *capabilityKey;
 @property (nonatomic, readonly, copy, nullable) NSString *argumentName;
 @property (nonatomic, readonly, copy, nullable) NSString *validationRule;
 @property (nonatomic, readonly, strong, nullable) id actualValue;
 @property (nonatomic, readonly, copy, nullable) NSString *actualType;
 @property (nonatomic, readonly, copy, nullable) NSString *expectedType;
 
-+ (instancetype)unknownCapabilityError:(NSString *)capabilityId;
-+ (instancetype)missingRequiredArgumentError:(NSString *)capabilityId argumentName:(NSString *)argumentName;
-+ (instancetype)invalidArgumentTypeError:(NSString *)capabilityId 
++ (instancetype)unknownCapabilityError:(NSString *)capabilityKey;
++ (instancetype)missingRequiredArgumentError:(NSString *)capabilityKey argumentName:(NSString *)argumentName;
++ (instancetype)invalidArgumentTypeError:(NSString *)capabilityKey 
                             argumentName:(NSString *)argumentName 
                             expectedType:(CSArgumentType)expectedType 
                               actualType:(NSString *)actualType 
                              actualValue:(id)actualValue;
-+ (instancetype)argumentValidationFailedError:(NSString *)capabilityId 
++ (instancetype)argumentValidationFailedError:(NSString *)capabilityKey 
                                  argumentName:(NSString *)argumentName 
                                validationRule:(NSString *)validationRule 
                                   actualValue:(id)actualValue;
-+ (instancetype)invalidOutputTypeError:(NSString *)capabilityId 
++ (instancetype)invalidOutputTypeError:(NSString *)capabilityKey 
                           expectedType:(CSOutputType)expectedType 
                             actualType:(NSString *)actualType 
                            actualValue:(id)actualValue;
-+ (instancetype)outputValidationFailedError:(NSString *)capabilityId 
++ (instancetype)outputValidationFailedError:(NSString *)capabilityKey 
                              validationRule:(NSString *)validationRule 
                                 actualValue:(id)actualValue;
-+ (instancetype)invalidCapabilitySchemaError:(NSString *)capabilityId issue:(NSString *)issue;
-+ (instancetype)tooManyArgumentsError:(NSString *)capabilityId 
++ (instancetype)invalidCapabilitySchemaError:(NSString *)capabilityKey issue:(NSString *)issue;
++ (instancetype)tooManyArgumentsError:(NSString *)capabilityKey 
                           maxExpected:(NSInteger)maxExpected 
                           actualCount:(NSInteger)actualCount;
-+ (instancetype)jsonParseError:(NSString *)capabilityId error:(NSString *)error;
++ (instancetype)jsonParseError:(NSString *)capabilityKey error:(NSString *)error;
 
 @end
 
@@ -100,21 +100,21 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 - (void)registerCapability:(CSCapability * _Nonnull)capability;
 
 /// Get a capability by ID
-- (nullable CSCapability *)getCapability:(NSString * _Nonnull)capabilityId;
+- (nullable CSCapability *)getCapability:(NSString * _Nonnull)capabilityKey;
 
 /// Validate arguments against a capability's input schema
 - (BOOL)validateInputs:(NSArray * _Nonnull)arguments 
-          capabilityId:(NSString * _Nonnull)capabilityId 
+          capabilityKey:(NSString * _Nonnull)capabilityKey 
                  error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate output against a capability's output schema
 - (BOOL)validateOutput:(id _Nonnull)output 
-          capabilityId:(NSString * _Nonnull)capabilityId 
+          capabilityKey:(NSString * _Nonnull)capabilityKey 
                  error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate binary output against a capability's output schema
 - (BOOL)validateBinaryOutput:(NSData * _Nonnull)outputData 
-                capabilityId:(NSString * _Nonnull)capabilityId 
+                capabilityKey:(NSString * _Nonnull)capabilityKey 
                        error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate a capability definition itself  

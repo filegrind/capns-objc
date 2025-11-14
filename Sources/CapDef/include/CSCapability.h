@@ -8,7 +8,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "CSCapabilityId.h"
+#import "CSCapabilityKey.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -129,7 +129,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @interface CSCapability : NSObject <NSCopying, NSCoding>
 
 /// Formal capability identifier with hierarchical naming
-@property (nonatomic, readonly) CSCapabilityId *capabilityId;
+@property (nonatomic, readonly) CSCapabilityKey *capabilityKey;
 
 /// Capability version
 @property (nonatomic, readonly) NSString *version;
@@ -151,45 +151,45 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Create a new capability
- * @param capabilityId The capability identifier
+ * @param capabilityKey The capability identifier
  * @param version The capability version
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId version:(NSString * _Nonnull)version command:(NSString * _Nonnull)command;
++ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey version:(NSString * _Nonnull)version command:(NSString * _Nonnull)command;
 
 /**
  * Create a new capability with description
- * @param capabilityId The capability identifier
+ * @param capabilityKey The capability identifier
  * @param version The capability version
  * @param description The capability description
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId 
++ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey 
                          version:(NSString * _Nonnull)version
                          command:(NSString * _Nonnull)command
                      description:(NSString * _Nonnull)description;
 
 /**
  * Create a new capability with metadata
- * @param capabilityId The capability identifier
+ * @param capabilityKey The capability identifier
  * @param version The capability version
  * @param metadata The capability metadata
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId 
++ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey 
                          version:(NSString * _Nonnull)version
                          command:(NSString * _Nonnull)command
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata;
 
 /**
  * Create a new capability with description and metadata
- * @param capabilityId The capability identifier
+ * @param capabilityKey The capability identifier
  * @param version The capability version
  * @param description The capability description
  * @param metadata The capability metadata
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId 
++ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey 
                          version:(NSString * _Nonnull)version
                          command:(NSString * _Nonnull)command
                      description:(nullable NSString *)description 
@@ -197,19 +197,19 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Create a new capability with arguments
- * @param capabilityId The capability identifier
+ * @param capabilityKey The capability identifier
  * @param version The capability version
  * @param arguments The capability arguments
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId
++ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey
                          version:(NSString * _Nonnull)version
                          command:(NSString * _Nonnull)command
                        arguments:(CSCapabilityArguments * _Nonnull)arguments;
 
 /**
  * Create a fully specified capability
- * @param capabilityId The capability identifier
+ * @param capabilityKey The capability identifier
  * @param version The capability version
  * @param description The capability description
  * @param metadata The capability metadata
@@ -218,7 +218,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param output The output definition
  * @return A new CSCapability instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityId * _Nonnull)capabilityId
++ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey
                          version:(NSString * _Nonnull)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
@@ -238,7 +238,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param request The request capability identifier
  * @return YES if this capability can handle the request
  */
-- (BOOL)canHandleRequest:(CSCapabilityId * _Nonnull)request;
+- (BOOL)canHandleRequest:(CSCapabilityKey * _Nonnull)request;
 
 /**
  * Check if this capability is more specific than another

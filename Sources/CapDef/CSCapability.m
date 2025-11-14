@@ -7,50 +7,50 @@
 
 @implementation CSCapability
 
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId version:(NSString *)version command:(NSString *)command {
-    return [self capabilityWithId:capabilityId version:version description:nil metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil];
++ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey version:(NSString *)version command:(NSString *)command {
+    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil];
 }
 
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId 
++ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
                          version:(NSString *)version
                          command:(NSString *)command
                      description:(NSString *)description {
-    return [self capabilityWithId:capabilityId version:version description:description metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:description metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil];
 }
 
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId 
++ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
                          version:(NSString *)version
                          command:(NSString *)command
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata {
-    return [self capabilityWithId:capabilityId version:version description:nil metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:nil metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil];
 }
 
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId 
++ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
                          version:(NSString *)version
                          command:(NSString *)command
                      description:(nullable NSString *)description 
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata {
-    return [self capabilityWithId:capabilityId version:version description:description metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:description metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil];
 }
 
 - (BOOL)matchesRequest:(NSString *)request {
     NSError *error;
-    CSCapabilityId *requestId = [CSCapabilityId fromString:request error:&error];
+    CSCapabilityKey *requestId = [CSCapabilityKey fromString:request error:&error];
     if (!requestId) {
         return NO;
     }
-    return [self.capabilityId canHandle:requestId];
+    return [self.capabilityKey canHandle:requestId];
 }
 
-- (BOOL)canHandleRequest:(CSCapabilityId *)request {
-    return [self.capabilityId canHandle:request];
+- (BOOL)canHandleRequest:(CSCapabilityKey *)request {
+    return [self.capabilityKey canHandle:request];
 }
 
 - (BOOL)isMoreSpecificThan:(CSCapability *)other {
     if (!other) {
         return YES;
     }
-    return [self.capabilityId isMoreSpecificThan:other.capabilityId];
+    return [self.capabilityKey isMoreSpecificThan:other.capabilityKey];
 }
 
 - (nullable NSString *)metadataForKey:(NSString *)key {
@@ -62,12 +62,12 @@
 }
 
 - (NSString *)idString {
-    return [self.capabilityId toString];
+    return [self.capabilityKey toString];
 }
 
 - (NSString *)description {
     NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCapability(id: %@, version: %@", 
-                            [self.capabilityId toString], self.version];
+                            [self.capabilityKey toString], self.version];
     
     if (self.capabilityDescription) {
         [desc appendFormat:@", description: %@", self.capabilityDescription];
@@ -86,7 +86,7 @@
     if (![object isKindOfClass:[CSCapability class]]) return NO;
     
     CSCapability *other = (CSCapability *)object;
-    return [self.capabilityId isEqual:other.capabilityId] &&
+    return [self.capabilityKey isEqual:other.capabilityKey] &&
            [self.version isEqualToString:other.version] &&
            ((self.capabilityDescription == nil && other.capabilityDescription == nil) ||
             [self.capabilityDescription isEqualToString:other.capabilityDescription]) &&
@@ -94,11 +94,11 @@
 }
 
 - (NSUInteger)hash {
-    return [self.capabilityId hash] ^ [self.version hash] ^ [self.metadata hash];
+    return [self.capabilityKey hash] ^ [self.version hash] ^ [self.metadata hash];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapability capabilityWithId:self.capabilityId 
+    return [CSCapability capabilityWithId:self.capabilityKey 
                                    version:self.version
                                    command:self.command ?: @"unknown"
                                description:self.capabilityDescription 
@@ -106,7 +106,7 @@
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.capabilityId forKey:@"capabilityId"];
+    [coder encodeObject:self.capabilityKey forKey:@"capabilityKey"];
     [coder encodeObject:self.version forKey:@"version"];
     [coder encodeObject:self.command forKey:@"command"];
     [coder encodeObject:self.capabilityDescription forKey:@"capabilityDescription"];
@@ -114,27 +114,27 @@
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    CSCapabilityId *capabilityId = [coder decodeObjectOfClass:[CSCapabilityId class] forKey:@"capabilityId"];
+    CSCapabilityKey *capabilityKey = [coder decodeObjectOfClass:[CSCapabilityKey class] forKey:@"capabilityKey"];
     NSString *version = [coder decodeObjectOfClass:[NSString class] forKey:@"version"];
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capabilityDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     
-    if (!capabilityId || !version) return nil;
+    if (!capabilityKey || !version) return nil;
     
-    return [CSCapability capabilityWithId:capabilityId 
+    return [CSCapability capabilityWithId:capabilityKey 
                                    version:version
                                    command:command ?: @"unknown"
                                description:description 
                                   metadata:metadata ?: @{}];
 }
 
-- (instancetype)initWithId:(CSCapabilityId *)capabilityId
+- (instancetype)initWithId:(CSCapabilityKey *)capabilityKey
 					version:(NSString *)version
 					command:(NSString *)command {
 	self = [super init];
 	if (self) {
-		_capabilityId = [capabilityId copy];
+		_capabilityKey = [capabilityKey copy];
 		_version = [version copy];
 		_command = [command copy];
 		_metadata = @{};
@@ -149,14 +149,14 @@
 
 #pragma mark - Missing Methods
 
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
++ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey
                          version:(NSString *)version
                          command:(NSString *)command
                        arguments:(CSCapabilityArguments *)arguments {
-    return [self capabilityWithId:capabilityId version:version description:nil metadata:@{} command:command arguments:arguments output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:arguments output:nil];
 }
 
-+ (instancetype)capabilityWithId:(CSCapabilityId *)capabilityId
++ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
@@ -164,7 +164,7 @@
                        arguments:(CSCapabilityArguments *)arguments
                           output:(nullable CSCapabilityOutput *)output {
     CSCapability *capability = [[CSCapability alloc] init];
-    capability->_capabilityId = [capabilityId copy];
+    capability->_capabilityKey = [capabilityKey copy];
     capability->_version = [version copy];
     capability->_capabilityDescription = [description copy];
     capability->_metadata = [metadata copy] ?: @{};

@@ -1,34 +1,34 @@
 //
-//  CSCapabilityIdBuilder.m
+//  CSCapabilityKeyBuilder.m
 //  Capability ID Builder Implementation
 //
 
-#import "CSCapabilityIdBuilder.h"
+#import "CSCapabilityKeyBuilder.h"
 
-@interface CSCapabilityIdBuilder ()
+@interface CSCapabilityKeyBuilder ()
 @property (nonatomic, strong, nonnull) NSMutableArray<NSString *> *mutableSegments;
 @end
 
-@implementation CSCapabilityIdBuilder
+@implementation CSCapabilityKeyBuilder
 
 + (instancetype)builder {
     return [[self alloc] init];
 }
 
-+ (instancetype)builderFromCapabilityId:(CSCapabilityId *)capabilityId {
-    CSCapabilityIdBuilder *builder = [self builder];
-    if (capabilityId && capabilityId.segments) {
-        [builder.mutableSegments addObjectsFromArray:capabilityId.segments];
++ (instancetype)builderFromCapabilityKey:(CSCapabilityKey *)capabilityKey {
+    CSCapabilityKeyBuilder *builder = [self builder];
+    if (capabilityKey && capabilityKey.segments) {
+        [builder.mutableSegments addObjectsFromArray:capabilityKey.segments];
     }
     return builder;
 }
 
 + (nullable instancetype)builderFromString:(NSString *)string error:(NSError **)error {
-    CSCapabilityId *capabilityId = [CSCapabilityId fromString:string error:error];
-    if (!capabilityId) {
+    CSCapabilityKey *capabilityKey = [CSCapabilityKey fromString:string error:error];
+    if (!capabilityKey) {
         return nil;
     }
-    return [self builderFromCapabilityId:capabilityId];
+    return [self builderFromCapabilityKey:capabilityKey];
 }
 
 - (instancetype)init {
@@ -117,21 +117,21 @@
 }
 
 - (instancetype)clone {
-    CSCapabilityIdBuilder *cloned = [[self class] builder];
+    CSCapabilityKeyBuilder *cloned = [[self class] builder];
     [cloned.mutableSegments addObjectsFromArray:self.mutableSegments];
     return cloned;
 }
 
-- (nullable CSCapabilityId *)build:(NSError **)error {
-    return [CSCapabilityId fromSegments:self.segments error:error];
+- (nullable CSCapabilityKey *)build:(NSError **)error {
+    return [CSCapabilityKey fromSegments:self.segments error:error];
 }
 
 - (nullable NSString *)buildString:(NSError **)error {
-    CSCapabilityId *capabilityId = [self build:error];
-    if (!capabilityId) {
+    CSCapabilityKey *capabilityKey = [self build:error];
+    if (!capabilityKey) {
         return nil;
     }
-    return [capabilityId toString];
+    return [capabilityKey toString];
 }
 
 - (NSString *)toString {
@@ -139,24 +139,24 @@
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"CSCapabilityIdBuilder(%@)", [self toString]];
+    return [NSString stringWithFormat:@"CSCapabilityKeyBuilder(%@)", [self toString]];
 }
 
 @end
 
 // Category implementations
-@implementation NSString (CSCapabilityIdBuilder)
+@implementation NSString (CSCapabilityKeyBuilder)
 
-- (nullable CSCapabilityIdBuilder *)cs_intoBuilder:(NSError **)error {
-    return [CSCapabilityIdBuilder builderFromString:self error:error];
+- (nullable CSCapabilityKeyBuilder *)cs_intoBuilder:(NSError **)error {
+    return [CSCapabilityKeyBuilder builderFromString:self error:error];
 }
 
 @end
 
-@implementation CSCapabilityId (CSCapabilityIdBuilder)
+@implementation CSCapabilityKey (CSCapabilityKeyBuilder)
 
-- (CSCapabilityIdBuilder *)cs_intoBuilder {
-    return [CSCapabilityIdBuilder builderFromCapabilityId:self];
+- (CSCapabilityKeyBuilder *)cs_intoBuilder {
+    return [CSCapabilityKeyBuilder builderFromCapabilityKey:self];
 }
 
 @end

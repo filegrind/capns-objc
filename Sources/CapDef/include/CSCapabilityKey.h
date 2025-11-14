@@ -1,5 +1,5 @@
 //
-//  CSCapabilityId.h
+//  CSCapabilityKey.h
 //  Formal Capability Identifier System
 //
 //  This provides a reference implementation for hierarchical capability identifiers
@@ -19,7 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
  * - file_handling:*
  * - data_processing:transform:json
  */
-@interface CSCapabilityId : NSObject <NSCopying, NSCoding>
+@interface CSCapabilityKey : NSObject <NSCopying, NSCoding>
 
 /// The segments of the capability identifier
 @property (nonatomic, readonly) NSArray<NSString *> *segments;
@@ -28,7 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Create a capability identifier from a string
  * @param string The capability identifier string (e.g., "file_handling:thumbnail:pdf")
  * @param error Error if the string format is invalid
- * @return A new CSCapabilityId instance or nil if invalid
+ * @return A new CSCapabilityKey instance or nil if invalid
  */
 + (nullable instancetype)fromString:(NSString * _Nonnull)string error:(NSError * _Nullable * _Nullable)error;
 
@@ -36,7 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Create a capability identifier from segments
  * @param segments Array of string segments
  * @param error Error if segments are invalid
- * @return A new CSCapabilityId instance or nil if invalid
+ * @return A new CSCapabilityKey instance or nil if invalid
  */
 + (nullable instancetype)fromSegments:(NSArray<NSString *> * _Nonnull)segments error:(NSError * _Nullable * _Nullable)error;
 
@@ -45,21 +45,21 @@ NS_ASSUME_NONNULL_BEGIN
  * @param request The requested capability
  * @return YES if this capability can handle the request
  */
-- (BOOL)canHandle:(CSCapabilityId * _Nonnull)request;
+- (BOOL)canHandle:(CSCapabilityKey * _Nonnull)request;
 
 /**
  * Check if this capability is compatible with another
  * @param other The other capability to check compatibility with
  * @return YES if the capabilities are compatible
  */
-- (BOOL)isCompatibleWith:(CSCapabilityId * _Nonnull)other;
+- (BOOL)isCompatibleWith:(CSCapabilityKey * _Nonnull)other;
 
 /**
  * Check if this capability is more specific than another
  * @param other The other capability to compare specificity with
  * @return YES if this capability is more specific
  */
-- (BOOL)isMoreSpecificThan:(CSCapabilityId * _Nonnull)other;
+- (BOOL)isMoreSpecificThan:(CSCapabilityKey * _Nonnull)other;
 
 /**
  * Get the specificity level of this capability
@@ -89,13 +89,13 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 /// Error domain for capability identifier errors
-FOUNDATION_EXPORT NSErrorDomain const CSCapabilityIdErrorDomain;
+FOUNDATION_EXPORT NSErrorDomain const CSCapabilityKeyErrorDomain;
 
 /// Error codes for capability identifier operations
-typedef NS_ERROR_ENUM(CSCapabilityIdErrorDomain, CSCapabilityIdError) {
-    CSCapabilityIdErrorInvalidFormat = 1,
-    CSCapabilityIdErrorEmptySegment = 2,
-    CSCapabilityIdErrorInvalidCharacter = 3
+typedef NS_ERROR_ENUM(CSCapabilityKeyErrorDomain, CSCapabilityKeyError) {
+    CSCapabilityKeyErrorInvalidFormat = 1,
+    CSCapabilityKeyErrorEmptySegment = 2,
+    CSCapabilityKeyErrorInvalidCharacter = 3
 };
 
 NS_ASSUME_NONNULL_END

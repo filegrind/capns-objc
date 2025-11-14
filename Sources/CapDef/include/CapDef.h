@@ -15,8 +15,8 @@ FOUNDATION_EXPORT double CapDefVersionNumber;
 //! Project version string for CapDef.
 FOUNDATION_EXPORT const unsigned char CapDefVersionString[];
 
-#import "CSCapabilityId.h"
-#import "CSCapabilityIdBuilder.h"
+#import "CSCapabilityKey.h"
+#import "CSCapabilityKeyBuilder.h"
 #import "CSCapability.h"
 #import "CSCapabilityMatcher.h"
 #import "CSCapabilityValidator.h"

@@ -1,5 +1,5 @@
 //
-//  CSCapabilityIdBuilder.h
+//  CSCapabilityKeyBuilder.h
 //  Capability ID Builder API
 //
 //  Provides a fluent builder interface for constructing and manipulating capability identifiers.
@@ -7,33 +7,33 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "CSCapabilityId.h"
+#import "CSCapabilityKey.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * Builder for constructing CSCapabilityId instances with a fluent API
+ * Builder for constructing CSCapabilityKey instances with a fluent API
  */
-@interface CSCapabilityIdBuilder : NSObject
+@interface CSCapabilityKeyBuilder : NSObject
 
 /**
  * Create a new empty builder
- * @return A new CSCapabilityIdBuilder instance
+ * @return A new CSCapabilityKeyBuilder instance
  */
 + (instancetype)builder;
 
 /**
  * Create a builder starting with a base capability ID
- * @param capabilityId The base capability ID to start with
- * @return A new CSCapabilityIdBuilder instance
+ * @param capabilityKey The base capability ID to start with
+ * @return A new CSCapabilityKeyBuilder instance
  */
-+ (instancetype)builderFromCapabilityId:(CSCapabilityId * _Nonnull)capabilityId;
++ (instancetype)builderFromCapabilityKey:(CSCapabilityKey * _Nonnull)capabilityKey;
 
 /**
  * Create a builder from a capability string
  * @param string The capability identifier string
  * @param error Error if the string format is invalid
- * @return A new CSCapabilityIdBuilder instance or nil if invalid
+ * @return A new CSCapabilityKeyBuilder instance or nil if invalid
  */
 + (nullable instancetype)builderFromString:(NSString * _Nonnull)string error:(NSError * _Nullable * _Nullable)error;
 
@@ -122,14 +122,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)clone;
 
 /**
- * Build the final CSCapabilityId
+ * Build the final CSCapabilityKey
  * @param error Error if the segments are invalid
- * @return A new CSCapabilityId instance or nil if invalid
+ * @return A new CSCapabilityKey instance or nil if invalid
  */
-- (nullable CSCapabilityId *)build:(NSError * _Nullable * _Nullable)error;
+- (nullable CSCapabilityKey *)build:(NSError * _Nullable * _Nullable)error;
 
 /**
- * Build the final CSCapabilityId as a string
+ * Build the final CSCapabilityKey as a string
  * @param error Error if the segments are invalid
  * @return The capability identifier string or nil if invalid
  */
@@ -146,24 +146,24 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Convenience category for creating builders from various types
  */
-@interface NSString (CSCapabilityIdBuilder)
+@interface NSString (CSCapabilityKeyBuilder)
 
 /**
  * Convert this string into a capability ID builder
  * @param error Error if the string format is invalid
- * @return A new CSCapabilityIdBuilder instance or nil if invalid
+ * @return A new CSCapabilityKeyBuilder instance or nil if invalid
  */
-- (nullable CSCapabilityIdBuilder *)cs_intoBuilder:(NSError * _Nullable * _Nullable)error;
+- (nullable CSCapabilityKeyBuilder *)cs_intoBuilder:(NSError * _Nullable * _Nullable)error;
 
 @end
 
-@interface CSCapabilityId (CSCapabilityIdBuilder)
+@interface CSCapabilityKey (CSCapabilityKeyBuilder)
 
 /**
  * Convert this capability ID into a builder
- * @return A new CSCapabilityIdBuilder instance
+ * @return A new CSCapabilityKeyBuilder instance
  */
-- (CSCapabilityIdBuilder *)cs_intoBuilder;
+- (CSCapabilityKeyBuilder *)cs_intoBuilder;
 
 @end
 

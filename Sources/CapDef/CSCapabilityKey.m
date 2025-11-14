@@ -1,19 +1,19 @@
 //
-//  CSCapabilityId.m
+//  CSCapabilityKey.m
 //  Formal Capability Identifier Implementation
 //
 
-#import "CSCapabilityId.h"
+#import "CSCapabilityKey.h"
 
-NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
+NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 
-@implementation CSCapabilityId
+@implementation CSCapabilityKey
 
 + (nullable instancetype)fromString:(NSString *)string error:(NSError **)error {
     if (!string || string.length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapabilityIdErrorDomain
-                                         code:CSCapabilityIdErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                         code:CSCapabilityKeyErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
         }
         return nil;
@@ -26,8 +26,8 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
 + (nullable instancetype)fromSegments:(NSArray<NSString *> *)segments error:(NSError **)error {
     if (!segments || segments.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapabilityIdErrorDomain
-                                         code:CSCapabilityIdErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                         code:CSCapabilityKeyErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier must have at least one segment"}];
         }
         return nil;
@@ -37,8 +37,8 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
     for (NSString *segment in segments) {
         if (segment.length == 0) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityIdErrorDomain
-                                             code:CSCapabilityIdErrorEmptySegment
+                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                             code:CSCapabilityKeyErrorEmptySegment
                                          userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier segments cannot be empty"}];
             }
             return nil;
@@ -48,20 +48,20 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
         NSCharacterSet *validChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-*"];
         if ([segment rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityIdErrorDomain
-                                             code:CSCapabilityIdErrorInvalidCharacter
+                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                             code:CSCapabilityKeyErrorInvalidCharacter
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in segment: %@", segment]}];
             }
             return nil;
         }
     }
     
-    CSCapabilityId *capabilityId = [[CSCapabilityId alloc] init];
-    capabilityId->_segments = [segments copy];
-    return capabilityId;
+    CSCapabilityKey *capabilityKey = [[CSCapabilityKey alloc] init];
+    capabilityKey->_segments = [segments copy];
+    return capabilityKey;
 }
 
-- (BOOL)canHandle:(CSCapabilityId *)request {
+- (BOOL)canHandle:(CSCapabilityKey *)request {
     if (!request) return NO;
     
     // Check each segment up to the minimum of both lengths
@@ -87,7 +87,7 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
     return request.segments.count <= self.segments.count;
 }
 
-- (BOOL)isCompatibleWith:(CSCapabilityId *)other {
+- (BOOL)isCompatibleWith:(CSCapabilityKey *)other {
     if (!other) return NO;
     
     NSUInteger minLength = MIN(self.segments.count, other.segments.count);
@@ -110,7 +110,7 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
     return YES;
 }
 
-- (BOOL)isMoreSpecificThan:(CSCapabilityId *)other {
+- (BOOL)isMoreSpecificThan:(CSCapabilityKey *)other {
     if (!other) return YES;
     
     NSUInteger mySpecificity = [self specificityLevel];
@@ -151,9 +151,9 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
 
 - (BOOL)isEqual:(id)object {
     if (self == object) return YES;
-    if (![object isKindOfClass:[CSCapabilityId class]]) return NO;
+    if (![object isKindOfClass:[CSCapabilityKey class]]) return NO;
     
-    CSCapabilityId *other = (CSCapabilityId *)object;
+    CSCapabilityKey *other = (CSCapabilityKey *)object;
     return [self.segments isEqualToArray:other.segments];
 }
 
@@ -162,7 +162,7 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    CSCapabilityId *copy = [[CSCapabilityId alloc] init];
+    CSCapabilityKey *copy = [[CSCapabilityKey alloc] init];
     copy->_segments = [self.segments copy];
     return copy;
 }
@@ -176,7 +176,7 @@ NSErrorDomain const CSCapabilityIdErrorDomain = @"CSCapabilityIdErrorDomain";
     NSArray<NSString *> *segments = [coder decodeObjectOfClasses:classes forKey:@"segments"];
     if (!segments) return nil;
     
-    return [CSCapabilityId fromSegments:segments error:nil];
+    return [CSCapabilityKey fromSegments:segments error:nil];
 }
 
 + (BOOL)supportsSecureCoding {
