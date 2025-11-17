@@ -1,13 +1,21 @@
 //
 //  CSCapabilityKey.m
-//  Formal Capability Identifier Implementation
+//  Flat Tag-Based Capability Identifier Implementation
 //
 
 #import "CSCapabilityKey.h"
 
 NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 
+@interface CSCapabilityKey ()
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *mutableTags;
+@end
+
 @implementation CSCapabilityKey
+
+- (NSDictionary<NSString *, NSString *> *)tags {
+    return [self.mutableTags copy];
+}
 
 + (nullable instancetype)fromString:(NSString *)string error:(NSError **)error {
     if (!string || string.length == 0) {
@@ -19,130 +27,259 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
         return nil;
     }
     
-    NSArray<NSString *> *segments = [string componentsSeparatedByString:@":"];
-    return [self fromSegments:segments error:error];
-}
-
-+ (nullable instancetype)fromSegments:(NSArray<NSString *> *)segments error:(NSError **)error {
-    if (!segments || segments.count == 0) {
+    NSMutableDictionary<NSString *, NSString *> *tags = [NSMutableDictionary dictionary];
+    
+    NSArray<NSString *> *tagStrings = [string componentsSeparatedByString:@";"];
+    for (NSString *tagString in tagStrings) {
+        NSString *trimmedTag = [tagString stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (trimmedTag.length == 0) {
+            continue;
+        }
+        
+        NSArray<NSString *> *parts = [trimmedTag componentsSeparatedByString:@"="];
+        if (parts.count != 2) {
+            if (error) {
+                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                             code:CSCapabilityKeyErrorInvalidTagFormat
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid tag format (must be key=value): %@", trimmedTag]}];
+            }
+            return nil;
+        }
+        
+        NSString *key = [parts[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        NSString *value = [parts[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        
+        if (key.length == 0 || value.length == 0) {
+            if (error) {
+                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                             code:CSCapabilityKeyErrorEmptyTag
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Tag key or value cannot be empty: %@", trimmedTag]}];
+            }
+            return nil;
+        }
+        
+        // Validate key and value characters
+        NSCharacterSet *validChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-*"];
+        if ([key rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound ||
+            [value rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound) {
+            if (error) {
+                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                             code:CSCapabilityKeyErrorInvalidCharacter
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, *): %@", trimmedTag]}];
+            }
+            return nil;
+        }
+        
+        tags[key] = value;
+    }
+    
+    if (tags.count == 0) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
                                          code:CSCapabilityKeyErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier must have at least one segment"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
         }
         return nil;
     }
     
-    // Validate segments
-    for (NSString *segment in segments) {
-        if (segment.length == 0) {
-            if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                             code:CSCapabilityKeyErrorEmptySegment
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier segments cannot be empty"}];
-            }
-            return nil;
-        }
-        
-        // Check for valid characters (alphanumeric, underscore, hyphen, or wildcard)
-        NSCharacterSet *validChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-*"];
-        if ([segment rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound) {
-            if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                             code:CSCapabilityKeyErrorInvalidCharacter
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in segment: %@", segment]}];
-            }
-            return nil;
-        }
-    }
-    
-    CSCapabilityKey *capabilityKey = [[CSCapabilityKey alloc] init];
-    capabilityKey->_segments = [segments copy];
-    return capabilityKey;
+    return [self fromTags:tags error:error];
 }
 
-- (BOOL)canHandle:(CSCapabilityKey *)request {
-    if (!request) return NO;
-    
-    // Check each segment up to the minimum of both lengths
-    NSUInteger minLength = MIN(self.segments.count, request.segments.count);
-    
-    for (NSUInteger i = 0; i < minLength; i++) {
-        NSString *mySegment = self.segments[i];
-        NSString *requestSegment = request.segments[i];
-        
-        // Wildcard in capability matches anything and consumes all remaining segments
-        if ([mySegment isEqualToString:@"*"]) {
-            return YES;
++ (nullable instancetype)fromTags:(NSDictionary<NSString *, NSString *> *)tags error:(NSError **)error {
+    if (!tags || tags.count == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                         code:CSCapabilityKeyErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
         }
-        
-        // Exact match required
-        if (![mySegment isEqualToString:requestSegment]) {
-            return NO;
-        }
+        return nil;
     }
     
-    // If we've checked all capability segments and none were wildcards,
-    // then we can only handle if the request has no more segments
-    return request.segments.count <= self.segments.count;
+    CSCapabilityKey *instance = [[CSCapabilityKey alloc] init];
+    instance.mutableTags = [tags mutableCopy];
+    return instance;
 }
 
-- (BOOL)isCompatibleWith:(CSCapabilityKey *)other {
-    if (!other) return NO;
+- (instancetype)init {
+    if (self = [super init]) {
+        _mutableTags = [NSMutableDictionary dictionary];
+    }
+    return self;
+}
+
+- (nullable NSString *)getTag:(NSString *)key {
+    return self.mutableTags[key];
+}
+
+- (BOOL)hasTag:(NSString *)key withValue:(NSString *)value {
+    NSString *tagValue = self.mutableTags[key];
+    return tagValue && [tagValue isEqualToString:value];
+}
+
+- (CSCapabilityKey *)withTag:(NSString *)key value:(NSString *)value {
+    NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
+    newTags[key] = value;
+    return [CSCapabilityKey fromTags:newTags error:nil];
+}
+
+- (CSCapabilityKey *)withoutTag:(NSString *)key {
+    NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
+    [newTags removeObjectForKey:key];
+    return [CSCapabilityKey fromTags:newTags error:nil];
+}
+
+- (BOOL)matches:(CSCapabilityKey *)request {
+    if (!request) {
+        return YES;
+    }
     
-    NSUInteger minLength = MIN(self.segments.count, other.segments.count);
-    
-    for (NSUInteger i = 0; i < minLength; i++) {
-        NSString *mySegment = self.segments[i];
-        NSString *otherSegment = other.segments[i];
+    // Check all tags that the request specifies
+    for (NSString *requestKey in request.tags) {
+        NSString *requestValue = request.tags[requestKey];
+        NSString *capValue = self.mutableTags[requestKey];
         
-        // Wildcards are compatible with anything
-        if ([mySegment isEqualToString:@"*"] || [otherSegment isEqualToString:@"*"]) {
+        if (!capValue) {
+            // Missing tag in capability is treated as wildcard - can handle any value
             continue;
         }
         
-        // Must match exactly
-        if (![mySegment isEqualToString:otherSegment]) {
+        if ([capValue isEqualToString:@"*"]) {
+            // Capability has wildcard - can handle any value
+            continue;
+        }
+        
+        if ([requestValue isEqualToString:@"*"]) {
+            // Request accepts any value - capability's specific value matches
+            continue;
+        }
+        
+        if (![capValue isEqualToString:requestValue]) {
+            // Capability has specific value that doesn't match request's specific value
             return NO;
         }
     }
     
+    // If capability has additional specific tags that request doesn't specify, that's fine
+    // The capability is just more specific than needed
     return YES;
 }
 
-- (BOOL)isMoreSpecificThan:(CSCapabilityKey *)other {
-    if (!other) return YES;
-    
-    NSUInteger mySpecificity = [self specificityLevel];
-    NSUInteger otherSpecificity = [other specificityLevel];
-    
-    if (mySpecificity != otherSpecificity) {
-        return mySpecificity > otherSpecificity;
-    }
-    
-    // Same specificity level, check segment count
-    return self.segments.count > other.segments.count;
+- (BOOL)canHandle:(CSCapabilityKey *)request {
+    return [self matches:request];
 }
 
-- (NSUInteger)specificityLevel {
+- (NSUInteger)specificity {
     NSUInteger count = 0;
-    for (NSString *segment in self.segments) {
-        if (![segment isEqualToString:@"*"]) {
+    for (NSString *value in self.mutableTags.allValues) {
+        if (![value isEqualToString:@"*"]) {
             count++;
         }
     }
     return count;
 }
 
-- (BOOL)isWildcardAtLevel:(NSUInteger)level {
-    if (level >= self.segments.count) {
+- (BOOL)isMoreSpecificThan:(CSCapabilityKey *)other {
+    if (!other) {
+        return YES;
+    }
+    
+    // First check if they're compatible
+    if (![self isCompatibleWith:other]) {
         return NO;
     }
-    return [self.segments[level] isEqualToString:@"*"];
+    
+    return self.specificity > other.specificity;
+}
+
+- (BOOL)isCompatibleWith:(CSCapabilityKey *)other {
+    if (!other) {
+        return YES;
+    }
+    
+    // Get all unique tag keys from both capabilities
+    NSMutableSet<NSString *> *allKeys = [NSMutableSet setWithArray:self.mutableTags.allKeys];
+    [allKeys addObjectsFromArray:other.mutableTags.allKeys];
+    
+    for (NSString *key in allKeys) {
+        NSString *v1 = self.mutableTags[key];
+        NSString *v2 = other.mutableTags[key];
+        
+        if (v1 && v2) {
+            // Both have the tag - they must match or one must be wildcard
+            if (![v1 isEqualToString:@"*"] && ![v2 isEqualToString:@"*"] && ![v1 isEqualToString:v2]) {
+                return NO;
+            }
+        }
+        // If only one has the tag, it's compatible (missing tag is wildcard)
+    }
+    
+    return YES;
+}
+
+- (nullable NSString *)capabilityType {
+    return [self getTag:@"type"];
+}
+
+- (nullable NSString *)action {
+    return [self getTag:@"action"];
+}
+
+- (nullable NSString *)target {
+    return [self getTag:@"target"];
+}
+
+- (nullable NSString *)format {
+    return [self getTag:@"format"];
+}
+
+- (nullable NSString *)output {
+    return [self getTag:@"output"];
+}
+
+- (BOOL)isBinary {
+    return [self hasTag:@"output" withValue:@"binary"];
+}
+
+- (CSCapabilityKey *)withWildcardTag:(NSString *)key {
+    if (self.mutableTags[key]) {
+        return [self withTag:key value:@"*"];
+    }
+    return self;
+}
+
+- (CSCapabilityKey *)subset:(NSArray<NSString *> *)keys {
+    NSMutableDictionary *newTags = [NSMutableDictionary dictionary];
+    for (NSString *key in keys) {
+        NSString *value = self.mutableTags[key];
+        if (value) {
+            newTags[key] = value;
+        }
+    }
+    return [CSCapabilityKey fromTags:newTags error:nil];
+}
+
+- (CSCapabilityKey *)merge:(CSCapabilityKey *)other {
+    NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
+    for (NSString *key in other.mutableTags) {
+        newTags[key] = other.mutableTags[key];
+    }
+    return [CSCapabilityKey fromTags:newTags error:nil];
 }
 
 - (NSString *)toString {
-    return [self.segments componentsJoinedByString:@":"];
+    if (self.mutableTags.count == 0) {
+        return @"";
+    }
+    
+    // Sort keys for canonical representation
+    NSArray<NSString *> *sortedKeys = [self.mutableTags.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    for (NSString *key in sortedKeys) {
+        [parts addObject:[NSString stringWithFormat:@"%@=%@", key, self.mutableTags[key]]];
+    }
+    
+    return [parts componentsJoinedByString:@";"];
 }
 
 - (NSString *)description {
@@ -150,41 +287,102 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 }
 
 - (BOOL)isEqual:(id)object {
-    if (self == object) return YES;
-    if (![object isKindOfClass:[CSCapabilityKey class]]) return NO;
+    if (![object isKindOfClass:[CSCapabilityKey class]]) {
+        return NO;
+    }
     
     CSCapabilityKey *other = (CSCapabilityKey *)object;
-    return [self.segments isEqualToArray:other.segments];
+    return [self.mutableTags isEqualToDictionary:other.mutableTags];
 }
 
 - (NSUInteger)hash {
-    return [self.segments hash];
+    return self.mutableTags.hash;
 }
+
+#pragma mark - NSCopying
 
 - (id)copyWithZone:(NSZone *)zone {
-    CSCapabilityKey *copy = [[CSCapabilityKey alloc] init];
-    copy->_segments = [self.segments copy];
-    return copy;
+    return [CSCapabilityKey fromTags:self.tags error:nil];
 }
+
+#pragma mark - NSCoding
 
 - (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.segments forKey:@"segments"];
+    [coder encodeObject:self.mutableTags forKey:@"tags"];
 }
 
-- (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    NSSet *classes = [NSSet setWithObjects:[NSArray class], [NSString class], nil];
-    NSArray<NSString *> *segments = [coder decodeObjectOfClasses:classes forKey:@"segments"];
-    if (!segments) return nil;
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    if (self = [super init]) {
+        _mutableTags = [[coder decodeObjectForKey:@"tags"] mutableCopy];
+    }
+    return self;
+}
+
+@end
+
+#pragma mark - CSCapabilityKeyBuilder
+
+@interface CSCapabilityKeyBuilder ()
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *tags;
+@end
+
+@implementation CSCapabilityKeyBuilder
+
++ (instancetype)builder {
+    return [[CSCapabilityKeyBuilder alloc] init];
+}
+
+- (instancetype)init {
+    if (self = [super init]) {
+        _tags = [NSMutableDictionary dictionary];
+    }
+    return self;
+}
+
+- (CSCapabilityKeyBuilder *)tag:(NSString *)key value:(NSString *)value {
+    self.tags[key] = value;
+    return self;
+}
+
+- (CSCapabilityKeyBuilder *)type:(NSString *)value {
+    return [self tag:@"type" value:value];
+}
+
+- (CSCapabilityKeyBuilder *)action:(NSString *)value {
+    return [self tag:@"action" value:value];
+}
+
+- (CSCapabilityKeyBuilder *)target:(NSString *)value {
+    return [self tag:@"target" value:value];
+}
+
+- (CSCapabilityKeyBuilder *)format:(NSString *)value {
+    return [self tag:@"format" value:value];
+}
+
+- (CSCapabilityKeyBuilder *)output:(NSString *)value {
+    return [self tag:@"output" value:value];
+}
+
+- (CSCapabilityKeyBuilder *)binaryOutput {
+    return [self output:@"binary"];
+}
+
+- (CSCapabilityKeyBuilder *)jsonOutput {
+    return [self output:@"json"];
+}
+
+- (nullable CSCapabilityKey *)build:(NSError **)error {
+    if (self.tags.count == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
+                                         code:CSCapabilityKeyErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
+        }
+        return nil;
+    }
     
-    return [CSCapabilityKey fromSegments:segments error:nil];
-}
-
-+ (BOOL)supportsSecureCoding {
-    return YES;
-}
-
-- (BOOL)isBinary {
-    return self.segments.count > 0 && [self.segments.firstObject isEqualToString:@"bin"];
+    return [CSCapabilityKey fromTags:self.tags error:error];
 }
 
 @end

@@ -1,6 +1,6 @@
 //
 //  CSCapabilityKeyBuilderTests.m
-//  Tests for CSCapabilityKeyBuilder
+//  Tests for CSCapabilityKeyBuilder tag-based system
 //
 
 #import <XCTest/XCTest.h>
@@ -14,208 +14,211 @@
 - (void)testBuilderBasicConstruction {
     NSError *error;
     CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
-    [[builder sub:@"data_processing"] sub:@"transform"];
-    [builder sub:@"json"];
+    [builder type:@"data_processing"];
+    [builder action:@"transform"];
+    [builder format:@"json"];
     CSCapabilityKey *capabilityKey = [builder build:&error];
     
     XCTAssertNotNil(capabilityKey);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"data_processing:transform:json");
+    XCTAssertEqualObjects([capabilityKey toString], @"action=transform;format=json;type=data_processing");
 }
 
-- (void)testBuilderFromString {
-    NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"extract:metadata:pdf" error:&error];
-    XCTAssertNotNil(builder);
-    XCTAssertNil(error);
-    
-    CSCapabilityKey *capabilityKey = [builder build:&error];
-    XCTAssertNotNil(capabilityKey);
-    XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"extract:metadata:pdf");
-}
-
-- (void)testBuilderMakeMoreGeneral {
-    NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"data_processing:transform:json" error:&error];
-    XCTAssertNotNil(builder);
-    
-    CSCapabilityKey *capabilityKey = [[builder makeMoreGeneral] build:&error];
-    XCTAssertNotNil(capabilityKey);
-    XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"data_processing:transform");
-}
-
-- (void)testBuilderMakeWildcard {
-    NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"data_processing:transform:json" error:&error];
-    XCTAssertNotNil(builder);
-    
-    CSCapabilityKey *capabilityKey = [[builder makeWildcard] build:&error];
-    XCTAssertNotNil(capabilityKey);
-    XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"data_processing:transform:*");
-}
-
-- (void)testBuilderAddWildcard {
+- (void)testBuilderFluentAPI {
     NSError *error;
     CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
-    [[builder sub:@"data_processing"] addWildcard];
-    CSCapabilityKey *capabilityKey = [builder build:&error];
+    [builder type:@"document"];
+    [builder action:@"generate"];
+    [builder target:@"thumbnail"];
+    [builder format:@"pdf"];
+    [builder binaryOutput];
+    CSCapabilityKey *capability = [builder build:&error];
     
-    XCTAssertNotNil(capabilityKey);
+    XCTAssertNotNil(capability);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"data_processing:*");
+    
+    XCTAssertEqualObjects([capability capabilityType], @"document");
+    XCTAssertEqualObjects([capability action], @"generate");
+    XCTAssertEqualObjects([capability target], @"thumbnail");
+    XCTAssertEqualObjects([capability format], @"pdf");
+    XCTAssertEqualObjects([capability output], @"binary");
+    XCTAssertTrue([capability isBinary]);
 }
 
-- (void)testBuilderReplaceSegment {
-    NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"extract:metadata:pdf" error:&error];
-    XCTAssertNotNil(builder);
-    
-    CSCapabilityKey *capabilityKey = [[builder replaceSegmentAtIndex:2 withSegment:@"xml"] build:&error];
-    XCTAssertNotNil(capabilityKey);
-    XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"extract:metadata:xml");
-}
-
-- (void)testBuilderSubs {
+- (void)testBuilderJSONOutput {
     NSError *error;
     CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
-    [[builder subs:@[@"data", @"processing"]] sub:@"json"];
-    CSCapabilityKey *capabilityKey = [builder build:&error];
+    [builder type:@"api"];
+    [builder action:@"process"];
+    [builder target:@"data"];
+    [builder jsonOutput];
+    CSCapabilityKey *capability = [builder build:&error];
     
-    XCTAssertNotNil(capabilityKey);
+    XCTAssertNotNil(capability);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"data:processing:json");
+    
+    XCTAssertEqualObjects([capability output], @"json");
+    XCTAssertFalse([capability isBinary]);
 }
 
-- (void)testBuilderMakeGeneralToLevel {
+- (void)testBuilderCustomTags {
     NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"a:b:c:d:e" error:&error];
-    XCTAssertNotNil(builder);
+    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
+    [builder tag:@"engine" value:@"v2"];
+    [builder tag:@"quality" value:@"high"];
+    [builder type:@"document"];
+    [builder action:@"compress"];
+    CSCapabilityKey *capability = [builder build:&error];
     
-    CSCapabilityKey *capabilityKey = [[builder makeGeneralToLevel:2] build:&error];
-    XCTAssertNotNil(capabilityKey);
+    XCTAssertNotNil(capability);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"a:b");
+    
+    XCTAssertEqualObjects([capability getTag:@"engine"], @"v2");
+    XCTAssertEqualObjects([capability getTag:@"quality"], @"high");
+    XCTAssertEqualObjects([capability capabilityType], @"document");
+    XCTAssertEqualObjects([capability action], @"compress");
 }
 
-- (void)testBuilderMakeWildcardFromLevel {
+- (void)testBuilderTagOverrides {
     NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"data:processing:transform:json" error:&error];
-    XCTAssertNotNil(builder);
+    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
+    [builder type:@"document"];
+    [builder type:@"image"]; // Override previous type
+    [builder action:@"convert"];
+    [builder format:@"jpg"];
+    CSCapabilityKey *capability = [builder build:&error];
     
-    CSCapabilityKey *capabilityKey = [[builder makeWildcardFromLevel:2] build:&error];
-    XCTAssertNotNil(capabilityKey);
+    XCTAssertNotNil(capability);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([capabilityKey toString], @"data:processing:*");
+    
+    XCTAssertEqualObjects([capability capabilityType], @"image"); // Should be the last set value
+    XCTAssertEqualObjects([capability action], @"convert");
+    XCTAssertEqualObjects([capability format], @"jpg");
 }
 
-- (void)testBuilderProperties {
+- (void)testBuilderEmptyBuild {
     NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"data:processing:transform" error:&error];
-    XCTAssertNotNil(builder);
+    CSCapabilityKey *capability = [[CSCapabilityKeyBuilder builder] build:&error];
     
-    XCTAssertEqual([builder count], 3);
-    XCTAssertFalse([builder isEmpty]);
-    
-    NSArray<NSString *> *segments = [builder segments];
-    XCTAssertEqual(segments.count, 3);
-    XCTAssertEqualObjects(segments[0], @"data");
-    XCTAssertEqualObjects(segments[1], @"processing");
-    XCTAssertEqualObjects(segments[2], @"transform");
-    
-    [builder clear];
-    XCTAssertEqual([builder count], 0);
-    XCTAssertTrue([builder isEmpty]);
+    XCTAssertNil(capability);
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapabilityKeyErrorInvalidFormat);
+    XCTAssertTrue([error.localizedDescription containsString:@"cannot be empty"]);
 }
 
-- (void)testBuilderClone {
+- (void)testBuilderSingleTag {
     NSError *error;
-    CSCapabilityKeyBuilder *original = [CSCapabilityKeyBuilder builderFromString:@"data:processing:transform" error:&error];
-    XCTAssertNotNil(original);
+    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
+    [builder type:@"utility"];
+    CSCapabilityKey *capability = [builder build:&error];
     
-    CSCapabilityKeyBuilder *clone = [original clone];
-    
-    // Modify original
-    [original sub:@"json"];
-    
-    // Clone should remain unchanged
-    CSCapabilityKey *originalId = [original build:&error];
-    XCTAssertNotNil(originalId);
-    XCTAssertEqualObjects([originalId toString], @"data:processing:transform:json");
-    
-    CSCapabilityKey *cloneId = [clone build:&error];
-    XCTAssertNotNil(cloneId);
-    XCTAssertEqualObjects([cloneId toString], @"data:processing:transform");
-}
-
-- (void)testBuilderBuildString {
-    NSError *error;
-    CSCapabilityKeyBuilder *builder = [[CSCapabilityKeyBuilder builder]
-                                      sub:@"extract"];
-    [builder sub:@"metadata"];
-    [builder addWildcard];
-    
-    NSString *str = [builder buildString:&error];
-    XCTAssertNotNil(str);
+    XCTAssertNotNil(capability);
     XCTAssertNil(error);
-    XCTAssertEqualObjects(str, @"extract:metadata:*");
+    
+    XCTAssertEqualObjects([capability toString], @"type=utility");
+    XCTAssertEqualObjects([capability capabilityType], @"utility");
+    XCTAssertEqual([capability specificity], 1);
 }
 
-- (void)testBuilderCategories {
+- (void)testBuilderComplex {
     NSError *error;
+    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
+    [builder type:@"media"];
+    [builder action:@"transcode"];
+    [builder target:@"video"];
+    [builder format:@"mp4"];
+    [builder tag:@"codec" value:@"h264"];
+    [builder tag:@"quality" value:@"1080p"];
+    [builder tag:@"framerate" value:@"30fps"];
+    [builder binaryOutput];
+    CSCapabilityKey *capability = [builder build:&error];
     
-    // Test NSString category
-    CSCapabilityKeyBuilder *builder1 = [@"extract:metadata:pdf" cs_intoBuilder:&error];
+    XCTAssertNotNil(capability);
+    XCTAssertNil(error);
+    
+    NSString *expected = @"action=transcode;codec=h264;format=mp4;framerate=30fps;output=binary;quality=1080p;target=video;type=media";
+    XCTAssertEqualObjects([capability toString], expected);
+    
+    XCTAssertEqualObjects([capability capabilityType], @"media");
+    XCTAssertEqualObjects([capability action], @"transcode");
+    XCTAssertEqualObjects([capability target], @"video");
+    XCTAssertEqualObjects([capability format], @"mp4");
+    XCTAssertEqualObjects([capability getTag:@"codec"], @"h264");
+    XCTAssertEqualObjects([capability getTag:@"quality"], @"1080p");
+    XCTAssertEqualObjects([capability getTag:@"framerate"], @"30fps");
+    XCTAssertTrue([capability isBinary]);
+    
+    XCTAssertEqual([capability specificity], 8); // All 8 tags are non-wildcard
+}
+
+- (void)testBuilderWildcards {
+    NSError *error;
+    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builder];
+    [builder type:@"document"];
+    [builder action:@"convert"];
+    [builder tag:@"format" value:@"*"]; // Wildcard format
+    [builder tag:@"quality" value:@"*"]; // Wildcard quality
+    CSCapabilityKey *capability = [builder build:&error];
+    
+    XCTAssertNotNil(capability);
+    XCTAssertNil(error);
+    
+    XCTAssertEqualObjects([capability toString], @"action=convert;format=*;quality=*;type=document");
+    XCTAssertEqual([capability specificity], 2); // Only type and action are specific
+    
+    XCTAssertEqualObjects([capability getTag:@"format"], @"*");
+    XCTAssertEqualObjects([capability getTag:@"quality"], @"*");
+}
+
+- (void)testBuilderStaticFactory {
+    CSCapabilityKeyBuilder *builder1 = [CSCapabilityKeyBuilder builder];
+    CSCapabilityKeyBuilder *builder2 = [CSCapabilityKeyBuilder builder];
+    
+    XCTAssertNotEqual(builder1, builder2); // Should be different instances
     XCTAssertNotNil(builder1);
-    XCTAssertNil(error);
-    
-    CSCapabilityKey *capId1 = [builder1 build:&error];
-    XCTAssertNotNil(capId1);
-    XCTAssertEqualObjects([capId1 toString], @"extract:metadata:pdf");
-    
-    // Test CSCapabilityKey category
-    CSCapabilityKey *capId = [CSCapabilityKey fromString:@"extract:metadata:pdf" error:&error];
-    XCTAssertNotNil(capId);
-    
-    CSCapabilityKeyBuilder *builder2 = [capId cs_intoBuilder];
     XCTAssertNotNil(builder2);
-    
-    CSCapabilityKey *capId2 = [builder2 build:&error];
-    XCTAssertNotNil(capId2);
-    XCTAssertEqualObjects([capId2 toString], @"extract:metadata:pdf");
 }
 
-- (void)testBuilderEdgeCases {
+- (void)testBuilderMatchingWithBuiltCapability {
     NSError *error;
     
-    // Test replace segment with invalid index
-    CSCapabilityKeyBuilder *builder = [[CSCapabilityKeyBuilder builder] sub:@"test"];
-    [builder replaceSegmentAtIndex:5 withSegment:@"invalid"]; // Should not crash
-    CSCapabilityKey *capId = [builder build:&error];
-    XCTAssertNotNil(capId);
-    XCTAssertEqualObjects([capId toString], @"test");
+    // Create a specific capability
+    CSCapabilityKeyBuilder *builder1 = [CSCapabilityKeyBuilder builder];
+    [builder1 type:@"document"];
+    [builder1 action:@"generate"];
+    [builder1 target:@"thumbnail"];
+    [builder1 format:@"pdf"];
+    CSCapabilityKey *specificCap = [builder1 build:&error];
     
-    // Test make more general on empty builder
-    CSCapabilityKeyBuilder *emptyBuilder = [CSCapabilityKeyBuilder builder];
-    [emptyBuilder makeMoreGeneral]; // Should not crash
-    XCTAssertTrue([emptyBuilder isEmpty]);
+    // Create a more general request
+    CSCapabilityKeyBuilder *builder2 = [CSCapabilityKeyBuilder builder];
+    [builder2 type:@"document"];
+    [builder2 action:@"generate"];
+    CSCapabilityKey *generalRequest = [builder2 build:&error];
     
-    // Test make wildcard on empty builder
-    CSCapabilityKeyBuilder *emptyBuilder2 = [CSCapabilityKeyBuilder builder];
-    [emptyBuilder2 makeWildcard]; // Should not crash
-    XCTAssertTrue([emptyBuilder2 isEmpty]);
-}
-
-- (void)testBuilderToString {
-    NSError *error;
-    CSCapabilityKeyBuilder *builder = [CSCapabilityKeyBuilder builderFromString:@"data:processing:transform" error:&error];
-    XCTAssertNotNil(builder);
+    // Create a wildcard request
+    CSCapabilityKeyBuilder *builder3 = [CSCapabilityKeyBuilder builder];
+    [builder3 type:@"document"];
+    [builder3 action:@"generate"];
+    [builder3 target:@"thumbnail"];
+    [builder3 tag:@"format" value:@"*"];
+    CSCapabilityKey *wildcardRequest = [builder3 build:&error];
     
-    NSString *toString = [builder toString];
-    XCTAssertEqualObjects(toString, @"data:processing:transform");
+    XCTAssertNotNil(specificCap);
+    XCTAssertNotNil(generalRequest);
+    XCTAssertNotNil(wildcardRequest);
+    
+    // Specific capability should handle general request
+    XCTAssertTrue([specificCap matches:generalRequest]);
+    
+    // Specific capability should handle wildcard request
+    XCTAssertTrue([specificCap matches:wildcardRequest]);
+    
+    // Check specificity
+    XCTAssertTrue([specificCap isMoreSpecificThan:generalRequest]);
+    XCTAssertEqual([specificCap specificity], 4);
+    XCTAssertEqual([generalRequest specificity], 2);
+    XCTAssertEqual([wildcardRequest specificity], 3); // type, action, target (format=* doesn't count)
 }
 
 @end

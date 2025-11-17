@@ -4,7 +4,7 @@
 //
 //  This library provides the fundamental capability identifier system used across
 //  all LBVR plugins and providers. It defines the formal structure for capability
-//  identifiers with hierarchical naming, wildcard support, and specificity comparison.
+//  identifiers with flat tag-based naming, wildcard support, and specificity comparison.
 //
 
 #import <Foundation/Foundation.h>
@@ -16,7 +16,6 @@ FOUNDATION_EXPORT double CapDefVersionNumber;
 FOUNDATION_EXPORT const unsigned char CapDefVersionString[];
 
 #import "CSCapabilityKey.h"
-#import "CSCapabilityKeyBuilder.h"
 #import "CSCapability.h"
 #import "CSCapabilityMatcher.h"
 #import "CSCapabilityValidator.h"

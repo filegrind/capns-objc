@@ -28,23 +28,23 @@
 
 + (NSArray<CSCapabilityKey *> *)sortCapabilitiesBySpecificity:(NSArray<CSCapabilityKey *> *)capabilities {
     return [capabilities sortedArrayUsingComparator:^NSComparisonResult(CSCapabilityKey *cap1, CSCapabilityKey *cap2) {
-        // Sort by specificity level first (higher specificity first)
-        NSUInteger spec1 = [cap1 specificityLevel];
-        NSUInteger spec2 = [cap2 specificityLevel];
+        // Sort by specificity first (higher specificity first)
+        NSUInteger spec1 = [cap1 specificity];
+        NSUInteger spec2 = [cap2 specificity];
         
         if (spec1 != spec2) {
             return spec1 > spec2 ? NSOrderedAscending : NSOrderedDescending;
         }
         
-        // If same specificity level, sort by segment count (more segments first)
-        NSUInteger count1 = cap1.segments.count;
-        NSUInteger count2 = cap2.segments.count;
+        // If same specificity, sort by tag count (more tags first)
+        NSUInteger count1 = cap1.tags.count;
+        NSUInteger count2 = cap2.tags.count;
         
         if (count1 != count2) {
             return count1 > count2 ? NSOrderedAscending : NSOrderedDescending;
         }
         
-        // If same segment count, sort alphabetically for deterministic ordering
+        // If same tag count, sort alphabetically for deterministic ordering
         return [[cap1 toString] compare:[cap2 toString]];
     }];
 }
