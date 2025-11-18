@@ -7,31 +7,6 @@
 
 @implementation CSCapability
 
-+ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey version:(NSString *)version command:(NSString *)command {
-    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
-}
-
-+ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
-                         version:(NSString *)version
-                         command:(NSString *)command
-                     description:(NSString *)description {
-    return [self capabilityWithId:capabilityKey version:version description:description metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
-}
-
-+ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
-                         version:(NSString *)version
-                         command:(NSString *)command
-                        metadata:(NSDictionary<NSString *, NSString *> *)metadata {
-    return [self capabilityWithId:capabilityKey version:version description:nil metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
-}
-
-+ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
-                         version:(NSString *)version
-                         command:(NSString *)command
-                     description:(nullable NSString *)description 
-                        metadata:(NSDictionary<NSString *, NSString *> *)metadata {
-    return [self capabilityWithId:capabilityKey version:version description:description metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
-}
 
 - (BOOL)matchesRequest:(NSString *)request {
     NSError *error;
@@ -98,11 +73,15 @@
 }
 
 - (id)copyWithZone:(NSZone *)zone {
+    // Fail hard if command is nil - this should never happen in a properly constructed capability
+    if (!self.command) {
+        return nil;
+    }
     return [CSCapability capabilityWithId:self.capabilityKey 
                                    version:self.version
                                description:self.capabilityDescription 
                                   metadata:self.metadata
-                                   command:self.command ?: @"unknown"
+                                   command:self.command
                                  arguments:self.arguments
                                     output:self.output
                               acceptsStdin:self.acceptsStdin];
@@ -125,13 +104,16 @@
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
     
-    if (!capabilityKey || !version) return nil;
+    // Fail hard if required fields are missing
+    if (!capabilityKey || !version || !command || !metadata) {
+        return nil;
+    }
     
     return [CSCapability capabilityWithId:capabilityKey 
                                    version:version
                                description:description 
-                                  metadata:metadata ?: @{}
-                                   command:command ?: @"unknown"
+                                  metadata:metadata
+                                   command:command
                                  arguments:[CSCapabilityArguments arguments]
                                     output:nil
                               acceptsStdin:acceptsStdin];
@@ -157,12 +139,6 @@
 
 #pragma mark - Missing Methods
 
-+ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey
-                         version:(NSString *)version
-                         command:(NSString *)command
-                       arguments:(CSCapabilityArguments *)arguments {
-    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:arguments output:nil acceptsStdin:NO];
-}
 
 + (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey
                          version:(NSString *)version
@@ -176,9 +152,13 @@
     capability->_capabilityKey = [capabilityKey copy];
     capability->_version = [version copy];
     capability->_capabilityDescription = [description copy];
-    capability->_metadata = [metadata copy] ?: @{};
+    // Fail hard if required fields are nil
+    if (!metadata || !arguments) {
+        return nil;
+    }
+    capability->_metadata = [metadata copy];
     capability->_command = [command copy];
-    capability->_arguments = arguments ?: [CSCapabilityArguments arguments];
+    capability->_arguments = arguments;
     capability->_output = output;
     capability->_acceptsStdin = acceptsStdin;
     return capability;
@@ -347,9 +327,13 @@
 
 + (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> *)required
                              optional:(NSArray<CSCapabilityArgument *> *)optional {
+    // Fail hard if arrays are nil
+    if (!required || !optional) {
+        return nil;
+    }
     CSCapabilityArguments *arguments = [[CSCapabilityArguments alloc] init];
-    arguments->_required = [required copy] ?: @[];
-    arguments->_optional = [optional copy] ?: @[];
+    arguments->_required = [required copy];
+    arguments->_optional = [optional copy];
     return arguments;
 }
 
@@ -443,8 +427,16 @@
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
     self = [super init];
     if (self) {
-        _required = [coder decodeObjectOfClass:[NSArray class] forKey:@"required"] ?: @[];
-        _optional = [coder decodeObjectOfClass:[NSArray class] forKey:@"optional"] ?: @[];
+        NSArray *required = [coder decodeObjectOfClass:[NSArray class] forKey:@"required"];
+        NSArray *optional = [coder decodeObjectOfClass:[NSArray class] forKey:@"optional"];
+        
+        // Fail hard if required arrays are missing
+        if (!required || !optional) {
+            return nil;
+        }
+        
+        _required = required;
+        _optional = optional;
     }
     return self;
 }

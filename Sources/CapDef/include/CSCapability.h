@@ -152,63 +152,6 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Whether this capability accepts input via stdin
 @property (nonatomic, readonly) BOOL acceptsStdin;
 
-/**
- * Create a new capability
- * @param capabilityKey The capability identifier
- * @param version The capability version
- * @return A new CSCapability instance
- */
-+ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey version:(NSString * _Nonnull)version command:(NSString * _Nonnull)command;
-
-/**
- * Create a new capability with description
- * @param capabilityKey The capability identifier
- * @param version The capability version
- * @param description The capability description
- * @return A new CSCapability instance
- */
-+ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey 
-                         version:(NSString * _Nonnull)version
-                         command:(NSString * _Nonnull)command
-                     description:(NSString * _Nonnull)description;
-
-/**
- * Create a new capability with metadata
- * @param capabilityKey The capability identifier
- * @param version The capability version
- * @param metadata The capability metadata
- * @return A new CSCapability instance
- */
-+ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey 
-                         version:(NSString * _Nonnull)version
-                         command:(NSString * _Nonnull)command
-                        metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata;
-
-/**
- * Create a new capability with description and metadata
- * @param capabilityKey The capability identifier
- * @param version The capability version
- * @param description The capability description
- * @param metadata The capability metadata
- * @return A new CSCapability instance
- */
-+ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey 
-                         version:(NSString * _Nonnull)version
-                         command:(NSString * _Nonnull)command
-                     description:(nullable NSString *)description 
-                        metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata;
-
-/**
- * Create a new capability with arguments
- * @param capabilityKey The capability identifier
- * @param version The capability version
- * @param arguments The capability arguments
- * @return A new CSCapability instance
- */
-+ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey
-                         version:(NSString * _Nonnull)version
-                         command:(NSString * _Nonnull)command
-                       arguments:(CSCapabilityArguments * _Nonnull)arguments;
 
 /**
  * Create a fully specified capability

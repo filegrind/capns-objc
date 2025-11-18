@@ -18,7 +18,15 @@
     CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=transform;format=json;type=data_processing" error:&error];
     XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
     
-    CSCapability *capability = [CSCapability capabilityWithId:key version:@"1.0.0" command:@"test-command"];
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapability *capability = [CSCapability capabilityWithId:key 
+                                                      version:@"1.0.0" 
+                                                  description:nil 
+                                                     metadata:@{} 
+                                                      command:@"test-command" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
     
     XCTAssertNotNil(capability);
     XCTAssertEqualObjects([capability idString], @"action=transform;format=json;type=data_processing");
@@ -32,10 +40,15 @@
     CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=parse;format=json;type=data" error:&error];
     XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
     
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
     CSCapability *capability = [CSCapability capabilityWithId:key 
-                                                      version:@"1.0.0"
-                                                      command:@"parse-cmd"
-                                                  description:@"Parse JSON data"];
+                                                      version:@"1.0.0" 
+                                                  description:@"Parse JSON data" 
+                                                     metadata:@{} 
+                                                      command:@"parse-cmd" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
     
     XCTAssertNotNil(capability);
     XCTAssertEqualObjects(capability.capabilityDescription, @"Parse JSON data");
@@ -79,7 +92,15 @@
     CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=transform;format=json;type=data_processing" error:&error];
     XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
     
-    CSCapability *capability = [CSCapability capabilityWithId:key version:@"1.0.0" command:@"test-command"];
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapability *capability = [CSCapability capabilityWithId:key 
+                                                      version:@"1.0.0" 
+                                                  description:nil 
+                                                     metadata:@{} 
+                                                      command:@"test-command" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
     
     XCTAssertTrue([capability matchesRequest:@"action=transform;format=json;type=data_processing"]);
     XCTAssertTrue([capability matchesRequest:@"action=transform;format=*;type=data_processing"]); // Request wants any format, cap handles json specifically
