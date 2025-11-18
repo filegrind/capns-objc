@@ -7,6 +7,67 @@
 
 @implementation CSCapability
 
++ (instancetype)capabilityWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    // Required fields
+    NSString *idString = dictionary[@"id"];
+    NSString *version = dictionary[@"version"];
+    NSString *command = dictionary[@"command"];
+    
+    if (!idString || !version || !command) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapabilityError"
+                                         code:1001
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required capability fields: id, version, or command"}];
+        }
+        return nil;
+    }
+    
+    // Parse capability key
+    NSError *keyError;
+    CSCapabilityKey *capabilityKey = [CSCapabilityKey fromString:idString error:&keyError];
+    if (!capabilityKey) {
+        if (error) {
+            *error = keyError;
+        }
+        return nil;
+    }
+    
+    // Optional fields
+    NSString *description = dictionary[@"description"];
+    NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
+    BOOL acceptsStdin = [dictionary[@"accepts_stdin"] boolValue]; // defaults to NO if missing
+    
+    // Parse arguments
+    CSCapabilityArguments *arguments;
+    NSDictionary *argumentsDict = dictionary[@"arguments"];
+    if (argumentsDict) {
+        arguments = [CSCapabilityArguments argumentsWithDictionary:argumentsDict error:error];
+        if (!arguments && error && *error) {
+            return nil;
+        }
+    } else {
+        arguments = [CSCapabilityArguments arguments];
+    }
+    
+    // Parse output
+    CSCapabilityOutput *output = nil;
+    NSDictionary *outputDict = dictionary[@"output"];
+    if (outputDict) {
+        output = [CSCapabilityOutput outputWithDictionary:outputDict error:error];
+        if (!output && error && *error) {
+            return nil;
+        }
+    }
+    
+    return [self capabilityWithId:capabilityKey
+                          version:version
+                      description:description
+                         metadata:metadata
+                          command:command
+                        arguments:arguments
+                           output:output
+                     acceptsStdin:acceptsStdin];
+}
 
 - (BOOL)matchesRequest:(NSString *)request {
     NSError *error;
@@ -212,6 +273,22 @@
     return validation;
 }
 
++ (instancetype)validationWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    NSNumber *min = dictionary[@"min"];
+    NSNumber *max = dictionary[@"max"];
+    NSNumber *minLength = dictionary[@"min_length"];
+    NSNumber *maxLength = dictionary[@"max_length"];
+    NSString *pattern = dictionary[@"pattern"];
+    NSArray<NSString *> *allowedValues = dictionary[@"allowed_values"];
+    
+    return [self validationWithMin:min
+                               max:max
+                         minLength:minLength
+                         maxLength:maxLength
+                           pattern:pattern
+                     allowedValues:allowedValues];
+}
+
 - (id)copyWithZone:(NSZone *)zone {
     return [CSArgumentValidation validationWithMin:self.min
                                                 max:self.max
@@ -269,6 +346,65 @@
     argument->_validation = validation;
     argument->_defaultValue = defaultValue;
     return argument;
+}
+
++ (instancetype)argumentWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    NSString *name = dictionary[@"name"];
+    NSString *typeString = dictionary[@"type"];
+    NSString *description = dictionary[@"description"];
+    NSString *cliFlag = dictionary[@"cli_flag"];
+    NSNumber *position = dictionary[@"position"];
+    id defaultValue = dictionary[@"default_value"];
+    
+    if (!name || !typeString || !description || !cliFlag) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapabilityArgumentError"
+                                         code:1002
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required argument fields: name, type, description, or cli_flag"}];
+        }
+        return nil;
+    }
+    
+    // Parse type
+    CSArgumentType type;
+    if ([typeString isEqualToString:@"string"]) {
+        type = CSArgumentTypeString;
+    } else if ([typeString isEqualToString:@"integer"]) {
+        type = CSArgumentTypeInteger;
+    } else if ([typeString isEqualToString:@"number"]) {
+        type = CSArgumentTypeNumber;
+    } else if ([typeString isEqualToString:@"boolean"]) {
+        type = CSArgumentTypeBoolean;
+    } else if ([typeString isEqualToString:@"array"]) {
+        type = CSArgumentTypeArray;
+    } else if ([typeString isEqualToString:@"object"]) {
+        type = CSArgumentTypeObject;
+    } else {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapabilityArgumentError"
+                                         code:1003
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Unknown argument type: %@", typeString]}];
+        }
+        return nil;
+    }
+    
+    // Parse validation
+    CSArgumentValidation *validation = nil;
+    NSDictionary *validationDict = dictionary[@"validation"];
+    if (validationDict) {
+        validation = [CSArgumentValidation validationWithDictionary:validationDict error:error];
+        if (!validation && error && *error) {
+            return nil;
+        }
+    }
+    
+    return [self argumentWithName:name
+                             type:type
+                      description:description
+                          cliFlag:cliFlag
+                         position:position
+                       validation:validation
+                     defaultValue:defaultValue];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
@@ -335,6 +471,38 @@
     arguments->_required = [required copy];
     arguments->_optional = [optional copy];
     return arguments;
+}
+
++ (instancetype)argumentsWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    NSArray *requiredArray = dictionary[@"required"];
+    NSArray *optionalArray = dictionary[@"optional"];
+    
+    NSMutableArray<CSCapabilityArgument *> *required = [NSMutableArray array];
+    NSMutableArray<CSCapabilityArgument *> *optional = [NSMutableArray array];
+    
+    // Parse required arguments
+    if (requiredArray) {
+        for (NSDictionary *argDict in requiredArray) {
+            CSCapabilityArgument *argument = [CSCapabilityArgument argumentWithDictionary:argDict error:error];
+            if (!argument) {
+                return nil;
+            }
+            [required addObject:argument];
+        }
+    }
+    
+    // Parse optional arguments
+    if (optionalArray) {
+        for (NSDictionary *argDict in optionalArray) {
+            CSCapabilityArgument *argument = [CSCapabilityArgument argumentWithDictionary:argDict error:error];
+            if (!argument) {
+                return nil;
+            }
+            [optional addObject:argument];
+        }
+    }
+    
+    return [self argumentsWithRequired:required optional:optional];
 }
 
 - (instancetype)init {
@@ -463,6 +631,63 @@
     output->_validation = validation;
     output->_outputDescription = [description copy];
     return output;
+}
+
++ (instancetype)outputWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    NSString *typeString = dictionary[@"type"];
+    NSString *schemaRef = dictionary[@"schema_ref"];
+    NSString *contentType = dictionary[@"content_type"];
+    NSString *description = dictionary[@"description"];
+    
+    if (!typeString || !description) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapabilityOutputError"
+                                         code:1004
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required output fields: type or description"}];
+        }
+        return nil;
+    }
+    
+    // Parse type
+    CSOutputType type;
+    if ([typeString isEqualToString:@"string"]) {
+        type = CSOutputTypeString;
+    } else if ([typeString isEqualToString:@"integer"]) {
+        type = CSOutputTypeInteger;
+    } else if ([typeString isEqualToString:@"number"]) {
+        type = CSOutputTypeNumber;
+    } else if ([typeString isEqualToString:@"boolean"]) {
+        type = CSOutputTypeBoolean;
+    } else if ([typeString isEqualToString:@"array"]) {
+        type = CSOutputTypeArray;
+    } else if ([typeString isEqualToString:@"object"]) {
+        type = CSOutputTypeObject;
+    } else if ([typeString isEqualToString:@"binary"]) {
+        type = CSOutputTypeBinary;
+    } else {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapabilityOutputError"
+                                         code:1005
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Unknown output type: %@", typeString]}];
+        }
+        return nil;
+    }
+    
+    // Parse validation
+    CSArgumentValidation *validation = nil;
+    NSDictionary *validationDict = dictionary[@"validation"];
+    if (validationDict) {
+        validation = [CSArgumentValidation validationWithDictionary:validationDict error:error];
+        if (!validation && error && *error) {
+            return nil;
+        }
+    }
+    
+    return [self outputWithType:type
+                      schemaRef:schemaRef
+                    contentType:contentType
+                     validation:validation
+                    description:description];
 }
 
 - (id)copyWithZone:(NSZone *)zone {

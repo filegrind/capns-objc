@@ -56,6 +56,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                         maxLength:(nullable NSNumber *)maxLength
                           pattern:(nullable NSString *)pattern
                     allowedValues:(nullable NSArray<NSString *> *)allowedValues;
++ (instancetype)validationWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 @end
 
@@ -79,6 +80,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue;
++ (instancetype)argumentWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 @end
 
@@ -93,6 +95,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 + (instancetype)arguments;
 + (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> * _Nonnull)required
                              optional:(NSArray<CSCapabilityArgument *> * _Nonnull)optional;
++ (instancetype)argumentsWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 - (void)addRequiredArgument:(CSCapabilityArgument * _Nonnull)argument;
 - (void)addOptionalArgument:(CSCapabilityArgument * _Nonnull)argument;
@@ -120,6 +123,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                    contentType:(nullable NSString *)contentType
                     validation:(nullable CSArgumentValidation *)validation
                    description:(NSString * _Nonnull)description;
++ (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 @end
 
@@ -173,6 +177,14 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                        arguments:(CSCapabilityArguments * _Nonnull)arguments
                           output:(nullable CSCapabilityOutput *)output
                     acceptsStdin:(BOOL)acceptsStdin;
+
+/**
+ * Create a capability from a dictionary representation
+ * @param dictionary The dictionary containing capability data
+ * @param error Pointer to NSError for error reporting
+ * @return A new CSCapability instance, or nil if parsing fails
+ */
++ (instancetype)capabilityWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**
  * Check if this capability matches a request string
