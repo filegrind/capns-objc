@@ -149,6 +149,9 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Output definition
 @property (nonatomic, readonly, nullable) CSCapabilityOutput *output;
 
+/// Whether this capability accepts input via stdin
+@property (nonatomic, readonly) BOOL acceptsStdin;
+
 /**
  * Create a new capability
  * @param capabilityKey The capability identifier
@@ -216,6 +219,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param command The command string
  * @param arguments The capability arguments
  * @param output The output definition
+ * @param acceptsStdin Whether this capability accepts stdin input
  * @return A new CSCapability instance
  */
 + (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey
@@ -224,7 +228,8 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
                          command:(NSString * _Nonnull)command
                        arguments:(CSCapabilityArguments * _Nonnull)arguments
-                          output:(nullable CSCapabilityOutput *)output;
+                          output:(nullable CSCapabilityOutput *)output
+                    acceptsStdin:(BOOL)acceptsStdin;
 
 /**
  * Check if this capability matches a request string

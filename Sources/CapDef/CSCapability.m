@@ -8,21 +8,21 @@
 @implementation CSCapability
 
 + (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey version:(NSString *)version command:(NSString *)command {
-    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
 }
 
 + (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
                          version:(NSString *)version
                          command:(NSString *)command
                      description:(NSString *)description {
-    return [self capabilityWithId:capabilityKey version:version description:description metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:description metadata:@{} command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
 }
 
 + (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
                          version:(NSString *)version
                          command:(NSString *)command
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata {
-    return [self capabilityWithId:capabilityKey version:version description:nil metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:nil metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
 }
 
 + (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey 
@@ -30,7 +30,7 @@
                          command:(NSString *)command
                      description:(nullable NSString *)description 
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata {
-    return [self capabilityWithId:capabilityKey version:version description:description metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:description metadata:metadata command:command arguments:[CSCapabilityArguments arguments] output:nil acceptsStdin:NO];
 }
 
 - (BOOL)matchesRequest:(NSString *)request {
@@ -100,9 +100,12 @@
 - (id)copyWithZone:(NSZone *)zone {
     return [CSCapability capabilityWithId:self.capabilityKey 
                                    version:self.version
-                                   command:self.command ?: @"unknown"
                                description:self.capabilityDescription 
-                                  metadata:self.metadata];
+                                  metadata:self.metadata
+                                   command:self.command ?: @"unknown"
+                                 arguments:self.arguments
+                                    output:self.output
+                              acceptsStdin:self.acceptsStdin];
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
@@ -111,6 +114,7 @@
     [coder encodeObject:self.command forKey:@"command"];
     [coder encodeObject:self.capabilityDescription forKey:@"capabilityDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
+    [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
@@ -119,14 +123,18 @@
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capabilityDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
+    BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
     
     if (!capabilityKey || !version) return nil;
     
     return [CSCapability capabilityWithId:capabilityKey 
                                    version:version
-                                   command:command ?: @"unknown"
                                description:description 
-                                  metadata:metadata ?: @{}];
+                                  metadata:metadata ?: @{}
+                                   command:command ?: @"unknown"
+                                 arguments:[CSCapabilityArguments arguments]
+                                    output:nil
+                              acceptsStdin:acceptsStdin];
 }
 
 - (instancetype)initWithId:(CSCapabilityKey *)capabilityKey
@@ -153,7 +161,7 @@
                          version:(NSString *)version
                          command:(NSString *)command
                        arguments:(CSCapabilityArguments *)arguments {
-    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:arguments output:nil];
+    return [self capabilityWithId:capabilityKey version:version description:nil metadata:@{} command:command arguments:arguments output:nil acceptsStdin:NO];
 }
 
 + (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey
@@ -162,7 +170,8 @@
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
                          command:(NSString *)command
                        arguments:(CSCapabilityArguments *)arguments
-                          output:(nullable CSCapabilityOutput *)output {
+                          output:(nullable CSCapabilityOutput *)output
+                    acceptsStdin:(BOOL)acceptsStdin {
     CSCapability *capability = [[CSCapability alloc] init];
     capability->_capabilityKey = [capabilityKey copy];
     capability->_version = [version copy];
@@ -171,6 +180,7 @@
     capability->_command = [command copy];
     capability->_arguments = arguments ?: [CSCapabilityArguments arguments];
     capability->_output = output;
+    capability->_acceptsStdin = acceptsStdin;
     return capability;
 }
 
