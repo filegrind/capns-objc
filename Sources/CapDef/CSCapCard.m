@@ -1,17 +1,17 @@
 //
-//  CSCapabilityKey.m
-//  Flat Tag-Based Capability Identifier Implementation
+//  CSCapCard.m
+//  Flat Tag-Based Cap Identifier Implementation
 //
 
-#import "CSCapabilityKey.h"
+#import "CSCapCard.h"
 
-NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
+NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 
-@interface CSCapabilityKey ()
+@interface CSCapCard ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *mutableTags;
 @end
 
-@implementation CSCapabilityKey
+@implementation CSCapCard
 
 - (NSDictionary<NSString *, NSString *> *)tags {
     return [self.mutableTags copy];
@@ -20,9 +20,9 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 + (nullable instancetype)fromString:(NSString *)string error:(NSError **)error {
     if (!string || string.length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                         code:CSCapabilityKeyErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
+            *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                         code:CSCapCardErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
     }
@@ -39,8 +39,8 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
         NSArray<NSString *> *parts = [trimmedTag componentsSeparatedByString:@"="];
         if (parts.count != 2) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                             code:CSCapabilityKeyErrorInvalidTagFormat
+                *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                             code:CSCapCardErrorInvalidTagFormat
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid tag format (must be key=value): %@", trimmedTag]}];
             }
             return nil;
@@ -51,8 +51,8 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
         
         if (key.length == 0 || value.length == 0) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                             code:CSCapabilityKeyErrorEmptyTag
+                *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                             code:CSCapCardErrorEmptyTag
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Tag key or value cannot be empty: %@", trimmedTag]}];
             }
             return nil;
@@ -63,8 +63,8 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
         if ([key rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound ||
             [value rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                             code:CSCapabilityKeyErrorInvalidCharacter
+                *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                             code:CSCapCardErrorInvalidCharacter
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, *): %@", trimmedTag]}];
             }
             return nil;
@@ -75,9 +75,9 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     
     if (tags.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                         code:CSCapabilityKeyErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
+            *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                         code:CSCapCardErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
     }
@@ -88,14 +88,14 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 + (nullable instancetype)fromTags:(NSDictionary<NSString *, NSString *> *)tags error:(NSError **)error {
     if (!tags || tags.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                         code:CSCapabilityKeyErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
+            *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                         code:CSCapCardErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
     }
     
-    CSCapabilityKey *instance = [[CSCapabilityKey alloc] init];
+    CSCapCard *instance = [[CSCapCard alloc] init];
     instance.mutableTags = [tags mutableCopy];
     return instance;
 }
@@ -116,19 +116,19 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     return tagValue && [tagValue isEqualToString:value];
 }
 
-- (CSCapabilityKey *)withTag:(NSString *)key value:(NSString *)value {
+- (CSCapCard *)withTag:(NSString *)key value:(NSString *)value {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     newTags[key] = value;
-    return [CSCapabilityKey fromTags:newTags error:nil];
+    return [CSCapCard fromTags:newTags error:nil];
 }
 
-- (CSCapabilityKey *)withoutTag:(NSString *)key {
+- (CSCapCard *)withoutTag:(NSString *)key {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     [newTags removeObjectForKey:key];
-    return [CSCapabilityKey fromTags:newTags error:nil];
+    return [CSCapCard fromTags:newTags error:nil];
 }
 
-- (BOOL)matches:(CSCapabilityKey *)request {
+- (BOOL)matches:(CSCapCard *)request {
     if (!request) {
         return YES;
     }
@@ -139,32 +139,32 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
         NSString *capValue = self.mutableTags[requestKey];
         
         if (!capValue) {
-            // Missing tag in capability is treated as wildcard - can handle any value
+            // Missing tag in cap is treated as wildcard - can handle any value
             continue;
         }
         
         if ([capValue isEqualToString:@"*"]) {
-            // Capability has wildcard - can handle any value
+            // Cap has wildcard - can handle any value
             continue;
         }
         
         if ([requestValue isEqualToString:@"*"]) {
-            // Request accepts any value - capability's specific value matches
+            // Request accepts any value - cap's specific value matches
             continue;
         }
         
         if (![capValue isEqualToString:requestValue]) {
-            // Capability has specific value that doesn't match request's specific value
+            // Cap has specific value that doesn't match request's specific value
             return NO;
         }
     }
     
-    // If capability has additional specific tags that request doesn't specify, that's fine
-    // The capability is just more specific than needed
+    // If cap has additional specific tags that request doesn't specify, that's fine
+    // The cap is just more specific than needed
     return YES;
 }
 
-- (BOOL)canHandle:(CSCapabilityKey *)request {
+- (BOOL)canHandle:(CSCapCard *)request {
     return [self matches:request];
 }
 
@@ -178,7 +178,7 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     return count;
 }
 
-- (BOOL)isMoreSpecificThan:(CSCapabilityKey *)other {
+- (BOOL)isMoreSpecificThan:(CSCapCard *)other {
     if (!other) {
         return YES;
     }
@@ -191,12 +191,12 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     return self.specificity > other.specificity;
 }
 
-- (BOOL)isCompatibleWith:(CSCapabilityKey *)other {
+- (BOOL)isCompatibleWith:(CSCapCard *)other {
     if (!other) {
         return YES;
     }
     
-    // Get all unique tag keys from both capabilities
+    // Get all unique tag keys from both caps
     NSMutableSet<NSString *> *allKeys = [NSMutableSet setWithArray:self.mutableTags.allKeys];
     [allKeys addObjectsFromArray:other.mutableTags.allKeys];
     
@@ -216,7 +216,7 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     return YES;
 }
 
-- (nullable NSString *)capabilityType {
+- (nullable NSString *)capType {
     return [self getTag:@"type"];
 }
 
@@ -240,14 +240,14 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     return [self hasTag:@"output" withValue:@"binary"];
 }
 
-- (CSCapabilityKey *)withWildcardTag:(NSString *)key {
+- (CSCapCard *)withWildcardTag:(NSString *)key {
     if (self.mutableTags[key]) {
         return [self withTag:key value:@"*"];
     }
     return self;
 }
 
-- (CSCapabilityKey *)subset:(NSArray<NSString *> *)keys {
+- (CSCapCard *)subset:(NSArray<NSString *> *)keys {
     NSMutableDictionary *newTags = [NSMutableDictionary dictionary];
     for (NSString *key in keys) {
         NSString *value = self.mutableTags[key];
@@ -255,15 +255,15 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
             newTags[key] = value;
         }
     }
-    return [CSCapabilityKey fromTags:newTags error:nil];
+    return [CSCapCard fromTags:newTags error:nil];
 }
 
-- (CSCapabilityKey *)merge:(CSCapabilityKey *)other {
+- (CSCapCard *)merge:(CSCapCard *)other {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     for (NSString *key in other.mutableTags) {
         newTags[key] = other.mutableTags[key];
     }
-    return [CSCapabilityKey fromTags:newTags error:nil];
+    return [CSCapCard fromTags:newTags error:nil];
 }
 
 - (NSString *)toString {
@@ -287,11 +287,11 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 }
 
 - (BOOL)isEqual:(id)object {
-    if (![object isKindOfClass:[CSCapabilityKey class]]) {
+    if (![object isKindOfClass:[CSCapCard class]]) {
         return NO;
     }
     
-    CSCapabilityKey *other = (CSCapabilityKey *)object;
+    CSCapCard *other = (CSCapCard *)object;
     return [self.mutableTags isEqualToDictionary:other.mutableTags];
 }
 
@@ -302,7 +302,7 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 #pragma mark - NSCopying
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapabilityKey fromTags:self.tags error:nil];
+    return [CSCapCard fromTags:self.tags error:nil];
 }
 
 #pragma mark - NSCoding
@@ -320,16 +320,16 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
 
 @end
 
-#pragma mark - CSCapabilityKeyBuilder
+#pragma mark - CSCapCardBuilder
 
-@interface CSCapabilityKeyBuilder ()
+@interface CSCapCardBuilder ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *tags;
 @end
 
-@implementation CSCapabilityKeyBuilder
+@implementation CSCapCardBuilder
 
 + (instancetype)builder {
-    return [[CSCapabilityKeyBuilder alloc] init];
+    return [[CSCapCardBuilder alloc] init];
 }
 
 - (instancetype)init {
@@ -339,50 +339,50 @@ NSErrorDomain const CSCapabilityKeyErrorDomain = @"CSCapabilityKeyErrorDomain";
     return self;
 }
 
-- (CSCapabilityKeyBuilder *)tag:(NSString *)key value:(NSString *)value {
+- (CSCapCardBuilder *)tag:(NSString *)key value:(NSString *)value {
     self.tags[key] = value;
     return self;
 }
 
-- (CSCapabilityKeyBuilder *)type:(NSString *)value {
+- (CSCapCardBuilder *)type:(NSString *)value {
     return [self tag:@"type" value:value];
 }
 
-- (CSCapabilityKeyBuilder *)action:(NSString *)value {
+- (CSCapCardBuilder *)action:(NSString *)value {
     return [self tag:@"action" value:value];
 }
 
-- (CSCapabilityKeyBuilder *)target:(NSString *)value {
+- (CSCapCardBuilder *)target:(NSString *)value {
     return [self tag:@"target" value:value];
 }
 
-- (CSCapabilityKeyBuilder *)format:(NSString *)value {
+- (CSCapCardBuilder *)format:(NSString *)value {
     return [self tag:@"format" value:value];
 }
 
-- (CSCapabilityKeyBuilder *)output:(NSString *)value {
+- (CSCapCardBuilder *)output:(NSString *)value {
     return [self tag:@"output" value:value];
 }
 
-- (CSCapabilityKeyBuilder *)binaryOutput {
+- (CSCapCardBuilder *)binaryOutput {
     return [self output:@"binary"];
 }
 
-- (CSCapabilityKeyBuilder *)jsonOutput {
+- (CSCapCardBuilder *)jsonOutput {
     return [self output:@"json"];
 }
 
-- (nullable CSCapabilityKey *)build:(NSError **)error {
+- (nullable CSCapCard *)build:(NSError **)error {
     if (self.tags.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapabilityKeyErrorDomain
-                                         code:CSCapabilityKeyErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Capability identifier cannot be empty"}];
+            *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                         code:CSCapCardErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
     }
     
-    return [CSCapabilityKey fromTags:self.tags error:error];
+    return [CSCapCard fromTags:self.tags error:error];
 }
 
 @end

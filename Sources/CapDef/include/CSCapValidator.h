@@ -1,13 +1,13 @@
 //
-//  CSCapabilityValidator.h
-//  Capability schema validation for plugin interactions
+//  CSCapValidator.h
+//  Cap schema validation for plugin interactions
 //
 //  This provides strict validation of inputs and outputs against
-//  advertised capability schemas from plugins.
+//  advertised cap schemas from plugins.
 //
 
 #import <Foundation/Foundation.h>
-#import "CSCapability.h"
+#import "CSCap.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -16,13 +16,13 @@ FOUNDATION_EXPORT NSErrorDomain const CSValidationErrorDomain;
 
 /// Validation error types
 typedef NS_ENUM(NSInteger, CSValidationErrorType) {
-    CSValidationErrorTypeUnknownCapability,
+    CSValidationErrorTypeUnknownCap,
     CSValidationErrorTypeMissingRequiredArgument,
     CSValidationErrorTypeInvalidArgumentType,
     CSValidationErrorTypeArgumentValidationFailed,
     CSValidationErrorTypeInvalidOutputType,
     CSValidationErrorTypeOutputValidationFailed,
-    CSValidationErrorTypeInvalidCapabilitySchema,
+    CSValidationErrorTypeInvalidCapSchema,
     CSValidationErrorTypeTooManyArguments,
     CSValidationErrorTypeJSONParseError
 };
@@ -31,45 +31,45 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSValidationError : NSError
 
 @property (nonatomic, readonly) CSValidationErrorType validationType;
-@property (nonatomic, readonly, copy) NSString *capabilityKey;
+@property (nonatomic, readonly, copy) NSString *capCard;
 @property (nonatomic, readonly, copy, nullable) NSString *argumentName;
 @property (nonatomic, readonly, copy, nullable) NSString *validationRule;
 @property (nonatomic, readonly, strong, nullable) id actualValue;
 @property (nonatomic, readonly, copy, nullable) NSString *actualType;
 @property (nonatomic, readonly, copy, nullable) NSString *expectedType;
 
-+ (instancetype)unknownCapabilityError:(NSString *)capabilityKey;
-+ (instancetype)missingRequiredArgumentError:(NSString *)capabilityKey argumentName:(NSString *)argumentName;
-+ (instancetype)invalidArgumentTypeError:(NSString *)capabilityKey 
++ (instancetype)unknownCapError:(NSString *)capCard;
++ (instancetype)missingRequiredArgumentError:(NSString *)capCard argumentName:(NSString *)argumentName;
++ (instancetype)invalidArgumentTypeError:(NSString *)capCard 
                             argumentName:(NSString *)argumentName 
                             expectedType:(CSArgumentType)expectedType 
                               actualType:(NSString *)actualType 
                              actualValue:(id)actualValue;
-+ (instancetype)argumentValidationFailedError:(NSString *)capabilityKey 
++ (instancetype)argumentValidationFailedError:(NSString *)capCard 
                                  argumentName:(NSString *)argumentName 
                                validationRule:(NSString *)validationRule 
                                   actualValue:(id)actualValue;
-+ (instancetype)invalidOutputTypeError:(NSString *)capabilityKey 
++ (instancetype)invalidOutputTypeError:(NSString *)capCard 
                           expectedType:(CSOutputType)expectedType 
                             actualType:(NSString *)actualType 
                            actualValue:(id)actualValue;
-+ (instancetype)outputValidationFailedError:(NSString *)capabilityKey 
++ (instancetype)outputValidationFailedError:(NSString *)capCard 
                              validationRule:(NSString *)validationRule 
                                 actualValue:(id)actualValue;
-+ (instancetype)invalidCapabilitySchemaError:(NSString *)capabilityKey issue:(NSString *)issue;
-+ (instancetype)tooManyArgumentsError:(NSString *)capabilityKey 
++ (instancetype)invalidCapSchemaError:(NSString *)capCard issue:(NSString *)issue;
++ (instancetype)tooManyArgumentsError:(NSString *)capCard 
                           maxExpected:(NSInteger)maxExpected 
                           actualCount:(NSInteger)actualCount;
-+ (instancetype)jsonParseError:(NSString *)capabilityKey error:(NSString *)error;
++ (instancetype)jsonParseError:(NSString *)capCard error:(NSString *)error;
 
 @end
 
 /// Input argument validator
 @interface CSInputValidator : NSObject
 
-/// Validate arguments against capability input schema
+/// Validate arguments against cap input schema
 + (BOOL)validateArguments:(NSArray * _Nonnull)arguments 
-               capability:(CSCapability * _Nonnull)capability 
+               cap:(CSCap * _Nonnull)cap 
                     error:(NSError * _Nullable * _Nullable)error;
 
 @end
@@ -77,18 +77,18 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 /// Output validator
 @interface CSOutputValidator : NSObject
 
-/// Validate output against capability output schema
+/// Validate output against cap output schema
 + (BOOL)validateOutput:(id _Nonnull)output 
-            capability:(CSCapability * _Nonnull)capability 
+            cap:(CSCap * _Nonnull)cap 
                  error:(NSError * _Nullable * _Nullable)error;
 
 @end
 
-/// Capability schema validator
-@interface CSCapabilityValidator : NSObject
+/// Cap schema validator
+@interface CSCapValidator : NSObject
 
-/// Validate a capability definition itself
-+ (BOOL)validateCapability:(CSCapability * _Nonnull)capability 
+/// Validate a cap definition itself
++ (BOOL)validateCap:(CSCap * _Nonnull)cap 
                      error:(NSError * _Nullable * _Nullable)error;
 
 @end
@@ -96,29 +96,29 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 /// Main validation coordinator that orchestrates input and output validation
 @interface CSSchemaValidator : NSObject
 
-/// Register a capability schema for validation
-- (void)registerCapability:(CSCapability * _Nonnull)capability;
+/// Register a cap schema for validation
+- (void)registerCap:(CSCap * _Nonnull)cap;
 
-/// Get a capability by ID
-- (nullable CSCapability *)getCapability:(NSString * _Nonnull)capabilityKey;
+/// Get a cap by ID
+- (nullable CSCap *)getCap:(NSString * _Nonnull)capCard;
 
-/// Validate arguments against a capability's input schema
+/// Validate arguments against a cap's input schema
 - (BOOL)validateInputs:(NSArray * _Nonnull)arguments 
-          capabilityKey:(NSString * _Nonnull)capabilityKey 
+          capCard:(NSString * _Nonnull)capCard 
                  error:(NSError * _Nullable * _Nullable)error;
 
-/// Validate output against a capability's output schema
+/// Validate output against a cap's output schema
 - (BOOL)validateOutput:(id _Nonnull)output 
-          capabilityKey:(NSString * _Nonnull)capabilityKey 
+          capCard:(NSString * _Nonnull)capCard 
                  error:(NSError * _Nullable * _Nullable)error;
 
-/// Validate binary output against a capability's output schema
+/// Validate binary output against a cap's output schema
 - (BOOL)validateBinaryOutput:(NSData * _Nonnull)outputData 
-                capabilityKey:(NSString * _Nonnull)capabilityKey 
+                capCard:(NSString * _Nonnull)capCard 
                        error:(NSError * _Nullable * _Nullable)error;
 
-/// Validate a capability definition itself  
-- (BOOL)validateCapabilitySchema:(CSCapability * _Nonnull)capability 
+/// Validate a cap definition itself  
+- (BOOL)validateCapSchema:(CSCap * _Nonnull)cap 
                            error:(NSError * _Nullable * _Nullable)error;
 
 @end

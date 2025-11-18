@@ -1,26 +1,26 @@
 //
-//  CSCapabilityTests.m
+//  CSCapTests.m
 //  CapDefTests
 //
 
 #import <XCTest/XCTest.h>
-#import "CSCapability.h"
-#import "CSCapabilityKey.h"
-#import "CSCapabilityManifest.h"
+#import "CSCap.h"
+#import "CSCapCard.h"
+#import "CSCapManifest.h"
 
-@interface CSCapabilityTests : XCTestCase
+@interface CSCapTests : XCTestCase
 
 @end
 
-@implementation CSCapabilityTests
+@implementation CSCapTests
 
-- (void)testCapabilityCreation {
+- (void)testCapCreation {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=transform;format=json;type=data_processing" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=transform;format=json;type=data_processing" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -29,20 +29,20 @@
                                                        output:nil 
                                                  acceptsStdin:NO];
     
-    XCTAssertNotNil(capability);
-    XCTAssertEqualObjects([capability idString], @"action=transform;format=json;type=data_processing");
-    XCTAssertEqualObjects(capability.version, @"1.0.0");
-    XCTAssertEqualObjects(capability.command, @"test-command");
-    XCTAssertFalse(capability.acceptsStdin, @"Capabilities should not accept stdin by default");
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects([cap idString], @"action=transform;format=json;type=data_processing");
+    XCTAssertEqualObjects(cap.version, @"1.0.0");
+    XCTAssertEqualObjects(cap.command, @"test-command");
+    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
 }
 
-- (void)testCapabilityWithDescription {
+- (void)testCapWithDescription {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=parse;format=json;type=data" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=parse;format=json;type=data" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:@"Parse JSON data" 
                                                      metadata:@{} 
@@ -51,50 +51,50 @@
                                                        output:nil 
                                                  acceptsStdin:NO];
     
-    XCTAssertNotNil(capability);
-    XCTAssertEqualObjects(capability.capabilityDescription, @"Parse JSON data");
-    XCTAssertFalse(capability.acceptsStdin, @"Capabilities should not accept stdin by default");
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects(cap.capDescription, @"Parse JSON data");
+    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
 }
 
-- (void)testCapabilityAcceptsStdin {
+- (void)testCapAcceptsStdin {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=generate;target=embeddings;type=document" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     // Test with acceptsStdin = NO (default)
-    CSCapability *capability1 = [CSCapability capabilityWithId:key
+    CSCap *cap1 = [CSCap capWithId:key
                                                        version:@"1.0.0"
                                                    description:@"Generate embeddings"
                                                       metadata:@{}
                                                        command:@"generate"
-                                                     arguments:[CSCapabilityArguments arguments]
+                                                     arguments:[CSCapArguments arguments]
                                                         output:nil
                                                   acceptsStdin:NO];
     
-    XCTAssertNotNil(capability1);
-    XCTAssertFalse(capability1.acceptsStdin, @"Should not accept stdin when explicitly set to NO");
+    XCTAssertNotNil(cap1);
+    XCTAssertFalse(cap1.acceptsStdin, @"Should not accept stdin when explicitly set to NO");
     
     // Test with acceptsStdin = YES
-    CSCapability *capability2 = [CSCapability capabilityWithId:key
+    CSCap *cap2 = [CSCap capWithId:key
                                                        version:@"1.0.0"
                                                    description:@"Generate embeddings"
                                                       metadata:@{}
                                                        command:@"generate"
-                                                     arguments:[CSCapabilityArguments arguments]
+                                                     arguments:[CSCapArguments arguments]
                                                         output:nil
                                                   acceptsStdin:YES];
     
-    XCTAssertNotNil(capability2);
-    XCTAssertTrue(capability2.acceptsStdin, @"Should accept stdin when explicitly set to YES");
+    XCTAssertNotNil(cap2);
+    XCTAssertTrue(cap2.acceptsStdin, @"Should accept stdin when explicitly set to YES");
 }
 
-- (void)testCapabilityMatching {
+- (void)testCapMatching {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=transform;format=json;type=data_processing" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=transform;format=json;type=data_processing" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -103,36 +103,36 @@
                                                        output:nil 
                                                  acceptsStdin:NO];
     
-    XCTAssertTrue([capability matchesRequest:@"action=transform;format=json;type=data_processing"]);
-    XCTAssertTrue([capability matchesRequest:@"action=transform;format=*;type=data_processing"]); // Request wants any format, cap handles json specifically
-    XCTAssertTrue([capability matchesRequest:@"type=data_processing"]);
-    XCTAssertFalse([capability matchesRequest:@"type=compute"]);
+    XCTAssertTrue([cap matchesRequest:@"action=transform;format=json;type=data_processing"]);
+    XCTAssertTrue([cap matchesRequest:@"action=transform;format=*;type=data_processing"]); // Request wants any format, cap handles json specifically
+    XCTAssertTrue([cap matchesRequest:@"type=data_processing"]);
+    XCTAssertFalse([cap matchesRequest:@"type=compute"]);
 }
 
-- (void)testCapabilityStdinSerialization {
+- (void)testCapStdinSerialization {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=generate;target=embeddings;type=document" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     // Test copying preserves acceptsStdin
-    CSCapability *original = [CSCapability capabilityWithId:key
+    CSCap *original = [CSCap capWithId:key
                                                     version:@"1.0.0"
                                                 description:@"Generate embeddings"
                                                    metadata:@{@"model": @"sentence-transformer"}
                                                     command:@"generate"
-                                                  arguments:[CSCapabilityArguments arguments]
+                                                  arguments:[CSCapArguments arguments]
                                                      output:nil
                                                acceptsStdin:YES];
     
-    CSCapability *copied = [original copy];
+    CSCap *copied = [original copy];
     XCTAssertNotNil(copied);
     XCTAssertEqual(original.acceptsStdin, copied.acceptsStdin);
     XCTAssertTrue(copied.acceptsStdin);
 }
 
 - (void)testCanonicalDictionaryDeserialization {
-    // Test CSCapability.capabilityWithDictionary
-    NSDictionary *capabilityDict = @{
+    // Test CSCap.capWithDictionary
+    NSDictionary *capDict = @{
         @"id": @"action=extract;target=metadata;type=document",
         @"version": @"1.0.0",
         @"command": @"extract-metadata",
@@ -142,15 +142,15 @@
     };
     
     NSError *error;
-    CSCapability *capability = [CSCapability capabilityWithDictionary:capabilityDict error:&error];
+    CSCap *cap = [CSCap capWithDictionary:capDict error:&error];
     
     XCTAssertNil(error, @"Dictionary deserialization should not fail: %@", error.localizedDescription);
-    XCTAssertNotNil(capability, @"Capability should be created from dictionary");
-    XCTAssertEqualObjects([capability idString], @"action=extract;target=metadata;type=document");
-    XCTAssertEqualObjects(capability.version, @"1.0.0");
-    XCTAssertEqualObjects(capability.command, @"extract-metadata");
-    XCTAssertEqualObjects(capability.capabilityDescription, @"Extract metadata from documents");
-    XCTAssertTrue(capability.acceptsStdin, @"Should accept stdin when specified in dictionary");
+    XCTAssertNotNil(cap, @"Cap should be created from dictionary");
+    XCTAssertEqualObjects([cap idString], @"action=extract;target=metadata;type=document");
+    XCTAssertEqualObjects(cap.version, @"1.0.0");
+    XCTAssertEqualObjects(cap.command, @"extract-metadata");
+    XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
+    XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when specified in dictionary");
     
     // Test with missing required fields - should fail hard
     NSDictionary *invalidDict = @{
@@ -160,15 +160,15 @@
     };
     
     error = nil;
-    CSCapability *invalidCapability = [CSCapability capabilityWithDictionary:invalidDict error:&error];
+    CSCap *invalidCap = [CSCap capWithDictionary:invalidDict error:&error];
     
     XCTAssertNotNil(error, @"Should fail when required fields are missing");
-    XCTAssertNil(invalidCapability, @"Should return nil when deserialization fails");
+    XCTAssertNil(invalidCap, @"Should return nil when deserialization fails");
     XCTAssertTrue([error.localizedDescription containsString:@"required"], @"Error should mention missing required fields");
 }
 
 - (void)testCanonicalArgumentsDeserialization {
-    // Test CSCapabilityArguments.argumentsWithDictionary
+    // Test CSCapArguments.argumentsWithDictionary
     NSDictionary *argumentsDict = @{
         @"required": @[
             @{
@@ -191,21 +191,21 @@
     };
     
     NSError *error;
-    CSCapabilityArguments *arguments = [CSCapabilityArguments argumentsWithDictionary:argumentsDict error:&error];
+    CSCapArguments *arguments = [CSCapArguments argumentsWithDictionary:argumentsDict error:&error];
     
     XCTAssertNil(error, @"Arguments dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(arguments, @"Arguments should be created from dictionary");
     XCTAssertEqual(arguments.required.count, 1, @"Should have one required argument");
     XCTAssertEqual(arguments.optional.count, 1, @"Should have one optional argument");
     
-    CSCapabilityArgument *requiredArg = arguments.required.firstObject;
+    CSCapArgument *requiredArg = arguments.required.firstObject;
     XCTAssertEqualObjects(requiredArg.name, @"file_path");
     XCTAssertEqual(requiredArg.type, CSArgumentTypeString);
     XCTAssertEqualObjects(requiredArg.position, @0);
 }
 
 - (void)testCanonicalOutputDeserialization {
-    // Test CSCapabilityOutput.outputWithDictionary
+    // Test CSCapOutput.outputWithDictionary
     NSDictionary *outputDict = @{
         @"type": @"object",
         @"description": @"JSON metadata object",
@@ -214,7 +214,7 @@
     };
     
     NSError *error;
-    CSCapabilityOutput *output = [CSCapabilityOutput outputWithDictionary:outputDict error:&error];
+    CSCapOutput *output = [CSCapOutput outputWithDictionary:outputDict error:&error];
     
     XCTAssertNil(error, @"Output dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(output, @"Output should be created from dictionary");
@@ -244,9 +244,9 @@
     XCTAssertEqualObjects(validation.allowedValues, (@[@"json", @"xml", @"yaml"]));
 }
 
-- (void)testCompleteCapabilityDeserialization {
-    // Test a complete capability with all nested structures
-    NSDictionary *completeCapabilityDict = @{
+- (void)testCompleteCapDeserialization {
+    // Test a complete cap with all nested structures
+    NSDictionary *completeCapDict = @{
         @"id": @"action=transform;format=json;type=data",
         @"version": @"2.0.0",
         @"command": @"transform-data",
@@ -288,49 +288,49 @@
     };
     
     NSError *error;
-    CSCapability *capability = [CSCapability capabilityWithDictionary:completeCapabilityDict error:&error];
+    CSCap *cap = [CSCap capWithDictionary:completeCapDict error:&error];
     
-    XCTAssertNil(error, @"Complete capability deserialization should not fail: %@", error.localizedDescription);
-    XCTAssertNotNil(capability, @"Complete capability should be created");
+    XCTAssertNil(error, @"Complete cap deserialization should not fail: %@", error.localizedDescription);
+    XCTAssertNotNil(cap, @"Complete cap should be created");
     
     // Verify basic properties
-    XCTAssertEqualObjects([capability idString], @"action=transform;format=json;type=data");
-    XCTAssertEqualObjects(capability.version, @"2.0.0");
-    XCTAssertEqualObjects(capability.command, @"transform-data");
-    XCTAssertTrue(capability.acceptsStdin);
+    XCTAssertEqualObjects([cap idString], @"action=transform;format=json;type=data");
+    XCTAssertEqualObjects(cap.version, @"2.0.0");
+    XCTAssertEqualObjects(cap.command, @"transform-data");
+    XCTAssertTrue(cap.acceptsStdin);
     
     // Verify metadata
-    XCTAssertEqualObjects(capability.metadata[@"engine"], @"jq");
-    XCTAssertEqualObjects(capability.metadata[@"performance"], @"high");
+    XCTAssertEqualObjects(cap.metadata[@"engine"], @"jq");
+    XCTAssertEqualObjects(cap.metadata[@"performance"], @"high");
     
     // Verify arguments
-    XCTAssertEqual(capability.arguments.required.count, 1);
-    XCTAssertEqual(capability.arguments.optional.count, 1);
+    XCTAssertEqual(cap.arguments.required.count, 1);
+    XCTAssertEqual(cap.arguments.optional.count, 1);
     
-    CSCapabilityArgument *requiredArg = capability.arguments.required.firstObject;
+    CSCapArgument *requiredArg = cap.arguments.required.firstObject;
     XCTAssertEqualObjects(requiredArg.name, @"transformation");
     XCTAssertEqualObjects(requiredArg.validation.minLength, @1);
     XCTAssertEqualObjects(requiredArg.validation.maxLength, @1000);
     
-    CSCapabilityArgument *optionalArg = capability.arguments.optional.firstObject;
+    CSCapArgument *optionalArg = cap.arguments.optional.firstObject;
     XCTAssertEqualObjects(optionalArg.name, @"output_format");
     XCTAssertTrue([optionalArg.validation.allowedValues containsObject:@"json"]);
     
     // Verify output
-    XCTAssertNotNil(capability.output);
-    XCTAssertEqual(capability.output.type, CSOutputTypeObject);
-    XCTAssertEqualObjects(capability.output.contentType, @"application/json");
+    XCTAssertNotNil(cap.output);
+    XCTAssertEqual(cap.output.type, CSOutputTypeObject);
+    XCTAssertEqualObjects(cap.output.contentType, @"application/json");
 }
 
-// MARK: - Capability Manifest Tests
+// MARK: - Cap Manifest Tests
 
-- (void)testCapabilityManifestCreation {
+- (void)testCapManifestCreation {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=extract;target=metadata;type=document" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=extract;target=metadata;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -339,25 +339,25 @@
                                                        output:nil 
                                                  acceptsStdin:NO];
     
-    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithName:@"TestComponent"
+    CSCapManifest *manifest = [CSCapManifest manifestWithName:@"TestComponent"
                                                                      version:@"0.1.0"
                                                                  description:@"A test component for validation"
-                                                                capabilities:@[capability]];
+                                                                caps:@[cap]];
     
     XCTAssertEqualObjects(manifest.name, @"TestComponent");
     XCTAssertEqualObjects(manifest.version, @"0.1.0");
     XCTAssertEqualObjects(manifest.manifestDescription, @"A test component for validation");
-    XCTAssertEqual(manifest.capabilities.count, 1);
+    XCTAssertEqual(manifest.caps.count, 1);
     XCTAssertNil(manifest.author);
 }
 
-- (void)testCapabilityManifestWithAuthor {
+- (void)testCapManifestWithAuthor {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=extract;target=metadata;type=document" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=extract;target=metadata;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -366,22 +366,22 @@
                                                        output:nil 
                                                  acceptsStdin:NO];
     
-    CSCapabilityManifest *manifest = [[CSCapabilityManifest manifestWithName:@"TestComponent"
+    CSCapManifest *manifest = [[CSCapManifest manifestWithName:@"TestComponent"
                                                                       version:@"0.1.0"
                                                                   description:@"A test component for validation"
-                                                                 capabilities:@[capability]]
+                                                                 caps:@[cap]]
                                       withAuthor:@"Test Author"];
     
     XCTAssertEqualObjects(manifest.author, @"Test Author");
 }
 
-- (void)testCapabilityManifestDictionaryDeserialization {
+- (void)testCapManifestDictionaryDeserialization {
     NSDictionary *manifestDict = @{
         @"name": @"TestComponent",
         @"version": @"0.1.0",
         @"description": @"A test component for validation",
         @"author": @"Test Author",
-        @"capabilities": @[
+        @"caps": @[
             @{
                 @"id": @"action=extract;target=metadata;type=document",
                 @"version": @"1.0.0",
@@ -396,7 +396,7 @@
     };
     
     NSError *error;
-    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithDictionary:manifestDict error:&error];
+    CSCapManifest *manifest = [CSCapManifest manifestWithDictionary:manifestDict error:&error];
     
     XCTAssertNil(error, @"Manifest dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(manifest, @"Manifest should be created from dictionary");
@@ -404,37 +404,37 @@
     XCTAssertEqualObjects(manifest.version, @"0.1.0");
     XCTAssertEqualObjects(manifest.manifestDescription, @"A test component for validation");
     XCTAssertEqualObjects(manifest.author, @"Test Author");
-    XCTAssertEqual(manifest.capabilities.count, 1);
+    XCTAssertEqual(manifest.caps.count, 1);
     
-    CSCapability *capability = manifest.capabilities.firstObject;
-    XCTAssertEqualObjects([capability idString], @"action=extract;target=metadata;type=document");
-    XCTAssertTrue(capability.acceptsStdin);
+    CSCap *cap = manifest.caps.firstObject;
+    XCTAssertEqualObjects([cap idString], @"action=extract;target=metadata;type=document");
+    XCTAssertTrue(cap.acceptsStdin);
 }
 
-- (void)testCapabilityManifestRequiredFields {
+- (void)testCapManifestRequiredFields {
     // Test that deserialization fails when required fields are missing
     NSDictionary *invalidDict = @{@"name": @"TestComponent"};
     
     NSError *error;
-    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithDictionary:invalidDict error:&error];
+    CSCapManifest *manifest = [CSCapManifest manifestWithDictionary:invalidDict error:&error];
     
     XCTAssertNil(manifest, @"Manifest creation should fail with missing required fields");
     XCTAssertNotNil(error, @"Error should be set when required fields are missing");
-    XCTAssertEqualObjects(error.domain, @"CSCapabilityManifestError");
+    XCTAssertEqualObjects(error.domain, @"CSCapManifestError");
     XCTAssertEqual(error.code, 1007);
 }
 
-- (void)testCapabilityManifestWithMultipleCapabilities {
+- (void)testCapManifestWithMultipleCaps {
     NSError *error;
-    CSCapabilityKey *key1 = [CSCapabilityKey fromString:@"action=extract;target=metadata;type=document" error:&error];
-    XCTAssertNotNil(key1, @"Failed to create capability key: %@", error);
+    CSCapCard *key1 = [CSCapCard fromString:@"action=extract;target=metadata;type=document" error:&error];
+    XCTAssertNotNil(key1, @"Failed to create cap card: %@", error);
     
-    CSCapabilityKey *key2 = [CSCapabilityKey fromString:@"action=extract;target=outline;type=document" error:&error];
-    XCTAssertNotNil(key2, @"Failed to create capability key: %@", error);
+    CSCapCard *key2 = [CSCapCard fromString:@"action=extract;target=outline;type=document" error:&error];
+    XCTAssertNotNil(key2, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapArguments *arguments = [CSCapArguments arguments];
     
-    CSCapability *capability1 = [CSCapability capabilityWithId:key1 
+    CSCap *cap1 = [CSCap capWithId:key1 
                                                        version:@"1.0.0" 
                                                    description:nil 
                                                       metadata:@{} 
@@ -443,7 +443,7 @@
                                                         output:nil 
                                                   acceptsStdin:NO];
     
-    CSCapability *capability2 = [CSCapability capabilityWithId:key2 
+    CSCap *cap2 = [CSCap capWithId:key2 
                                                        version:@"1.0.0" 
                                                    description:nil 
                                                       metadata:@{@"supports_toc": @"true"} 
@@ -452,48 +452,48 @@
                                                         output:nil 
                                                   acceptsStdin:NO];
     
-    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithName:@"MultiCapComponent"
+    CSCapManifest *manifest = [CSCapManifest manifestWithName:@"MultiCapComponent"
                                                                      version:@"1.0.0"
-                                                                 description:@"Component with multiple capabilities"
-                                                                capabilities:@[capability1, capability2]];
+                                                                 description:@"Component with multiple caps"
+                                                                caps:@[cap1, cap2]];
     
-    XCTAssertEqual(manifest.capabilities.count, 2);
-    XCTAssertEqualObjects([manifest.capabilities[0] idString], @"action=extract;target=metadata;type=document");
-    XCTAssertEqualObjects([manifest.capabilities[1] idString], @"action=extract;target=outline;type=document");
-    XCTAssertEqualObjects(capability2.metadata[@"supports_toc"], @"true");
+    XCTAssertEqual(manifest.caps.count, 2);
+    XCTAssertEqualObjects([manifest.caps[0] idString], @"action=extract;target=metadata;type=document");
+    XCTAssertEqualObjects([manifest.caps[1] idString], @"action=extract;target=outline;type=document");
+    XCTAssertEqualObjects(cap2.metadata[@"supports_toc"], @"true");
 }
 
-- (void)testCapabilityManifestEmptyCapabilities {
-    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithName:@"EmptyComponent"
+- (void)testCapManifestEmptyCaps {
+    CSCapManifest *manifest = [CSCapManifest manifestWithName:@"EmptyComponent"
                                                                      version:@"1.0.0"
-                                                                 description:@"Component with no capabilities"
-                                                                capabilities:@[]];
+                                                                 description:@"Component with no caps"
+                                                                caps:@[]];
     
-    XCTAssertEqual(manifest.capabilities.count, 0);
+    XCTAssertEqual(manifest.caps.count, 0);
     
     // Test dictionary serialization preserves empty array
     NSDictionary *manifestDict = @{
         @"name": @"EmptyComponent",
         @"version": @"1.0.0", 
-        @"description": @"Component with no capabilities",
-        @"capabilities": @[]
+        @"description": @"Component with no caps",
+        @"caps": @[]
     };
     
     NSError *error;
-    CSCapabilityManifest *deserializedManifest = [CSCapabilityManifest manifestWithDictionary:manifestDict error:&error];
+    CSCapManifest *deserializedManifest = [CSCapManifest manifestWithDictionary:manifestDict error:&error];
     
-    XCTAssertNil(error, @"Empty capabilities manifest should deserialize successfully");
+    XCTAssertNil(error, @"Empty caps manifest should deserialize successfully");
     XCTAssertNotNil(deserializedManifest);
-    XCTAssertEqual(deserializedManifest.capabilities.count, 0);
+    XCTAssertEqual(deserializedManifest.caps.count, 0);
 }
 
-- (void)testCapabilityManifestOptionalAuthorField {
+- (void)testCapManifestOptionalAuthorField {
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=validate;type=file" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=validate;type=file" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -502,17 +502,17 @@
                                                        output:nil 
                                                  acceptsStdin:NO];
     
-    CSCapabilityManifest *manifestWithoutAuthor = [CSCapabilityManifest manifestWithName:@"ValidatorComponent"
+    CSCapManifest *manifestWithoutAuthor = [CSCapManifest manifestWithName:@"ValidatorComponent"
                                                                                   version:@"1.0.0"
                                                                               description:@"File validation component"
-                                                                             capabilities:@[capability]];
+                                                                             caps:@[cap]];
     
     // Manifest without author should not include author field in dictionary representation
     NSDictionary *manifestDict = @{
         @"name": @"ValidatorComponent",
         @"version": @"1.0.0",
         @"description": @"File validation component", 
-        @"capabilities": @[
+        @"caps": @[
             @{
                 @"id": @"action=validate;type=file",
                 @"version": @"1.0.0",
@@ -525,21 +525,21 @@
         ]
     };
     
-    CSCapabilityManifest *deserializedManifest = [CSCapabilityManifest manifestWithDictionary:manifestDict error:&error];
+    CSCapManifest *deserializedManifest = [CSCapManifest manifestWithDictionary:manifestDict error:&error];
     
     XCTAssertNil(error, @"Manifest without author should deserialize successfully");
     XCTAssertNotNil(deserializedManifest);
     XCTAssertNil(deserializedManifest.author, @"Author should be nil when not provided");
 }
 
-- (void)testCapabilityManifestCompatibility {
+- (void)testCapManifestCompatibility {
     // Test that manifest format is compatible between different component types
     NSError *error;
-    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=process;type=document" error:&error];
-    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    CSCapCard *key = [CSCapCard fromString:@"action=process;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
-    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
-    CSCapability *capability = [CSCapability capabilityWithId:key 
+    CSCapArguments *arguments = [CSCapArguments arguments];
+    CSCap *cap = [CSCap capWithId:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -549,32 +549,32 @@
                                                  acceptsStdin:NO];
     
     // Create manifest similar to what a plugin would have
-    CSCapabilityManifest *pluginStyleManifest = [CSCapabilityManifest manifestWithName:@"PluginComponent"
+    CSCapManifest *pluginStyleManifest = [CSCapManifest manifestWithName:@"PluginComponent"
                                                                                 version:@"0.1.0"
                                                                             description:@"Plugin-style component"
-                                                                           capabilities:@[capability]];
+                                                                           caps:@[cap]];
     
     // Create manifest similar to what a provider would have
-    CSCapabilityManifest *providerStyleManifest = [CSCapabilityManifest manifestWithName:@"ProviderComponent"
+    CSCapManifest *providerStyleManifest = [CSCapManifest manifestWithName:@"ProviderComponent"
                                                                                   version:@"0.1.0"
                                                                               description:@"Provider-style component"
-                                                                             capabilities:@[capability]];
+                                                                             caps:@[cap]];
     
     // Both should have the same structure
     XCTAssertNotNil(pluginStyleManifest.name);
     XCTAssertNotNil(pluginStyleManifest.version);
     XCTAssertNotNil(pluginStyleManifest.manifestDescription);
-    XCTAssertNotNil(pluginStyleManifest.capabilities);
+    XCTAssertNotNil(pluginStyleManifest.caps);
     
     XCTAssertNotNil(providerStyleManifest.name);
     XCTAssertNotNil(providerStyleManifest.version);
     XCTAssertNotNil(providerStyleManifest.manifestDescription);
-    XCTAssertNotNil(providerStyleManifest.capabilities);
+    XCTAssertNotNil(providerStyleManifest.caps);
     
-    // Same capability structure
-    XCTAssertEqual(pluginStyleManifest.capabilities.count, providerStyleManifest.capabilities.count);
-    XCTAssertEqualObjects([pluginStyleManifest.capabilities.firstObject idString], 
-                         [providerStyleManifest.capabilities.firstObject idString]);
+    // Same cap structure
+    XCTAssertEqual(pluginStyleManifest.caps.count, providerStyleManifest.caps.count);
+    XCTAssertEqualObjects([pluginStyleManifest.caps.firstObject idString], 
+                         [providerStyleManifest.caps.firstObject idString]);
 }
 
 @end

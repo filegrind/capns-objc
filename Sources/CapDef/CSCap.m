@@ -1,13 +1,13 @@
 //
-//  CSCapability.m
-//  Formal capability implementation
+//  CSCap.m
+//  Formal cap implementation
 //
 
-#import "CSCapability.h"
+#import "CSCap.h"
 
-@implementation CSCapability
+@implementation CSCap
 
-+ (instancetype)capabilityWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
++ (instancetype)capWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     // Required fields
     NSString *idString = dictionary[@"id"];
     NSString *version = dictionary[@"version"];
@@ -15,17 +15,17 @@
     
     if (!idString || !version || !command) {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapabilityError"
+            *error = [NSError errorWithDomain:@"CSCapError"
                                          code:1001
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required capability fields: id, version, or command"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required cap fields: id, version, or command"}];
         }
         return nil;
     }
     
-    // Parse capability key
+    // Parse cap card
     NSError *keyError;
-    CSCapabilityKey *capabilityKey = [CSCapabilityKey fromString:idString error:&keyError];
-    if (!capabilityKey) {
+    CSCapCard *capCard = [CSCapCard fromString:idString error:&keyError];
+    if (!capCard) {
         if (error) {
             *error = keyError;
         }
@@ -38,28 +38,28 @@
     BOOL acceptsStdin = [dictionary[@"accepts_stdin"] boolValue]; // defaults to NO if missing
     
     // Parse arguments
-    CSCapabilityArguments *arguments;
+    CSCapArguments *arguments;
     NSDictionary *argumentsDict = dictionary[@"arguments"];
     if (argumentsDict) {
-        arguments = [CSCapabilityArguments argumentsWithDictionary:argumentsDict error:error];
+        arguments = [CSCapArguments argumentsWithDictionary:argumentsDict error:error];
         if (!arguments && error && *error) {
             return nil;
         }
     } else {
-        arguments = [CSCapabilityArguments arguments];
+        arguments = [CSCapArguments arguments];
     }
     
     // Parse output
-    CSCapabilityOutput *output = nil;
+    CSCapOutput *output = nil;
     NSDictionary *outputDict = dictionary[@"output"];
     if (outputDict) {
-        output = [CSCapabilityOutput outputWithDictionary:outputDict error:error];
+        output = [CSCapOutput outputWithDictionary:outputDict error:error];
         if (!output && error && *error) {
             return nil;
         }
     }
     
-    return [self capabilityWithId:capabilityKey
+    return [self capWithId:capCard
                           version:version
                       description:description
                          metadata:metadata
@@ -71,22 +71,22 @@
 
 - (BOOL)matchesRequest:(NSString *)request {
     NSError *error;
-    CSCapabilityKey *requestId = [CSCapabilityKey fromString:request error:&error];
+    CSCapCard *requestId = [CSCapCard fromString:request error:&error];
     if (!requestId) {
         return NO;
     }
-    return [self.capabilityKey canHandle:requestId];
+    return [self.capCard canHandle:requestId];
 }
 
-- (BOOL)canHandleRequest:(CSCapabilityKey *)request {
-    return [self.capabilityKey canHandle:request];
+- (BOOL)canHandleRequest:(CSCapCard *)request {
+    return [self.capCard canHandle:request];
 }
 
-- (BOOL)isMoreSpecificThan:(CSCapability *)other {
+- (BOOL)isMoreSpecificThan:(CSCap *)other {
     if (!other) {
         return YES;
     }
-    return [self.capabilityKey isMoreSpecificThan:other.capabilityKey];
+    return [self.capCard isMoreSpecificThan:other.capCard];
 }
 
 - (nullable NSString *)metadataForKey:(NSString *)key {
@@ -98,15 +98,15 @@
 }
 
 - (NSString *)idString {
-    return [self.capabilityKey toString];
+    return [self.capCard toString];
 }
 
 - (NSString *)description {
-    NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCapability(id: %@, version: %@", 
-                            [self.capabilityKey toString], self.version];
+    NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCap(id: %@, version: %@", 
+                            [self.capCard toString], self.version];
     
-    if (self.capabilityDescription) {
-        [desc appendFormat:@", description: %@", self.capabilityDescription];
+    if (self.capDescription) {
+        [desc appendFormat:@", description: %@", self.capDescription];
     }
     
     if (self.metadata.count > 0) {
@@ -119,28 +119,28 @@
 
 - (BOOL)isEqual:(id)object {
     if (self == object) return YES;
-    if (![object isKindOfClass:[CSCapability class]]) return NO;
+    if (![object isKindOfClass:[CSCap class]]) return NO;
     
-    CSCapability *other = (CSCapability *)object;
-    return [self.capabilityKey isEqual:other.capabilityKey] &&
+    CSCap *other = (CSCap *)object;
+    return [self.capCard isEqual:other.capCard] &&
            [self.version isEqualToString:other.version] &&
-           ((self.capabilityDescription == nil && other.capabilityDescription == nil) ||
-            [self.capabilityDescription isEqualToString:other.capabilityDescription]) &&
+           ((self.capDescription == nil && other.capDescription == nil) ||
+            [self.capDescription isEqualToString:other.capDescription]) &&
            [self.metadata isEqualToDictionary:other.metadata];
 }
 
 - (NSUInteger)hash {
-    return [self.capabilityKey hash] ^ [self.version hash] ^ [self.metadata hash];
+    return [self.capCard hash] ^ [self.version hash] ^ [self.metadata hash];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    // Fail hard if command is nil - this should never happen in a properly constructed capability
+    // Fail hard if command is nil - this should never happen in a properly constructed cap
     if (!self.command) {
         return nil;
     }
-    return [CSCapability capabilityWithId:self.capabilityKey 
+    return [CSCap capWithId:self.capCard 
                                    version:self.version
-                               description:self.capabilityDescription 
+                               description:self.capDescription 
                                   metadata:self.metadata
                                    command:self.command
                                  arguments:self.arguments
@@ -149,47 +149,47 @@
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.capabilityKey forKey:@"capabilityKey"];
+    [coder encodeObject:self.capCard forKey:@"capCard"];
     [coder encodeObject:self.version forKey:@"version"];
     [coder encodeObject:self.command forKey:@"command"];
-    [coder encodeObject:self.capabilityDescription forKey:@"capabilityDescription"];
+    [coder encodeObject:self.capDescription forKey:@"capDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
     [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    CSCapabilityKey *capabilityKey = [coder decodeObjectOfClass:[CSCapabilityKey class] forKey:@"capabilityKey"];
+    CSCapCard *capCard = [coder decodeObjectOfClass:[CSCapCard class] forKey:@"capCard"];
     NSString *version = [coder decodeObjectOfClass:[NSString class] forKey:@"version"];
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
-    NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capabilityDescription"];
+    NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
     
     // Fail hard if required fields are missing
-    if (!capabilityKey || !version || !command || !metadata) {
+    if (!capCard || !version || !command || !metadata) {
         return nil;
     }
     
-    return [CSCapability capabilityWithId:capabilityKey 
+    return [CSCap capWithId:capCard 
                                    version:version
                                description:description 
                                   metadata:metadata
                                    command:command
-                                 arguments:[CSCapabilityArguments arguments]
+                                 arguments:[CSCapArguments arguments]
                                     output:nil
                               acceptsStdin:acceptsStdin];
 }
 
-- (instancetype)initWithId:(CSCapabilityKey *)capabilityKey
+- (instancetype)initWithId:(CSCapCard *)capCard
 					version:(NSString *)version
 					command:(NSString *)command {
 	self = [super init];
 	if (self) {
-		_capabilityKey = [capabilityKey copy];
+		_capCard = [capCard copy];
 		_version = [version copy];
 		_command = [command copy];
 		_metadata = @{};
-		_arguments = [CSCapabilityArguments arguments];
+		_arguments = [CSCapArguments arguments];
 	}
 	return self;
 }
@@ -201,52 +201,52 @@
 #pragma mark - Missing Methods
 
 
-+ (instancetype)capabilityWithId:(CSCapabilityKey *)capabilityKey
++ (instancetype)capWithId:(CSCapCard *)capCard
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
                          command:(NSString *)command
-                       arguments:(CSCapabilityArguments *)arguments
-                          output:(nullable CSCapabilityOutput *)output
+                       arguments:(CSCapArguments *)arguments
+                          output:(nullable CSCapOutput *)output
                     acceptsStdin:(BOOL)acceptsStdin {
-    CSCapability *capability = [[CSCapability alloc] init];
-    capability->_capabilityKey = [capabilityKey copy];
-    capability->_version = [version copy];
-    capability->_capabilityDescription = [description copy];
+    CSCap *cap = [[CSCap alloc] init];
+    cap->_capCard = [capCard copy];
+    cap->_version = [version copy];
+    cap->_capDescription = [description copy];
     // Fail hard if required fields are nil
     if (!metadata || !arguments) {
         return nil;
     }
-    capability->_metadata = [metadata copy];
-    capability->_command = [command copy];
-    capability->_arguments = arguments;
-    capability->_output = output;
-    capability->_acceptsStdin = acceptsStdin;
-    return capability;
+    cap->_metadata = [metadata copy];
+    cap->_command = [command copy];
+    cap->_arguments = arguments;
+    cap->_output = output;
+    cap->_acceptsStdin = acceptsStdin;
+    return cap;
 }
 
 - (nullable NSString *)getCommand {
     return self.command;
 }
 
-- (CSCapabilityArguments *)getArguments {
-    return self.arguments ?: [CSCapabilityArguments arguments];
+- (CSCapArguments *)getArguments {
+    return self.arguments ?: [CSCapArguments arguments];
 }
 
-- (nullable CSCapabilityOutput *)getOutput {
+- (nullable CSCapOutput *)getOutput {
     return self.output;
 }
 
-- (void)addRequiredArgument:(CSCapabilityArgument *)argument {
+- (void)addRequiredArgument:(CSCapArgument *)argument {
     if (!_arguments) {
-        _arguments = [CSCapabilityArguments arguments];
+        _arguments = [CSCapArguments arguments];
     }
     [_arguments addRequiredArgument:argument];
 }
 
-- (void)addOptionalArgument:(CSCapabilityArgument *)argument {
+- (void)addOptionalArgument:(CSCapArgument *)argument {
     if (!_arguments) {
-        _arguments = [CSCapabilityArguments arguments];
+        _arguments = [CSCapArguments arguments];
     }
     [_arguments addOptionalArgument:argument];
 }
@@ -326,9 +326,9 @@
 
 @end
 
-#pragma mark - CSCapabilityArgument Implementation
+#pragma mark - CSCapArgument Implementation
 
-@implementation CSCapabilityArgument
+@implementation CSCapArgument
 
 + (instancetype)argumentWithName:(NSString *)name
                             type:(CSArgumentType)type
@@ -337,7 +337,7 @@
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue {
-    CSCapabilityArgument *argument = [[CSCapabilityArgument alloc] init];
+    CSCapArgument *argument = [[CSCapArgument alloc] init];
     argument->_name = [name copy];
     argument->_type = type;
     argument->_argumentDescription = [description copy];
@@ -358,7 +358,7 @@
     
     if (!name || !typeString || !description || !cliFlag) {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapabilityArgumentError"
+            *error = [NSError errorWithDomain:@"CSCapArgumentError"
                                          code:1002
                                      userInfo:@{NSLocalizedDescriptionKey: @"Missing required argument fields: name, type, description, or cli_flag"}];
         }
@@ -381,7 +381,7 @@
         type = CSArgumentTypeObject;
     } else {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapabilityArgumentError"
+            *error = [NSError errorWithDomain:@"CSCapArgumentError"
                                          code:1003
                                      userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Unknown argument type: %@", typeString]}];
         }
@@ -408,7 +408,7 @@
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapabilityArgument argumentWithName:self.name
+    return [CSCapArgument argumentWithName:self.name
                                               type:self.type
                                        description:self.argumentDescription
                                            cliFlag:self.cliFlag
@@ -453,21 +453,21 @@
 
 @end
 
-#pragma mark - CSCapabilityArguments Implementation
+#pragma mark - CSCapArguments Implementation
 
-@implementation CSCapabilityArguments
+@implementation CSCapArguments
 
 + (instancetype)arguments {
-    return [[CSCapabilityArguments alloc] init];
+    return [[CSCapArguments alloc] init];
 }
 
-+ (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> *)required
-                             optional:(NSArray<CSCapabilityArgument *> *)optional {
++ (instancetype)argumentsWithRequired:(NSArray<CSCapArgument *> *)required
+                             optional:(NSArray<CSCapArgument *> *)optional {
     // Fail hard if arrays are nil
     if (!required || !optional) {
         return nil;
     }
-    CSCapabilityArguments *arguments = [[CSCapabilityArguments alloc] init];
+    CSCapArguments *arguments = [[CSCapArguments alloc] init];
     arguments->_required = [required copy];
     arguments->_optional = [optional copy];
     return arguments;
@@ -477,13 +477,13 @@
     NSArray *requiredArray = dictionary[@"required"];
     NSArray *optionalArray = dictionary[@"optional"];
     
-    NSMutableArray<CSCapabilityArgument *> *required = [NSMutableArray array];
-    NSMutableArray<CSCapabilityArgument *> *optional = [NSMutableArray array];
+    NSMutableArray<CSCapArgument *> *required = [NSMutableArray array];
+    NSMutableArray<CSCapArgument *> *optional = [NSMutableArray array];
     
     // Parse required arguments
     if (requiredArray) {
         for (NSDictionary *argDict in requiredArray) {
-            CSCapabilityArgument *argument = [CSCapabilityArgument argumentWithDictionary:argDict error:error];
+            CSCapArgument *argument = [CSCapArgument argumentWithDictionary:argDict error:error];
             if (!argument) {
                 return nil;
             }
@@ -494,7 +494,7 @@
     // Parse optional arguments
     if (optionalArray) {
         for (NSDictionary *argDict in optionalArray) {
-            CSCapabilityArgument *argument = [CSCapabilityArgument argumentWithDictionary:argDict error:error];
+            CSCapArgument *argument = [CSCapArgument argumentWithDictionary:argDict error:error];
             if (!argument) {
                 return nil;
             }
@@ -514,25 +514,25 @@
     return self;
 }
 
-- (void)addRequiredArgument:(CSCapabilityArgument *)argument {
+- (void)addRequiredArgument:(CSCapArgument *)argument {
     NSMutableArray *mutableRequired = [_required mutableCopy];
     [mutableRequired addObject:argument];
     _required = [mutableRequired copy];
 }
 
-- (void)addOptionalArgument:(CSCapabilityArgument *)argument {
+- (void)addOptionalArgument:(CSCapArgument *)argument {
     NSMutableArray *mutableOptional = [_optional mutableCopy];
     [mutableOptional addObject:argument];
     _optional = [mutableOptional copy];
 }
 
-- (nullable CSCapabilityArgument *)findArgumentWithName:(NSString *)name {
-    for (CSCapabilityArgument *arg in self.required) {
+- (nullable CSCapArgument *)findArgumentWithName:(NSString *)name {
+    for (CSCapArgument *arg in self.required) {
         if ([arg.name isEqualToString:name]) {
             return arg;
         }
     }
-    for (CSCapabilityArgument *arg in self.optional) {
+    for (CSCapArgument *arg in self.optional) {
         if ([arg.name isEqualToString:name]) {
             return arg;
         }
@@ -540,37 +540,37 @@
     return nil;
 }
 
-- (NSArray<CSCapabilityArgument *> *)positionalArguments {
+- (NSArray<CSCapArgument *> *)positionalArguments {
     NSMutableArray *positional = [[NSMutableArray alloc] init];
     
-    for (CSCapabilityArgument *arg in self.required) {
+    for (CSCapArgument *arg in self.required) {
         if (arg.position) {
             [positional addObject:arg];
         }
     }
-    for (CSCapabilityArgument *arg in self.optional) {
+    for (CSCapArgument *arg in self.optional) {
         if (arg.position) {
             [positional addObject:arg];
         }
     }
     
     // Sort by position
-    [positional sortUsingComparator:^NSComparisonResult(CSCapabilityArgument *a, CSCapabilityArgument *b) {
+    [positional sortUsingComparator:^NSComparisonResult(CSCapArgument *a, CSCapArgument *b) {
         return [a.position compare:b.position];
     }];
     
     return [positional copy];
 }
 
-- (NSArray<CSCapabilityArgument *> *)flagArguments {
+- (NSArray<CSCapArgument *> *)flagArguments {
     NSMutableArray *flags = [[NSMutableArray alloc] init];
     
-    for (CSCapabilityArgument *arg in self.required) {
+    for (CSCapArgument *arg in self.required) {
         if (arg.cliFlag) {
             [flags addObject:arg];
         }
     }
-    for (CSCapabilityArgument *arg in self.optional) {
+    for (CSCapArgument *arg in self.optional) {
         if (arg.cliFlag) {
             [flags addObject:arg];
         }
@@ -584,7 +584,7 @@
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapabilityArguments argumentsWithRequired:self.required optional:self.optional];
+    return [CSCapArguments argumentsWithRequired:self.required optional:self.optional];
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
@@ -615,16 +615,16 @@
 
 @end
 
-#pragma mark - CSCapabilityOutput Implementation
+#pragma mark - CSCapOutput Implementation
 
-@implementation CSCapabilityOutput
+@implementation CSCapOutput
 
 + (instancetype)outputWithType:(CSOutputType)type
                      schemaRef:(nullable NSString *)schemaRef
                    contentType:(nullable NSString *)contentType
                     validation:(nullable CSArgumentValidation *)validation
                    description:(NSString *)description {
-    CSCapabilityOutput *output = [[CSCapabilityOutput alloc] init];
+    CSCapOutput *output = [[CSCapOutput alloc] init];
     output->_type = type;
     output->_schemaRef = [schemaRef copy];
     output->_contentType = [contentType copy];
@@ -641,7 +641,7 @@
     
     if (!typeString || !description) {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapabilityOutputError"
+            *error = [NSError errorWithDomain:@"CSCapOutputError"
                                          code:1004
                                      userInfo:@{NSLocalizedDescriptionKey: @"Missing required output fields: type or description"}];
         }
@@ -666,7 +666,7 @@
         type = CSOutputTypeBinary;
     } else {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapabilityOutputError"
+            *error = [NSError errorWithDomain:@"CSCapOutputError"
                                          code:1005
                                      userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Unknown output type: %@", typeString]}];
         }
@@ -691,7 +691,7 @@
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapabilityOutput outputWithType:self.type
+    return [CSCapOutput outputWithType:self.type
                                      schemaRef:self.schemaRef
                                    contentType:self.contentType
                                     validation:self.validation

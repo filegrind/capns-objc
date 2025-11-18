@@ -1,14 +1,14 @@
 //
-//  CSCapability.h
-//  Formal capability definition
+//  CSCap.h
+//  Formal cap definition
 //
-//  This defines the structure for formal capability definitions that include
-//  the capability identifier, versioning, and metadata. Capabilities are general-purpose
+//  This defines the structure for formal cap definitions that include
+//  the cap identifier, versioning, and metadata. Caps are general-purpose
 //  and do not assume any specific domain like files or documents.
 //
 
 #import <Foundation/Foundation.h>
-#import "CSCapabilityKey.h"
+#import "CSCapCard.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -61,9 +61,9 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @end
 
 /**
- * Capability argument definition
+ * Cap argument definition
  */
-@interface CSCapabilityArgument : NSObject <NSCopying, NSCoding>
+@interface CSCapArgument : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly) NSString *name;
 @property (nonatomic, readonly) CSArgumentType type;
@@ -85,23 +85,23 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @end
 
 /**
- * Capability arguments collection
+ * Cap arguments collection
  */
-@interface CSCapabilityArguments : NSObject <NSCopying, NSCoding>
+@interface CSCapArguments : NSObject <NSCopying, NSCoding>
 
-@property (nonatomic, readonly) NSArray<CSCapabilityArgument *> *required;
-@property (nonatomic, readonly) NSArray<CSCapabilityArgument *> *optional;
+@property (nonatomic, readonly) NSArray<CSCapArgument *> *required;
+@property (nonatomic, readonly) NSArray<CSCapArgument *> *optional;
 
 + (instancetype)arguments;
-+ (instancetype)argumentsWithRequired:(NSArray<CSCapabilityArgument *> * _Nonnull)required
-                             optional:(NSArray<CSCapabilityArgument *> * _Nonnull)optional;
++ (instancetype)argumentsWithRequired:(NSArray<CSCapArgument *> * _Nonnull)required
+                             optional:(NSArray<CSCapArgument *> * _Nonnull)optional;
 + (instancetype)argumentsWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
-- (void)addRequiredArgument:(CSCapabilityArgument * _Nonnull)argument;
-- (void)addOptionalArgument:(CSCapabilityArgument * _Nonnull)argument;
-- (nullable CSCapabilityArgument *)findArgumentWithName:(NSString * _Nonnull)name;
-- (NSArray<CSCapabilityArgument *> *)positionalArguments;
-- (NSArray<CSCapabilityArgument *> *)flagArguments;
+- (void)addRequiredArgument:(CSCapArgument * _Nonnull)argument;
+- (void)addOptionalArgument:(CSCapArgument * _Nonnull)argument;
+- (nullable CSCapArgument *)findArgumentWithName:(NSString * _Nonnull)name;
+- (NSArray<CSCapArgument *> *)positionalArguments;
+- (NSArray<CSCapArgument *> *)flagArguments;
 - (BOOL)isEmpty;
 
 @end
@@ -110,7 +110,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /**
  * Output definition
  */
-@interface CSCapabilityOutput : NSObject <NSCopying, NSCoding>
+@interface CSCapOutput : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly) CSOutputType type;
 @property (nonatomic, readonly, nullable) NSString *schemaRef;
@@ -128,18 +128,18 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @end
 
 /**
- * Formal capability definition
+ * Formal cap definition
  */
-@interface CSCapability : NSObject <NSCopying, NSCoding>
+@interface CSCap : NSObject <NSCopying, NSCoding>
 
-/// Formal capability identifier with hierarchical naming
-@property (nonatomic, readonly) CSCapabilityKey *capabilityKey;
+/// Formal cap identifier with hierarchical naming
+@property (nonatomic, readonly) CSCapCard *capCard;
 
-/// Capability version
+/// Cap version
 @property (nonatomic, readonly) NSString *version;
 
 /// Optional description
-@property (nonatomic, readonly, nullable) NSString *capabilityDescription;
+@property (nonatomic, readonly, nullable) NSString *capDescription;
 
 /// Optional metadata as key-value pairs
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *metadata;
@@ -147,65 +147,65 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Command string for CLI execution
 @property (nonatomic, readonly) NSString *command;
 
-/// Capability arguments
-@property (nonatomic, readonly) CSCapabilityArguments *arguments;
+/// Cap arguments
+@property (nonatomic, readonly) CSCapArguments *arguments;
 
 /// Output definition
-@property (nonatomic, readonly, nullable) CSCapabilityOutput *output;
+@property (nonatomic, readonly, nullable) CSCapOutput *output;
 
-/// Whether this capability accepts input via stdin
+/// Whether this cap accepts input via stdin
 @property (nonatomic, readonly) BOOL acceptsStdin;
 
 
 /**
- * Create a fully specified capability
- * @param capabilityKey The capability identifier
- * @param version The capability version
- * @param description The capability description
- * @param metadata The capability metadata
+ * Create a fully specified cap
+ * @param capCard The cap identifier
+ * @param version The cap version
+ * @param description The cap description
+ * @param metadata The cap metadata
  * @param command The command string
- * @param arguments The capability arguments
+ * @param arguments The cap arguments
  * @param output The output definition
- * @param acceptsStdin Whether this capability accepts stdin input
- * @return A new CSCapability instance
+ * @param acceptsStdin Whether this cap accepts stdin input
+ * @return A new CSCap instance
  */
-+ (instancetype)capabilityWithId:(CSCapabilityKey * _Nonnull)capabilityKey
++ (instancetype)capWithId:(CSCapCard * _Nonnull)capCard
                          version:(NSString * _Nonnull)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
                          command:(NSString * _Nonnull)command
-                       arguments:(CSCapabilityArguments * _Nonnull)arguments
-                          output:(nullable CSCapabilityOutput *)output
+                       arguments:(CSCapArguments * _Nonnull)arguments
+                          output:(nullable CSCapOutput *)output
                     acceptsStdin:(BOOL)acceptsStdin;
 
 /**
- * Create a capability from a dictionary representation
- * @param dictionary The dictionary containing capability data
+ * Create a cap from a dictionary representation
+ * @param dictionary The dictionary containing cap data
  * @param error Pointer to NSError for error reporting
- * @return A new CSCapability instance, or nil if parsing fails
+ * @return A new CSCap instance, or nil if parsing fails
  */
-+ (instancetype)capabilityWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
++ (instancetype)capWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**
- * Check if this capability matches a request string
+ * Check if this cap matches a request string
  * @param request The request string
- * @return YES if this capability matches the request
+ * @return YES if this cap matches the request
  */
 - (BOOL)matchesRequest:(NSString * _Nonnull)request;
 
 /**
- * Check if this capability can handle a request
- * @param request The request capability identifier
- * @return YES if this capability can handle the request
+ * Check if this cap can handle a request
+ * @param request The request cap identifier
+ * @return YES if this cap can handle the request
  */
-- (BOOL)canHandleRequest:(CSCapabilityKey * _Nonnull)request;
+- (BOOL)canHandleRequest:(CSCapCard * _Nonnull)request;
 
 /**
- * Check if this capability is more specific than another
- * @param other The other capability to compare with
- * @return YES if this capability is more specific
+ * Check if this cap is more specific than another
+ * @param other The other cap to compare with
+ * @return YES if this cap is more specific
  */
-- (BOOL)isMoreSpecificThan:(CSCapability * _Nonnull)other;
+- (BOOL)isMoreSpecificThan:(CSCap * _Nonnull)other;
 
 /**
  * Get a metadata value by key
@@ -215,15 +215,15 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 - (nullable NSString *)metadataForKey:(NSString * _Nonnull)key;
 
 /**
- * Check if this capability has specific metadata
+ * Check if this cap has specific metadata
  * @param key The metadata key to check
  * @return YES if the metadata key exists
  */
 - (BOOL)hasMetadataForKey:(NSString * _Nonnull)key;
 
 /**
- * Get the capability identifier as a string
- * @return The capability identifier string
+ * Get the cap identifier as a string
+ * @return The cap identifier string
  */
 - (NSString *)idString;
 
@@ -235,27 +235,27 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Get the arguments
- * @return The capability arguments
+ * @return The cap arguments
  */
-- (CSCapabilityArguments *)getArguments;
+- (CSCapArguments *)getArguments;
 
 /**
  * Get the output definition if defined
  * @return The output definition or nil
  */
-- (nullable CSCapabilityOutput *)getOutput;
+- (nullable CSCapOutput *)getOutput;
 
 /**
  * Add a required argument
  * @param argument The argument to add
  */
-- (void)addRequiredArgument:(CSCapabilityArgument * _Nonnull)argument;
+- (void)addRequiredArgument:(CSCapArgument * _Nonnull)argument;
 
 /**
  * Add an optional argument
  * @param argument The argument to add
  */
-- (void)addOptionalArgument:(CSCapabilityArgument * _Nonnull)argument;
+- (void)addOptionalArgument:(CSCapArgument * _Nonnull)argument;
 
 @end
 

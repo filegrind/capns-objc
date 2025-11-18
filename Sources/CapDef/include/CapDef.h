@@ -1,9 +1,9 @@
 //
 //  CapDef.h
-//  Capability SDK - Core capability identifier and definition system
+//  Cap SDK - Core cap identifier and definition system
 //
-//  This library provides the fundamental capability identifier system used across
-//  all LBVR plugins and providers. It defines the formal structure for capability
+//  This library provides the fundamental cap identifier system used across
+//  all LBVR plugins and providers. It defines the formal structure for cap
 //  identifiers with flat tag-based naming, wildcard support, and specificity comparison.
 //
 
@@ -15,8 +15,8 @@ FOUNDATION_EXPORT double CapDefVersionNumber;
 //! Project version string for CapDef.
 FOUNDATION_EXPORT const unsigned char CapDefVersionString[];
 
-#import "CSCapabilityKey.h"
-#import "CSCapability.h"
-#import "CSCapabilityManifest.h"
-#import "CSCapabilityMatcher.h"
-#import "CSCapabilityValidator.h"
+#import "CSCapCard.h"
+#import "CSCap.h"
+#import "CSCapManifest.h"
+#import "CSCapMatcher.h"
+#import "CSCapValidator.h"
