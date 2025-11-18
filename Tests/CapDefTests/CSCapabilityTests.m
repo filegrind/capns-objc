@@ -6,6 +6,7 @@
 #import <XCTest/XCTest.h>
 #import "CSCapability.h"
 #import "CSCapabilityKey.h"
+#import "CSCapabilityManifest.h"
 
 @interface CSCapabilityTests : XCTestCase
 
@@ -319,6 +320,261 @@
     XCTAssertNotNil(capability.output);
     XCTAssertEqual(capability.output.type, CSOutputTypeObject);
     XCTAssertEqualObjects(capability.output.contentType, @"application/json");
+}
+
+// MARK: - Capability Manifest Tests
+
+- (void)testCapabilityManifestCreation {
+    NSError *error;
+    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=extract;target=metadata;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapability *capability = [CSCapability capabilityWithId:key 
+                                                      version:@"1.0.0" 
+                                                  description:nil 
+                                                     metadata:@{} 
+                                                      command:@"extract-metadata" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
+    
+    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithName:@"TestComponent"
+                                                                     version:@"0.1.0"
+                                                                 description:@"A test component for validation"
+                                                                capabilities:@[capability]];
+    
+    XCTAssertEqualObjects(manifest.name, @"TestComponent");
+    XCTAssertEqualObjects(manifest.version, @"0.1.0");
+    XCTAssertEqualObjects(manifest.manifestDescription, @"A test component for validation");
+    XCTAssertEqual(manifest.capabilities.count, 1);
+    XCTAssertNil(manifest.author);
+}
+
+- (void)testCapabilityManifestWithAuthor {
+    NSError *error;
+    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=extract;target=metadata;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapability *capability = [CSCapability capabilityWithId:key 
+                                                      version:@"1.0.0" 
+                                                  description:nil 
+                                                     metadata:@{} 
+                                                      command:@"extract-metadata" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
+    
+    CSCapabilityManifest *manifest = [[CSCapabilityManifest manifestWithName:@"TestComponent"
+                                                                      version:@"0.1.0"
+                                                                  description:@"A test component for validation"
+                                                                 capabilities:@[capability]]
+                                      withAuthor:@"Test Author"];
+    
+    XCTAssertEqualObjects(manifest.author, @"Test Author");
+}
+
+- (void)testCapabilityManifestDictionaryDeserialization {
+    NSDictionary *manifestDict = @{
+        @"name": @"TestComponent",
+        @"version": @"0.1.0",
+        @"description": @"A test component for validation",
+        @"author": @"Test Author",
+        @"capabilities": @[
+            @{
+                @"id": @"action=extract;target=metadata;type=document",
+                @"version": @"1.0.0",
+                @"command": @"extract-metadata",
+                @"accepts_stdin": @YES,
+                @"arguments": @{
+                    @"required": @[],
+                    @"optional": @[]
+                }
+            }
+        ]
+    };
+    
+    NSError *error;
+    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithDictionary:manifestDict error:&error];
+    
+    XCTAssertNil(error, @"Manifest dictionary deserialization should not fail: %@", error.localizedDescription);
+    XCTAssertNotNil(manifest, @"Manifest should be created from dictionary");
+    XCTAssertEqualObjects(manifest.name, @"TestComponent");
+    XCTAssertEqualObjects(manifest.version, @"0.1.0");
+    XCTAssertEqualObjects(manifest.manifestDescription, @"A test component for validation");
+    XCTAssertEqualObjects(manifest.author, @"Test Author");
+    XCTAssertEqual(manifest.capabilities.count, 1);
+    
+    CSCapability *capability = manifest.capabilities.firstObject;
+    XCTAssertEqualObjects([capability idString], @"action=extract;target=metadata;type=document");
+    XCTAssertTrue(capability.acceptsStdin);
+}
+
+- (void)testCapabilityManifestRequiredFields {
+    // Test that deserialization fails when required fields are missing
+    NSDictionary *invalidDict = @{@"name": @"TestComponent"};
+    
+    NSError *error;
+    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithDictionary:invalidDict error:&error];
+    
+    XCTAssertNil(manifest, @"Manifest creation should fail with missing required fields");
+    XCTAssertNotNil(error, @"Error should be set when required fields are missing");
+    XCTAssertEqualObjects(error.domain, @"CSCapabilityManifestError");
+    XCTAssertEqual(error.code, 1007);
+}
+
+- (void)testCapabilityManifestWithMultipleCapabilities {
+    NSError *error;
+    CSCapabilityKey *key1 = [CSCapabilityKey fromString:@"action=extract;target=metadata;type=document" error:&error];
+    XCTAssertNotNil(key1, @"Failed to create capability key: %@", error);
+    
+    CSCapabilityKey *key2 = [CSCapabilityKey fromString:@"action=extract;target=outline;type=document" error:&error];
+    XCTAssertNotNil(key2, @"Failed to create capability key: %@", error);
+    
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    
+    CSCapability *capability1 = [CSCapability capabilityWithId:key1 
+                                                       version:@"1.0.0" 
+                                                   description:nil 
+                                                      metadata:@{} 
+                                                       command:@"extract-metadata" 
+                                                     arguments:arguments 
+                                                        output:nil 
+                                                  acceptsStdin:NO];
+    
+    CSCapability *capability2 = [CSCapability capabilityWithId:key2 
+                                                       version:@"1.0.0" 
+                                                   description:nil 
+                                                      metadata:@{@"supports_toc": @"true"} 
+                                                       command:@"extract-outline" 
+                                                     arguments:arguments 
+                                                        output:nil 
+                                                  acceptsStdin:NO];
+    
+    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithName:@"MultiCapComponent"
+                                                                     version:@"1.0.0"
+                                                                 description:@"Component with multiple capabilities"
+                                                                capabilities:@[capability1, capability2]];
+    
+    XCTAssertEqual(manifest.capabilities.count, 2);
+    XCTAssertEqualObjects([manifest.capabilities[0] idString], @"action=extract;target=metadata;type=document");
+    XCTAssertEqualObjects([manifest.capabilities[1] idString], @"action=extract;target=outline;type=document");
+    XCTAssertEqualObjects(capability2.metadata[@"supports_toc"], @"true");
+}
+
+- (void)testCapabilityManifestEmptyCapabilities {
+    CSCapabilityManifest *manifest = [CSCapabilityManifest manifestWithName:@"EmptyComponent"
+                                                                     version:@"1.0.0"
+                                                                 description:@"Component with no capabilities"
+                                                                capabilities:@[]];
+    
+    XCTAssertEqual(manifest.capabilities.count, 0);
+    
+    // Test dictionary serialization preserves empty array
+    NSDictionary *manifestDict = @{
+        @"name": @"EmptyComponent",
+        @"version": @"1.0.0", 
+        @"description": @"Component with no capabilities",
+        @"capabilities": @[]
+    };
+    
+    NSError *error;
+    CSCapabilityManifest *deserializedManifest = [CSCapabilityManifest manifestWithDictionary:manifestDict error:&error];
+    
+    XCTAssertNil(error, @"Empty capabilities manifest should deserialize successfully");
+    XCTAssertNotNil(deserializedManifest);
+    XCTAssertEqual(deserializedManifest.capabilities.count, 0);
+}
+
+- (void)testCapabilityManifestOptionalAuthorField {
+    NSError *error;
+    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=validate;type=file" error:&error];
+    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapability *capability = [CSCapability capabilityWithId:key 
+                                                      version:@"1.0.0" 
+                                                  description:nil 
+                                                     metadata:@{} 
+                                                      command:@"validate" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
+    
+    CSCapabilityManifest *manifestWithoutAuthor = [CSCapabilityManifest manifestWithName:@"ValidatorComponent"
+                                                                                  version:@"1.0.0"
+                                                                              description:@"File validation component"
+                                                                             capabilities:@[capability]];
+    
+    // Manifest without author should not include author field in dictionary representation
+    NSDictionary *manifestDict = @{
+        @"name": @"ValidatorComponent",
+        @"version": @"1.0.0",
+        @"description": @"File validation component", 
+        @"capabilities": @[
+            @{
+                @"id": @"action=validate;type=file",
+                @"version": @"1.0.0",
+                @"command": @"validate",
+                @"arguments": @{
+                    @"required": @[],
+                    @"optional": @[]
+                }
+            }
+        ]
+    };
+    
+    CSCapabilityManifest *deserializedManifest = [CSCapabilityManifest manifestWithDictionary:manifestDict error:&error];
+    
+    XCTAssertNil(error, @"Manifest without author should deserialize successfully");
+    XCTAssertNotNil(deserializedManifest);
+    XCTAssertNil(deserializedManifest.author, @"Author should be nil when not provided");
+}
+
+- (void)testCapabilityManifestCompatibility {
+    // Test that manifest format is compatible between different component types
+    NSError *error;
+    CSCapabilityKey *key = [CSCapabilityKey fromString:@"action=process;type=document" error:&error];
+    XCTAssertNotNil(key, @"Failed to create capability key: %@", error);
+    
+    CSCapabilityArguments *arguments = [CSCapabilityArguments arguments];
+    CSCapability *capability = [CSCapability capabilityWithId:key 
+                                                      version:@"1.0.0" 
+                                                  description:nil 
+                                                     metadata:@{} 
+                                                      command:@"process" 
+                                                    arguments:arguments 
+                                                       output:nil 
+                                                 acceptsStdin:NO];
+    
+    // Create manifest similar to what a plugin would have
+    CSCapabilityManifest *pluginStyleManifest = [CSCapabilityManifest manifestWithName:@"PluginComponent"
+                                                                                version:@"0.1.0"
+                                                                            description:@"Plugin-style component"
+                                                                           capabilities:@[capability]];
+    
+    // Create manifest similar to what a provider would have
+    CSCapabilityManifest *providerStyleManifest = [CSCapabilityManifest manifestWithName:@"ProviderComponent"
+                                                                                  version:@"0.1.0"
+                                                                              description:@"Provider-style component"
+                                                                             capabilities:@[capability]];
+    
+    // Both should have the same structure
+    XCTAssertNotNil(pluginStyleManifest.name);
+    XCTAssertNotNil(pluginStyleManifest.version);
+    XCTAssertNotNil(pluginStyleManifest.manifestDescription);
+    XCTAssertNotNil(pluginStyleManifest.capabilities);
+    
+    XCTAssertNotNil(providerStyleManifest.name);
+    XCTAssertNotNil(providerStyleManifest.version);
+    XCTAssertNotNil(providerStyleManifest.manifestDescription);
+    XCTAssertNotNil(providerStyleManifest.capabilities);
+    
+    // Same capability structure
+    XCTAssertEqual(pluginStyleManifest.capabilities.count, providerStyleManifest.capabilities.count);
+    XCTAssertEqualObjects([pluginStyleManifest.capabilities.firstObject idString], 
+                         [providerStyleManifest.capabilities.firstObject idString]);
 }
 
 @end
