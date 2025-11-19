@@ -446,7 +446,7 @@
     CSCap *cap2 = [CSCap capWithId:key2 
                                                        version:@"1.0.0" 
                                                    description:nil 
-                                                      metadata:@{@"supports_toc": @"true"} 
+                                                      metadata:@{@"supports_outline": @"true"} 
                                                        command:@"extract-outline" 
                                                      arguments:arguments 
                                                         output:nil 
@@ -460,7 +460,7 @@
     XCTAssertEqual(manifest.caps.count, 2);
     XCTAssertEqualObjects([manifest.caps[0] idString], @"action=extract;target=metadata;type=document");
     XCTAssertEqualObjects([manifest.caps[1] idString], @"action=extract;target=outline;type=document");
-    XCTAssertEqualObjects(cap2.metadata[@"supports_toc"], @"true");
+    XCTAssertEqualObjects(cap2.metadata[@"supports_outline"], @"true");
 }
 
 - (void)testCapManifestEmptyCaps {
