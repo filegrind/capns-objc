@@ -216,30 +216,6 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return YES;
 }
 
-- (nullable NSString *)capType {
-    return [self getTag:@"type"];
-}
-
-- (nullable NSString *)action {
-    return [self getTag:@"action"];
-}
-
-- (nullable NSString *)target {
-    return [self getTag:@"target"];
-}
-
-- (nullable NSString *)format {
-    return [self getTag:@"format"];
-}
-
-- (nullable NSString *)output {
-    return [self getTag:@"output"];
-}
-
-- (BOOL)isBinary {
-    return [self hasTag:@"output" withValue:@"binary"];
-}
-
 - (CSCapCard *)withWildcardTag:(NSString *)key {
     if (self.mutableTags[key]) {
         return [self withTag:key value:@"*"];
@@ -342,34 +318,6 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 - (CSCapCardBuilder *)tag:(NSString *)key value:(NSString *)value {
     self.tags[key] = value;
     return self;
-}
-
-- (CSCapCardBuilder *)type:(NSString *)value {
-    return [self tag:@"type" value:value];
-}
-
-- (CSCapCardBuilder *)action:(NSString *)value {
-    return [self tag:@"action" value:value];
-}
-
-- (CSCapCardBuilder *)target:(NSString *)value {
-    return [self tag:@"target" value:value];
-}
-
-- (CSCapCardBuilder *)format:(NSString *)value {
-    return [self tag:@"format" value:value];
-}
-
-- (CSCapCardBuilder *)output:(NSString *)value {
-    return [self tag:@"output" value:value];
-}
-
-- (CSCapCardBuilder *)binaryOutput {
-    return [self output:@"binary"];
-}
-
-- (CSCapCardBuilder *)jsonOutput {
-    return [self output:@"json"];
 }
 
 - (nullable CSCapCard *)build:(NSError **)error {

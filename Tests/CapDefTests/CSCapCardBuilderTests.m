@@ -27,7 +27,6 @@
 - (void)testBuilderFluentAPI {
     NSError *error;
     CSCapCardBuilder *builder = [CSCapCardBuilder builder];
-    [builder type:@"document"];
     [builder action:@"generate"];
     [builder target:@"thumbnail"];
     [builder format:@"pdf"];
@@ -37,12 +36,11 @@
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     
-    XCTAssertEqualObjects([cap capType], @"document");
     XCTAssertEqualObjects([cap action], @"generate");
     XCTAssertEqualObjects([cap target], @"thumbnail");
     XCTAssertEqualObjects([cap format], @"pdf");
     XCTAssertEqualObjects([cap output], @"binary");
-    XCTAssertTrue([cap isBinary]);
+    XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
 }
 
 - (void)testBuilderJSONOutput {
@@ -58,7 +56,7 @@
     XCTAssertNil(error);
     
     XCTAssertEqualObjects([cap output], @"json");
-    XCTAssertFalse([cap isBinary]);
+    XCTAssertEqualObjects([cap getTag:@"output"], @"json");
 }
 
 - (void)testBuilderCustomTags {
@@ -66,7 +64,6 @@
     CSCapCardBuilder *builder = [CSCapCardBuilder builder];
     [builder tag:@"engine" value:@"v2"];
     [builder tag:@"quality" value:@"high"];
-    [builder type:@"document"];
     [builder action:@"compress"];
     CSCapCard *cap = [builder build:&error];
     
@@ -75,15 +72,12 @@
     
     XCTAssertEqualObjects([cap getTag:@"engine"], @"v2");
     XCTAssertEqualObjects([cap getTag:@"quality"], @"high");
-    XCTAssertEqualObjects([cap capType], @"document");
     XCTAssertEqualObjects([cap action], @"compress");
 }
 
 - (void)testBuilderTagOverrides {
     NSError *error;
     CSCapCardBuilder *builder = [CSCapCardBuilder builder];
-    [builder type:@"document"];
-    [builder type:@"image"]; // Override previous type
     [builder action:@"convert"];
     [builder format:@"jpg"];
     CSCapCard *cap = [builder build:&error];
@@ -91,7 +85,6 @@
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     
-    XCTAssertEqualObjects([cap capType], @"image"); // Should be the last set value
     XCTAssertEqualObjects([cap action], @"convert");
     XCTAssertEqualObjects([cap format], @"jpg");
 }
@@ -146,7 +139,7 @@
     XCTAssertEqualObjects([cap getTag:@"codec"], @"h264");
     XCTAssertEqualObjects([cap getTag:@"quality"], @"1080p");
     XCTAssertEqualObjects([cap getTag:@"framerate"], @"30fps");
-    XCTAssertTrue([cap isBinary]);
+    XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
     
     XCTAssertEqual([cap specificity], 8); // All 8 tags are non-wildcard
 }
@@ -154,7 +147,6 @@
 - (void)testBuilderWildcards {
     NSError *error;
     CSCapCardBuilder *builder = [CSCapCardBuilder builder];
-    [builder type:@"document"];
     [builder action:@"convert"];
     [builder tag:@"format" value:@"*"]; // Wildcard format
     [builder tag:@"quality" value:@"*"]; // Wildcard quality
@@ -163,7 +155,7 @@
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     
-    XCTAssertEqualObjects([cap toString], @"action=convert;format=*;quality=*;type=document");
+    XCTAssertEqualObjects([cap toString], @"action=convert;format=*;quality=*;");
     XCTAssertEqual([cap specificity], 2); // Only type and action are specific
     
     XCTAssertEqualObjects([cap getTag:@"format"], @"*");
@@ -184,7 +176,6 @@
     
     // Create a specific cap
     CSCapCardBuilder *builder1 = [CSCapCardBuilder builder];
-    [builder1 type:@"document"];
     [builder1 action:@"generate"];
     [builder1 target:@"thumbnail"];
     [builder1 format:@"pdf"];
@@ -192,13 +183,11 @@
     
     // Create a more general request
     CSCapCardBuilder *builder2 = [CSCapCardBuilder builder];
-    [builder2 type:@"document"];
     [builder2 action:@"generate"];
     CSCapCard *generalRequest = [builder2 build:&error];
     
     // Create a wildcard request
     CSCapCardBuilder *builder3 = [CSCapCardBuilder builder];
-    [builder3 type:@"document"];
     [builder3 action:@"generate"];
     [builder3 target:@"thumbnail"];
     [builder3 tag:@"format" value:@"*"];

@@ -58,7 +58,7 @@
 
 - (void)testCapAcceptsStdin {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;type=document" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     // Test with acceptsStdin = NO (default)
@@ -111,7 +111,7 @@
 
 - (void)testCapStdinSerialization {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;type=document" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     // Test copying preserves acceptsStdin
@@ -133,7 +133,7 @@
 - (void)testCanonicalDictionaryDeserialization {
     // Test CSCap.capWithDictionary
     NSDictionary *capDict = @{
-        @"id": @"action=extract;target=metadata;type=document",
+        @"id": @"action=extract;target=metadata;",
         @"version": @"1.0.0",
         @"command": @"extract-metadata",
         @"description": @"Extract metadata from documents",
@@ -146,7 +146,7 @@
     
     XCTAssertNil(error, @"Dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(cap, @"Cap should be created from dictionary");
-    XCTAssertEqualObjects([cap idString], @"action=extract;target=metadata;type=document");
+    XCTAssertEqualObjects([cap idString], @"action=extract;target=metadata;");
     XCTAssertEqualObjects(cap.version, @"1.0.0");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
@@ -326,7 +326,7 @@
 
 - (void)testCapManifestCreation {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=extract;target=metadata;type=document" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=extract;target=metadata;" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -353,7 +353,7 @@
 
 - (void)testCapManifestWithAuthor {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=extract;target=metadata;type=document" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=extract;target=metadata;" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -383,7 +383,7 @@
         @"author": @"Test Author",
         @"caps": @[
             @{
-                @"id": @"action=extract;target=metadata;type=document",
+                @"id": @"action=extract;target=metadata;",
                 @"version": @"1.0.0",
                 @"command": @"extract-metadata",
                 @"accepts_stdin": @YES,
@@ -407,7 +407,7 @@
     XCTAssertEqual(manifest.caps.count, 1);
     
     CSCap *cap = manifest.caps.firstObject;
-    XCTAssertEqualObjects([cap idString], @"action=extract;target=metadata;type=document");
+    XCTAssertEqualObjects([cap idString], @"action=extract;target=metadata;");
     XCTAssertTrue(cap.acceptsStdin);
 }
 
@@ -426,10 +426,10 @@
 
 - (void)testCapManifestWithMultipleCaps {
     NSError *error;
-    CSCapCard *key1 = [CSCapCard fromString:@"action=extract;target=metadata;type=document" error:&error];
+    CSCapCard *key1 = [CSCapCard fromString:@"action=extract;target=metadata;" error:&error];
     XCTAssertNotNil(key1, @"Failed to create cap card: %@", error);
     
-    CSCapCard *key2 = [CSCapCard fromString:@"action=extract;target=outline;type=document" error:&error];
+    CSCapCard *key2 = [CSCapCard fromString:@"action=extract;target=outline;" error:&error];
     XCTAssertNotNil(key2, @"Failed to create cap card: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -458,8 +458,8 @@
                                                                 caps:@[cap1, cap2]];
     
     XCTAssertEqual(manifest.caps.count, 2);
-    XCTAssertEqualObjects([manifest.caps[0] idString], @"action=extract;target=metadata;type=document");
-    XCTAssertEqualObjects([manifest.caps[1] idString], @"action=extract;target=outline;type=document");
+    XCTAssertEqualObjects([manifest.caps[0] idString], @"action=extract;target=metadata;");
+    XCTAssertEqualObjects([manifest.caps[1] idString], @"action=extract;target=outline;");
     XCTAssertEqualObjects(cap2.metadata[@"supports_outline"], @"true");
 }
 
@@ -535,7 +535,7 @@
 - (void)testCapManifestCompatibility {
     // Test that manifest format is compatible between different component types
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=process;type=document" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=process;" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];

@@ -15,8 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
  * A cap identifier using flat, ordered tags
  *
  * Examples:
- * - action=generate;format=pdf;output=binary;target=thumbnail;type=document
- * - action=extract;target=metadata;type=document
+ * - action=generate;format=pdf;output=binary;target=thumbnail;
+ * - action=extract;target=metadata;
  * - action=analysis;format=en;type=inference
  */
 @interface CSCapCard : NSObject <NSCopying, NSCoding>
@@ -26,7 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Create a cap identifier from a string
- * @param string The cap identifier string (e.g., "action=generate;type=document")
+ * @param string The cap identifier string (e.g., "action=generate;")
  * @param error Error if the string format is invalid
  * @return A new CSCapCard instance or nil if invalid
  */
@@ -105,42 +105,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)isCompatibleWith:(CSCapCard * _Nonnull)other;
 
 /**
- * Get the type of this cap (convenience method)
- * @return The type tag value or nil if not set
- */
-- (nullable NSString *)capType;
-
-/**
- * Get the action of this cap (convenience method)
- * @return The action tag value or nil if not set
- */
-- (nullable NSString *)action;
-
-/**
- * Get the target of this cap (convenience method)
- * @return The target tag value or nil if not set
- */
-- (nullable NSString *)target;
-
-/**
- * Get the format of this cap (convenience method)
- * @return The format tag value or nil if not set
- */
-- (nullable NSString *)format;
-
-/**
- * Get the output type of this cap (convenience method)
- * @return The output tag value or nil if not set
- */
-- (nullable NSString *)output;
-
-/**
- * Check if this cap produces binary output
- * @return YES if the output tag is set to "binary"
- */
-- (BOOL)isBinary;
-
-/**
  * Create a new cap with a specific tag set to wildcard
  * @param key The tag key to set to wildcard
  * @return A new CSCapCard instance with the tag set to wildcard
@@ -198,53 +162,6 @@ typedef NS_ERROR_ENUM(CSCapCardErrorDomain, CSCapCardError) {
  * @return This builder instance for chaining
  */
 - (CSCapCardBuilder * _Nonnull)tag:(NSString * _Nonnull)key value:(NSString * _Nonnull)value;
-
-/**
- * Set the type tag
- * @param value The type value
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)type:(NSString * _Nonnull)value;
-
-/**
- * Set the action tag
- * @param value The action value
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)action:(NSString * _Nonnull)value;
-
-/**
- * Set the target tag
- * @param value The target value
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)target:(NSString * _Nonnull)value;
-
-/**
- * Set the format tag
- * @param value The format value
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)format:(NSString * _Nonnull)value;
-
-/**
- * Set the output tag
- * @param value The output value
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)output:(NSString * _Nonnull)value;
-
-/**
- * Set output to binary
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)binaryOutput;
-
-/**
- * Set output to JSON
- * @return This builder instance for chaining
- */
-- (CSCapCardBuilder * _Nonnull)jsonOutput;
 
 /**
  * Build the final CapCard
