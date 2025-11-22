@@ -20,18 +20,18 @@
     
     XCTAssertEqualObjects([capCard getTag:@"type"], @"data_processing");
     XCTAssertEqualObjects([capCard getTag:@"action"], @"transform");
-    XCTAssertEqualObjects([capCard getTag:@"format"], @"json");
+    XCTAssertEqualObjects([capCard getTag:@"ext"], @"json");
 }
 
 - (void)testCanonicalStringFormat {
     NSError *error;
-    CSCapCard *capCard = [CSCapCard fromString:@"action=generate;target=thumbnail;format=pdf" error:&error];
+    CSCapCard *capCard = [CSCapCard fromString:@"action=generate;target=thumbnail;ext=pdf" error:&error];
     
     XCTAssertNotNil(capCard);
     XCTAssertNil(error);
     
     // Should be sorted alphabetically
-    XCTAssertEqualObjects([capCard toString], @"action=generate;format=pdf;target=thumbnail;");
+    XCTAssertEqualObjects([capCard toString], @"action=generate;ext=pdf;target=thumbnail;");
 }
 
 - (void)testInvalidCapCard {
@@ -63,10 +63,10 @@
 
 - (void)testTagMatching {
     NSError *error;
-    CSCapCard *cap = [CSCapCard fromString:@"action=generate;format=pdf;target=thumbnail;" error:&error];
+    CSCapCard *cap = [CSCapCard fromString:@"action=generate;ext=pdf;target=thumbnail;" error:&error];
     
     // Exact match
-    CSCapCard *request1 = [CSCapCard fromString:@"action=generate;format=pdf;target=thumbnail;" error:&error];
+    CSCapCard *request1 = [CSCapCard fromString:@"action=generate;ext=pdf;target=thumbnail;" error:&error];
     XCTAssertTrue([cap matches:request1]);
     
     // Subset match
@@ -87,11 +87,11 @@
     CSCapCard *cap = [CSCapCard fromString:@"action=generate" error:&error];
     
     // Request with tag should match cap without tag (treated as wildcard)
-    CSCapCard *request1 = [CSCapCard fromString:@"format=pdf" error:&error];
+    CSCapCard *request1 = [CSCapCard fromString:@"ext=pdf" error:&error];
     XCTAssertTrue([cap matches:request1]); // cap missing format tag = wildcard, can handle any format
     
     // But cap with extra tags can match subset requests
-    CSCapCard *cap2 = [CSCapCard fromString:@"action=generate;format=pdf" error:&error];
+    CSCapCard *cap2 = [CSCapCard fromString:@"action=generate;ext=pdf" error:&error];
     CSCapCard *request2 = [CSCapCard fromString:@"action=generate" error:&error];
     XCTAssertTrue([cap2 matches:request2]);
 }
@@ -100,7 +100,7 @@
     NSError *error;
     CSCapCard *cap1 = [CSCapCard fromString:@"" error:&error];
     CSCapCard *cap2 = [CSCapCard fromString:@"action=generate" error:&error];
-    CSCapCard *cap3 = [CSCapCard fromString:@"action=*;format=pdf" error:&error];
+    CSCapCard *cap3 = [CSCapCard fromString:@"action=*;ext=pdf" error:&error];
     
     XCTAssertEqual([cap1 specificity], 1);
     XCTAssertEqual([cap2 specificity], 2);
@@ -111,7 +111,7 @@
 
 - (void)testCompatibility {
     NSError *error;
-    CSCapCard *cap1 = [CSCapCard fromString:@"action=generate;format=pdf" error:&error];
+    CSCapCard *cap1 = [CSCapCard fromString:@"action=generate;ext=pdf" error:&error];
     CSCapCard *cap2 = [CSCapCard fromString:@"action=generate;format=*" error:&error];
     CSCapCard *cap3 = [CSCapCard fromString:@"type=image;action=generate" error:&error];
     
@@ -127,7 +127,7 @@
 
 - (void)testConvenienceMethods {
     NSError *error;
-    CSCapCard *cap = [CSCapCard fromString:@"action=generate;format=pdf;output=binary;target=thumbnail;" error:&error];
+    CSCapCard *cap = [CSCapCard fromString:@"action=generate;ext=pdf;output=binary;target=thumbnail;" error:&error];
     
     XCTAssertEqualObjects([cap action], @"generate");
     XCTAssertEqualObjects([cap target], @"thumbnail");
@@ -156,9 +156,9 @@
 - (void)testWithTag {
     NSError *error;
     CSCapCard *original = [CSCapCard fromString:@"action=generate" error:&error];
-    CSCapCard *modified = [original withTag:@"format" value:@"pdf"];
+    CSCapCard *modified = [original withTag:@"ext" value:@"pdf"];
     
-    XCTAssertEqualObjects([modified toString], @"action=generate;format=pdf;");
+    XCTAssertEqualObjects([modified toString], @"action=generate;ext=pdf;");
     
     // Original should be unchanged
     XCTAssertEqualObjects([original toString], @"action=generate;");
@@ -166,19 +166,19 @@
 
 - (void)testWithoutTag {
     NSError *error;
-    CSCapCard *original = [CSCapCard fromString:@"action=generate;format=pdf;" error:&error];
-    CSCapCard *modified = [original withoutTag:@"format"];
+    CSCapCard *original = [CSCapCard fromString:@"action=generate;ext=pdf;" error:&error];
+    CSCapCard *modified = [original withoutTag:@"ext"];
     
     XCTAssertEqualObjects([modified toString], @"action=generate;");
     
     // Original should be unchanged
-    XCTAssertEqualObjects([original toString], @"action=generate;format=pdf;");
+    XCTAssertEqualObjects([original toString], @"action=generate;ext=pdf;");
 }
 
 - (void)testWildcardTag {
     NSError *error;
-    CSCapCard *cap = [CSCapCard fromString:@"format=pdf" error:&error];
-    CSCapCard *wildcarded = [cap withWildcardTag:@"format"];
+    CSCapCard *cap = [CSCapCard fromString:@"ext=pdf" error:&error];
+    CSCapCard *wildcarded = [cap withWildcardTag:@"ext"];
     
     XCTAssertEqualObjects([wildcarded toString], @"format=*;");
     
@@ -192,19 +192,19 @@
 
 - (void)testSubset {
     NSError *error;
-    CSCapCard *cap = [CSCapCard fromString:@"action=generate;format=pdf;output=binary;target=thumbnail;" error:&error];
-    CSCapCard *subset = [cap subset:@[@"type", @"format"]];
+    CSCapCard *cap = [CSCapCard fromString:@"action=generate;ext=pdf;output=binary;target=thumbnail;" error:&error];
+    CSCapCard *subset = [cap subset:@[@"type", @"ext"]];
     
-    XCTAssertEqualObjects([subset toString], @"format=pdf;");
+    XCTAssertEqualObjects([subset toString], @"ext=pdf;");
 }
 
 - (void)testMerge {
     NSError *error;
     CSCapCard *cap1 = [CSCapCard fromString:@"action=generate" error:&error];
-    CSCapCard *cap2 = [CSCapCard fromString:@"format=pdf;output=binary" error:&error];
+    CSCapCard *cap2 = [CSCapCard fromString:@"ext=pdf;output=binary" error:&error];
     CSCapCard *merged = [cap1 merge:cap2];
     
-    XCTAssertEqualObjects([merged toString], @"action=generate;format=pdf;output=binary;");
+    XCTAssertEqualObjects([merged toString], @"action=generate;ext=pdf;output=binary;");
 }
 
 - (void)testEquality {

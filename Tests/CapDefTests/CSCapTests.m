@@ -137,7 +137,7 @@
         @"version": @"1.0.0",
         @"command": @"extract-metadata",
         @"description": @"Extract metadata from documents",
-        @"metadata": @{@"format": @"json"},
+        @"metadata": @{@"ext": @"json"},
         @"accepts_stdin": @YES
     };
     
@@ -184,7 +184,7 @@
                 @"name": @"output_format",
                 @"type": @"string",
                 @"description": @"Output format",
-                @"cli_flag": @"format",
+                @"cli_flag": @"ext",
                 @"default_value": @"json"
             }
         ]
@@ -272,7 +272,7 @@
                     @"name": @"output_format",
                     @"type": @"string", 
                     @"description": @"Output format",
-                    @"cli_flag": @"format",
+                    @"cli_flag": @"ext",
                     @"default_value": @"json",
                     @"validation": @{
                         @"allowed_values": @[@"json", @"yaml", @"xml"]

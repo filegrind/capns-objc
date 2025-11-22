@@ -148,7 +148,7 @@
     NSError *error;
     CSCapCardBuilder *builder = [CSCapCardBuilder builder];
     [builder action:@"convert"];
-    [builder tag:@"format" value:@"*"]; // Wildcard format
+    [builder tag:@"ext" value:@"*"]; // Wildcard format
     [builder tag:@"quality" value:@"*"]; // Wildcard quality
     CSCapCard *cap = [builder build:&error];
     
@@ -158,7 +158,7 @@
     XCTAssertEqualObjects([cap toString], @"action=convert;format=*;quality=*;");
     XCTAssertEqual([cap specificity], 2); // Only type and action are specific
     
-    XCTAssertEqualObjects([cap getTag:@"format"], @"*");
+    XCTAssertEqualObjects([cap getTag:@"ext"], @"*");
     XCTAssertEqualObjects([cap getTag:@"quality"], @"*");
 }
 
@@ -190,7 +190,7 @@
     CSCapCardBuilder *builder3 = [CSCapCardBuilder builder];
     [builder3 action:@"generate"];
     [builder3 target:@"thumbnail"];
-    [builder3 tag:@"format" value:@"*"];
+    [builder3 tag:@"ext" value:@"*"];
     CSCapCard *wildcardRequest = [builder3 build:&error];
     
     XCTAssertNotNil(specificCap);
