@@ -58,7 +58,7 @@
 
 - (void)testCapAcceptsStdin {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     // Test with acceptsStdin = NO (default)
@@ -111,7 +111,7 @@
 
 - (void)testCapStdinSerialization {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings;" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=generate;target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     // Test copying preserves acceptsStdin
@@ -535,7 +535,7 @@
 - (void)testCapManifestCompatibility {
     // Test that manifest format is compatible between different component types
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"action=process;" error:&error];
+    CSCapCard *key = [CSCapCard fromString:@"action=process" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
