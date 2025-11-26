@@ -17,7 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Examples:
  * - action=generate;ext=pdf;output=binary;target=thumbnail;
  * - action=extract;target=metadata;
- * - action=analysis;format=en;type=inference
+ * - action=analysis;format=en;type=constrained
  */
 @interface CSCapCard : NSObject <NSCopying, NSCoding>
 
