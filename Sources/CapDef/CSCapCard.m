@@ -27,9 +27,36 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
         return nil;
     }
     
+    // Ensure "cap:" prefix is present
+    if (![string hasPrefix:@"cap:"]) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                         code:CSCapCardErrorMissingCapPrefix
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier must start with 'cap:'"}];
+        }
+        return nil;
+    }
+    
+    // Remove the "cap:" prefix
+    NSString *tagsPart = [string substringFromIndex:4];
+    if (tagsPart.length == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapCardErrorDomain
+                                         code:CSCapCardErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
+        }
+        return nil;
+    }
+    
     NSMutableDictionary<NSString *, NSString *> *tags = [NSMutableDictionary dictionary];
     
-    NSArray<NSString *> *tagStrings = [string componentsSeparatedByString:@";"];
+    // Remove trailing semicolon if present
+    NSString *normalizedTagsPart = tagsPart;
+    if ([tagsPart hasSuffix:@";"]) {
+        normalizedTagsPart = [tagsPart substringToIndex:tagsPart.length - 1];
+    }
+    
+    NSArray<NSString *> *tagStrings = [normalizedTagsPart componentsSeparatedByString:@";"];
     for (NSString *tagString in tagStrings) {
         NSString *trimmedTag = [tagString stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
         if (trimmedTag.length == 0) {
@@ -255,7 +282,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
         [parts addObject:[NSString stringWithFormat:@"%@=%@", key, self.mutableTags[key]]];
     }
     
-    return [parts componentsJoinedByString:@";"];
+    NSString *tagsString = [parts componentsJoinedByString:@";"];
+    return [NSString stringWithFormat:@"cap:%@", tagsString];
 }
 
 - (NSString *)description {

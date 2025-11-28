@@ -15,9 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
  * A cap identifier using flat, ordered tags
  *
  * Examples:
- * - action=generate;ext=pdf;output=binary;target=thumbnail;
- * - action=extract;target=metadata;
- * - action=analysis;format=en;type=constrained
+ * - cap:action=generate;ext=pdf;output=binary;target=thumbnail
+ * - cap:action=extract;target=metadata
+ * - cap:action=analysis;format=en;type=constrained
  */
 @interface CSCapCard : NSObject <NSCopying, NSCoding>
 
@@ -26,7 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Create a cap identifier from a string
- * @param string The cap identifier string (e.g., "action=generate;")
+ * @param string The cap identifier string (e.g., "cap:action=generate")
  * @param error Error if the string format is invalid
  * @return A new CSCapCard instance or nil if invalid
  */
@@ -141,7 +141,8 @@ typedef NS_ERROR_ENUM(CSCapCardErrorDomain, CSCapCardError) {
     CSCapCardErrorInvalidFormat = 1,
     CSCapCardErrorEmptyTag = 2,
     CSCapCardErrorInvalidCharacter = 3,
-    CSCapCardErrorInvalidTagFormat = 4
+    CSCapCardErrorInvalidTagFormat = 4,
+    CSCapCardErrorMissingCapPrefix = 5
 };
 
 /**
