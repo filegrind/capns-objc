@@ -4,7 +4,7 @@
 //
 
 #import <XCTest/XCTest.h>
-#import "CapDef.h"
+#import "CapNs.h"
 
 @interface CSCapCardTests : XCTestCase
 @end

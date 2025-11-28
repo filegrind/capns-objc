@@ -1,6 +1,6 @@
 //
 //  CSCapTests.m
-//  CapDefTests
+//  CapNsTests
 //
 
 #import <XCTest/XCTest.h>

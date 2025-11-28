@@ -2,25 +2,25 @@
 import PackageDescription
 
 let package = Package(
-    name: "capdef-objc",
+    name: "capns-objc",
     platforms: [
         .macOS(.v10_15),
         .iOS(.v13)
     ],
     products: [
         .library(
-            name: "CapDef",
-            targets: ["CapDef"]),
+            name: "CapNs",
+            targets: ["CapNs"]),
     ],
     targets: [
         .target(
-            name: "CapDef",
+            name: "CapNs",
             dependencies: [],
-            path: "Sources/CapDef",
+            path: "Sources/CapNs",
             publicHeadersPath: "include"
         ),
         .testTarget(
-            name: "CapDefTests",
-            dependencies: ["CapDef"]),
+            name: "CapNsTests",
+            dependencies: ["CapNs"]),
     ]
 )

@@ -1,5 +1,5 @@
 //
-//  CapDef.h
+//  CapNs.h
 //  Cap SDK - Core cap identifier and definition system
 //
 //  This library provides the fundamental cap identifier system used across
@@ -9,11 +9,11 @@
 
 #import <Foundation/Foundation.h>
 
-//! Project version number for CapDef.
-FOUNDATION_EXPORT double CapDefVersionNumber;
+//! Project version number for CapNs.
+FOUNDATION_EXPORT double CapNsVersionNumber;
 
-//! Project version string for CapDef.
-FOUNDATION_EXPORT const unsigned char CapDefVersionString[];
+//! Project version string for CapNs.
+FOUNDATION_EXPORT const unsigned char CapNsVersionString[];
 
 #import "CSCapCard.h"
 #import "CSCap.h"

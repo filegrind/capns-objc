@@ -1,6 +1,6 @@
 //
 //  CSCapManifest.h
-//  CapDef
+//  CapNs
 //
 //  Unified cap-based manifest for components (providers and plugins)
 //
