@@ -9,11 +9,11 @@
 
 + (instancetype)capWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     // Required fields
-    NSString *idString = dictionary[@"id"];
+    NSString *urnString = dictionary[@"id"];
     NSString *version = dictionary[@"version"];
     NSString *command = dictionary[@"command"];
     
-    if (!idString || !version || !command) {
+    if (!urnString || !version || !command) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapError"
                                          code:1001
@@ -24,7 +24,7 @@
     
     // Parse cap URN
     NSError *keyError;
-    CSCapUrn *capUrn = [CSCapUrn fromString:idString error:&keyError];
+    CSCapUrn *capUrn = [CSCapUrn fromString:urnString error:&keyError];
     if (!capUrn) {
         if (error) {
             *error = keyError;
@@ -97,7 +97,7 @@
     return self.metadata[key] != nil;
 }
 
-- (NSString *)idString {
+- (NSString *)urnString {
     return [self.capUrn toString];
 }
 

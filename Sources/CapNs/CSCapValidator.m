@@ -213,7 +213,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 + (BOOL)validateArguments:(NSArray *)arguments 
                cap:(CSCap *)cap 
                     error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     CSCapArguments *args = [cap getArguments];
     
     // Check if too many arguments provided
@@ -286,7 +286,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                        value:(id)value 
                   cap:(CSCap *)cap 
                        error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     NSString *actualType = [self getJsonTypeName:value];
     
     BOOL typeMatches = NO;
@@ -337,7 +337,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                         value:(id)value 
                    cap:(CSCap *)cap 
                         error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     CSArgumentValidation *validation = argDef.validation;
     
     if (!validation) {
@@ -492,7 +492,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 + (BOOL)validateOutput:(id)output 
             cap:(CSCap *)cap 
                  error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     
     CSCapOutput *outputDef = [cap getOutput];
     if (!outputDef) {
@@ -520,7 +520,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                      value:(id)value 
                 cap:(CSCap *)cap 
                      error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     NSString *actualType = [CSInputValidator getJsonTypeName:value];
     
     BOOL typeMatches = NO;
@@ -570,7 +570,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                       value:(id)value 
                  cap:(CSCap *)cap 
                       error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     CSArgumentValidation *validation = outputDef.validation;
     
     if (!validation) {
@@ -674,7 +674,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
 + (BOOL)validateCap:(CSCap *)cap 
                      error:(NSError **)error {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     CSCapArguments *args = [cap getArguments];
     
     // Validate that required arguments don't have default values
@@ -737,7 +737,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 }
 
 - (void)registerCap:(CSCap *)cap {
-    NSString *capUrn = [cap idString];
+    NSString *capUrn = [cap urnString];
     _caps[capUrn] = cap;
 }
 

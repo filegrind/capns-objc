@@ -3,7 +3,7 @@
 //  Formal cap definition
 //
 //  This defines the structure for formal cap definitions that include
-//  the cap identifier, versioning, and metadata. Caps are general-purpose
+//  the cap URN, versioning, and metadata. Caps are general-purpose
 //  and do not assume any specific domain like files or documents.
 //
 
@@ -132,7 +132,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  */
 @interface CSCap : NSObject <NSCopying, NSCoding>
 
-/// Formal cap identifier with hierarchical naming
+/// Formal cap URN with hierarchical naming
 @property (nonatomic, readonly) CSCapUrn *capUrn;
 
 /// Cap version
@@ -159,7 +159,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Create a fully specified cap
- * @param capUrn The cap identifier
+ * @param capUrn The cap URN
  * @param version The cap version
  * @param description The cap description
  * @param metadata The cap metadata
@@ -195,7 +195,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Check if this cap can handle a request
- * @param request The request cap identifier
+ * @param request The request cap URN
  * @return YES if this cap can handle the request
  */
 - (BOOL)canHandleRequest:(CSCapUrn * _Nonnull)request;
@@ -222,10 +222,10 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 - (BOOL)hasMetadataForKey:(NSString * _Nonnull)key;
 
 /**
- * Get the cap identifier as a string
- * @return The cap identifier string
+ * Get the cap URN as a string
+ * @return The cap URN string
  */
-- (NSString *)idString;
+- (NSString *)urnString;
 
 /**
  * Get the command if defined

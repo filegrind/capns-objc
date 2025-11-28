@@ -2,7 +2,7 @@
 //  CSCapUrn.h
 //  Flat Tag-Based Cap Identifier System
 //
-//  This provides a flat, tag-based cap identifier system that replaces
+//  This provides a flat, tag-based cap URN system that replaces
 //  hierarchical naming with key-value tags to handle cross-cutting concerns and
 //  multi-dimensional cap classification.
 //
@@ -12,7 +12,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * A cap identifier using flat, ordered tags
+ * A cap URN using flat, ordered tags
  *
  * Examples:
  * - cap:action=generate;ext=pdf;output=binary;target=thumbnail
@@ -25,15 +25,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *tags;
 
 /**
- * Create a cap identifier from a string
- * @param string The cap identifier string (e.g., "cap:action=generate")
+ * Create a cap URN from a string
+ * @param string The cap URN string (e.g., "cap:action=generate")
  * @param error Error if the string format is invalid
  * @return A new CSCapUrn instance or nil if invalid
  */
 + (nullable instancetype)fromString:(NSString * _Nonnull)string error:(NSError * _Nullable * _Nullable)error;
 
 /**
- * Create a cap identifier from tags
+ * Create a cap URN from tags
  * @param tags Dictionary of tag key-value pairs
  * @param error Error if tags are invalid
  * @return A new CSCapUrn instance or nil if invalid
@@ -127,16 +127,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Get the canonical string representation of this cap
- * @return The cap identifier as a string
+ * @return The cap URN as a string
  */
 - (NSString *)toString;
 
 @end
 
-/// Error domain for cap identifier errors
+/// Error domain for cap URN errors
 FOUNDATION_EXPORT NSErrorDomain const CSCapUrnErrorDomain;
 
-/// Error codes for cap identifier operations
+/// Error codes for cap URN operations
 typedef NS_ERROR_ENUM(CSCapUrnErrorDomain, CSCapUrnError) {
     CSCapUrnErrorInvalidFormat = 1,
     CSCapUrnErrorEmptyTag = 2,

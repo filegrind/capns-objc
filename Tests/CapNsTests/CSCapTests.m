@@ -30,7 +30,7 @@
                                                  acceptsStdin:NO];
     
     XCTAssertNotNil(cap);
-    XCTAssertEqualObjects([cap idString], @"cap:action=transform;format=json;type=data_processing");
+    XCTAssertEqualObjects([cap urnString], @"cap:action=transform;format=json;type=data_processing");
     XCTAssertEqualObjects(cap.version, @"1.0.0");
     XCTAssertEqualObjects(cap.command, @"test-command");
     XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
@@ -146,7 +146,7 @@
     
     XCTAssertNil(error, @"Dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(cap, @"Cap should be created from dictionary");
-    XCTAssertEqualObjects([cap idString], @"cap:action=extract;target=metadata");
+    XCTAssertEqualObjects([cap urnString], @"cap:action=extract;target=metadata");
     XCTAssertEqualObjects(cap.version, @"1.0.0");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
@@ -294,7 +294,7 @@
     XCTAssertNotNil(cap, @"Complete cap should be created");
     
     // Verify basic properties
-    XCTAssertEqualObjects([cap idString], @"cap:action=transform;format=json;type=data");
+    XCTAssertEqualObjects([cap urnString], @"cap:action=transform;format=json;type=data");
     XCTAssertEqualObjects(cap.version, @"2.0.0");
     XCTAssertEqualObjects(cap.command, @"transform-data");
     XCTAssertTrue(cap.acceptsStdin);
@@ -407,7 +407,7 @@
     XCTAssertEqual(manifest.caps.count, 1);
     
     CSCap *cap = manifest.caps.firstObject;
-    XCTAssertEqualObjects([cap idString], @"cap:action=extract;target=metadata");
+    XCTAssertEqualObjects([cap urnString], @"cap:action=extract;target=metadata");
     XCTAssertTrue(cap.acceptsStdin);
 }
 
@@ -458,8 +458,8 @@
                                                                 caps:@[cap1, cap2]];
     
     XCTAssertEqual(manifest.caps.count, 2);
-    XCTAssertEqualObjects([manifest.caps[0] idString], @"cap:action=extract;target=metadata");
-    XCTAssertEqualObjects([manifest.caps[1] idString], @"cap:action=extract;target=outline");
+    XCTAssertEqualObjects([manifest.caps[0] urnString], @"cap:action=extract;target=metadata");
+    XCTAssertEqualObjects([manifest.caps[1] urnString], @"cap:action=extract;target=outline");
     XCTAssertEqualObjects(cap2.metadata[@"supports_outline"], @"true");
 }
 
@@ -573,8 +573,8 @@
     
     // Same cap structure
     XCTAssertEqual(pluginStyleManifest.caps.count, providerStyleManifest.caps.count);
-    XCTAssertEqualObjects([pluginStyleManifest.caps.firstObject idString], 
-                         [providerStyleManifest.caps.firstObject idString]);
+    XCTAssertEqualObjects([pluginStyleManifest.caps.firstObject urnString], 
+                         [providerStyleManifest.caps.firstObject urnString]);
 }
 
 @end
