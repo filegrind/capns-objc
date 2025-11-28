@@ -8,7 +8,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "CSCapCard.h"
+#import "CSCapUrn.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -133,7 +133,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @interface CSCap : NSObject <NSCopying, NSCoding>
 
 /// Formal cap identifier with hierarchical naming
-@property (nonatomic, readonly) CSCapCard *capCard;
+@property (nonatomic, readonly) CSCapUrn *capUrn;
 
 /// Cap version
 @property (nonatomic, readonly) NSString *version;
@@ -159,7 +159,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Create a fully specified cap
- * @param capCard The cap identifier
+ * @param capUrn The cap identifier
  * @param version The cap version
  * @param description The cap description
  * @param metadata The cap metadata
@@ -169,7 +169,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param acceptsStdin Whether this cap accepts stdin input
  * @return A new CSCap instance
  */
-+ (instancetype)capWithId:(CSCapCard * _Nonnull)capCard
++ (instancetype)capWithId:(CSCapUrn * _Nonnull)capUrn
                          version:(NSString * _Nonnull)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
@@ -198,7 +198,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param request The request cap identifier
  * @return YES if this cap can handle the request
  */
-- (BOOL)canHandleRequest:(CSCapCard * _Nonnull)request;
+- (BOOL)canHandleRequest:(CSCapUrn * _Nonnull)request;
 
 /**
  * Check if this cap is more specific than another

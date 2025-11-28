@@ -12,7 +12,7 @@
 NSErrorDomain const CSValidationErrorDomain = @"CSValidationErrorDomain";
 
 // Error user info keys
-NSString * const CSValidationErrorCapCardKey = @"CSValidationErrorCapCardKey";
+NSString * const CSValidationErrorCapUrnKey = @"CSValidationErrorCapUrnKey";
 NSString * const CSValidationErrorArgumentNameKey = @"CSValidationErrorArgumentNameKey";
 NSString * const CSValidationErrorValidationRuleKey = @"CSValidationErrorValidationRuleKey";
 NSString * const CSValidationErrorActualValueKey = @"CSValidationErrorActualValueKey";
@@ -22,7 +22,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 @implementation CSValidationError
 
 @synthesize validationType = _validationType;
-@synthesize capCard = _capCard;
+@synthesize capUrn = _capUrn;
 @synthesize argumentName = _argumentName;
 @synthesize validationRule = _validationRule;
 @synthesize actualValue = _actualValue;
@@ -30,13 +30,13 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 @synthesize expectedType = _expectedType;
 
 - (instancetype)initWithType:(CSValidationErrorType)type 
-                capCard:(NSString *)capCard 
+                capUrn:(NSString *)capUrn 
                  description:(NSString *)description 
                     userInfo:(NSDictionary *)userInfo {
     self = [super initWithDomain:CSValidationErrorDomain code:type userInfo:userInfo];
     if (self) {
         _validationType = type;
-        _capCard = [capCard copy];
+        _capUrn = [capUrn copy];
         _argumentName = [userInfo[CSValidationErrorArgumentNameKey] copy];
         _validationRule = [userInfo[CSValidationErrorValidationRuleKey] copy];
         _actualValue = userInfo[CSValidationErrorActualValueKey];
@@ -72,18 +72,18 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     }
 }
 
-+ (instancetype)unknownCapError:(NSString *)capCard {
-    NSString *description = [NSString stringWithFormat:@"Unknown cap '%@' - cap not registered or advertised", capCard];
++ (instancetype)unknownCapError:(NSString *)capUrn {
+    NSString *description = [NSString stringWithFormat:@"Unknown cap '%@' - cap not registered or advertised", capUrn];
     return [[self alloc] initWithType:CSValidationErrorTypeUnknownCap 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{NSLocalizedDescriptionKey: description}];
 }
 
-+ (instancetype)missingRequiredArgumentError:(NSString *)capCard argumentName:(NSString *)argumentName {
-    NSString *description = [NSString stringWithFormat:@"Cap '%@' requires argument '%@' but it was not provided", capCard, argumentName];
++ (instancetype)missingRequiredArgumentError:(NSString *)capUrn argumentName:(NSString *)argumentName {
+    NSString *description = [NSString stringWithFormat:@"Cap '%@' requires argument '%@' but it was not provided", capUrn, argumentName];
     return [[self alloc] initWithType:CSValidationErrorTypeMissingRequiredArgument 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{
                                  NSLocalizedDescriptionKey: description,
@@ -91,16 +91,16 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
-+ (instancetype)invalidArgumentTypeError:(NSString *)capCard 
++ (instancetype)invalidArgumentTypeError:(NSString *)capUrn 
                             argumentName:(NSString *)argumentName 
                             expectedType:(CSArgumentType)expectedType 
                               actualType:(NSString *)actualType 
                              actualValue:(id)actualValue {
     NSString *expectedTypeName = [self argumentTypeToString:expectedType];
     NSString *description = [NSString stringWithFormat:@"Cap '%@' argument '%@' expects type '%@' but received '%@' with value: %@", 
-                            capCard, argumentName, expectedTypeName, actualType, actualValue];
+                            capUrn, argumentName, expectedTypeName, actualType, actualValue];
     return [[self alloc] initWithType:CSValidationErrorTypeInvalidArgumentType 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{
                                  NSLocalizedDescriptionKey: description,
@@ -111,14 +111,14 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
-+ (instancetype)argumentValidationFailedError:(NSString *)capCard 
++ (instancetype)argumentValidationFailedError:(NSString *)capUrn 
                                  argumentName:(NSString *)argumentName 
                                validationRule:(NSString *)validationRule 
                                   actualValue:(id)actualValue {
     NSString *description = [NSString stringWithFormat:@"Cap '%@' argument '%@' failed validation rule '%@' with value: %@", 
-                            capCard, argumentName, validationRule, actualValue];
+                            capUrn, argumentName, validationRule, actualValue];
     return [[self alloc] initWithType:CSValidationErrorTypeArgumentValidationFailed 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{
                                  NSLocalizedDescriptionKey: description,
@@ -128,15 +128,15 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
-+ (instancetype)invalidOutputTypeError:(NSString *)capCard 
++ (instancetype)invalidOutputTypeError:(NSString *)capUrn 
                           expectedType:(CSOutputType)expectedType 
                             actualType:(NSString *)actualType 
                            actualValue:(id)actualValue {
     NSString *expectedTypeName = [self outputTypeToString:expectedType];
     NSString *description = [NSString stringWithFormat:@"Cap '%@' output expects type '%@' but received '%@' with value: %@", 
-                            capCard, expectedTypeName, actualType, actualValue];
+                            capUrn, expectedTypeName, actualType, actualValue];
     return [[self alloc] initWithType:CSValidationErrorTypeInvalidOutputType 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{
                                  NSLocalizedDescriptionKey: description,
@@ -146,13 +146,13 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
-+ (instancetype)outputValidationFailedError:(NSString *)capCard 
++ (instancetype)outputValidationFailedError:(NSString *)capUrn 
                              validationRule:(NSString *)validationRule 
                                 actualValue:(id)actualValue {
     NSString *description = [NSString stringWithFormat:@"Cap '%@' output failed validation rule '%@' with value: %@", 
-                            capCard, validationRule, actualValue];
+                            capUrn, validationRule, actualValue];
     return [[self alloc] initWithType:CSValidationErrorTypeOutputValidationFailed 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{
                                  NSLocalizedDescriptionKey: description,
@@ -161,29 +161,29 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
-+ (instancetype)invalidCapSchemaError:(NSString *)capCard issue:(NSString *)issue {
-    NSString *description = [NSString stringWithFormat:@"Cap '%@' has invalid schema: %@", capCard, issue];
++ (instancetype)invalidCapSchemaError:(NSString *)capUrn issue:(NSString *)issue {
+    NSString *description = [NSString stringWithFormat:@"Cap '%@' has invalid schema: %@", capUrn, issue];
     return [[self alloc] initWithType:CSValidationErrorTypeInvalidCapSchema 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{NSLocalizedDescriptionKey: description}];
 }
 
-+ (instancetype)tooManyArgumentsError:(NSString *)capCard 
++ (instancetype)tooManyArgumentsError:(NSString *)capUrn 
                           maxExpected:(NSInteger)maxExpected 
                           actualCount:(NSInteger)actualCount {
     NSString *description = [NSString stringWithFormat:@"Cap '%@' expects at most %ld arguments but received %ld", 
-                            capCard, (long)maxExpected, (long)actualCount];
+                            capUrn, (long)maxExpected, (long)actualCount];
     return [[self alloc] initWithType:CSValidationErrorTypeTooManyArguments 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{NSLocalizedDescriptionKey: description}];
 }
 
-+ (instancetype)jsonParseError:(NSString *)capCard error:(NSString *)error {
-    NSString *description = [NSString stringWithFormat:@"Cap '%@' JSON parsing failed: %@", capCard, error];
++ (instancetype)jsonParseError:(NSString *)capUrn error:(NSString *)error {
+    NSString *description = [NSString stringWithFormat:@"Cap '%@' JSON parsing failed: %@", capUrn, error];
     return [[self alloc] initWithType:CSValidationErrorTypeJSONParseError 
-                         capCard:capCard 
+                         capUrn:capUrn 
                           description:description 
                              userInfo:@{NSLocalizedDescriptionKey: description}];
 }
@@ -213,14 +213,14 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 + (BOOL)validateArguments:(NSArray *)arguments 
                cap:(CSCap *)cap 
                     error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     CSCapArguments *args = [cap getArguments];
     
     // Check if too many arguments provided
     NSInteger maxArgs = args.required.count + args.optional.count;
     if (arguments.count > maxArgs) {
         if (error) {
-            *error = [CSValidationError tooManyArgumentsError:capCard 
+            *error = [CSValidationError tooManyArgumentsError:capUrn 
                                                   maxExpected:maxArgs 
                                                   actualCount:arguments.count];
         }
@@ -232,7 +232,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (index >= arguments.count) {
             if (error) {
                 CSCapArgument *reqArg = args.required[index];
-                *error = [CSValidationError missingRequiredArgumentError:capCard 
+                *error = [CSValidationError missingRequiredArgumentError:capUrn 
                                                             argumentName:reqArg.name];
             }
             return NO;
@@ -286,7 +286,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                        value:(id)value 
                   cap:(CSCap *)cap 
                        error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     NSString *actualType = [self getJsonTypeName:value];
     
     BOOL typeMatches = NO;
@@ -321,7 +321,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     
     if (!typeMatches) {
         if (error) {
-            *error = [CSValidationError invalidArgumentTypeError:capCard 
+            *error = [CSValidationError invalidArgumentTypeError:capUrn 
                                                     argumentName:argDef.name 
                                                     expectedType:argDef.type 
                                                       actualType:actualType 
@@ -337,7 +337,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                         value:(id)value 
                    cap:(CSCap *)cap 
                         error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     CSArgumentValidation *validation = argDef.validation;
     
     if (!validation) {
@@ -350,7 +350,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (numValue && [numValue doubleValue] < [validation.min doubleValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"minimum value %@", validation.min];
-                *error = [CSValidationError argumentValidationFailedError:capCard 
+                *error = [CSValidationError argumentValidationFailedError:capUrn 
                                                              argumentName:argDef.name 
                                                            validationRule:rule 
                                                               actualValue:value];
@@ -364,7 +364,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (numValue && [numValue doubleValue] > [validation.max doubleValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"maximum value %@", validation.max];
-                *error = [CSValidationError argumentValidationFailedError:capCard 
+                *error = [CSValidationError argumentValidationFailedError:capUrn 
                                                              argumentName:argDef.name 
                                                            validationRule:rule 
                                                               actualValue:value];
@@ -379,7 +379,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (stringValue.length < [validation.minLength integerValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"minimum length %@", validation.minLength];
-                *error = [CSValidationError argumentValidationFailedError:capCard 
+                *error = [CSValidationError argumentValidationFailedError:capUrn 
                                                              argumentName:argDef.name 
                                                            validationRule:rule 
                                                               actualValue:value];
@@ -393,7 +393,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (stringValue.length > [validation.maxLength integerValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"maximum length %@", validation.maxLength];
-                *error = [CSValidationError argumentValidationFailedError:capCard 
+                *error = [CSValidationError argumentValidationFailedError:capUrn 
                                                              argumentName:argDef.name 
                                                            validationRule:rule 
                                                               actualValue:value];
@@ -415,7 +415,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
             if (!match) {
                 if (error) {
                     NSString *rule = [NSString stringWithFormat:@"pattern '%@'", validation.pattern];
-                    *error = [CSValidationError argumentValidationFailedError:capCard 
+                    *error = [CSValidationError argumentValidationFailedError:capUrn 
                                                                  argumentName:argDef.name 
                                                                validationRule:rule 
                                                                   actualValue:value];
@@ -432,7 +432,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (![validation.allowedValues containsObject:stringValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"allowed values: %@", validation.allowedValues];
-                *error = [CSValidationError argumentValidationFailedError:capCard 
+                *error = [CSValidationError argumentValidationFailedError:capUrn 
                                                              argumentName:argDef.name 
                                                            validationRule:rule 
                                                               actualValue:value];
@@ -492,12 +492,12 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 + (BOOL)validateOutput:(id)output 
             cap:(CSCap *)cap 
                  error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     
     CSCapOutput *outputDef = [cap getOutput];
     if (!outputDef) {
         if (error) {
-            *error = [CSValidationError invalidCapSchemaError:capCard 
+            *error = [CSValidationError invalidCapSchemaError:capUrn 
                                                                issue:@"No output definition specified"];
         }
         return NO;
@@ -520,7 +520,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                      value:(id)value 
                 cap:(CSCap *)cap 
                      error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     NSString *actualType = [CSInputValidator getJsonTypeName:value];
     
     BOOL typeMatches = NO;
@@ -555,7 +555,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     
     if (!typeMatches) {
         if (error) {
-            *error = [CSValidationError invalidOutputTypeError:capCard 
+            *error = [CSValidationError invalidOutputTypeError:capUrn 
                                                   expectedType:outputDef.type 
                                                     actualType:actualType 
                                                    actualValue:value];
@@ -570,7 +570,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                       value:(id)value 
                  cap:(CSCap *)cap 
                       error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     CSArgumentValidation *validation = outputDef.validation;
     
     if (!validation) {
@@ -583,7 +583,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (numValue && [numValue doubleValue] < [validation.min doubleValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"minimum value %@", validation.min];
-                *error = [CSValidationError outputValidationFailedError:capCard 
+                *error = [CSValidationError outputValidationFailedError:capUrn 
                                                          validationRule:rule 
                                                             actualValue:value];
             }
@@ -596,7 +596,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (numValue && [numValue doubleValue] > [validation.max doubleValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"maximum value %@", validation.max];
-                *error = [CSValidationError outputValidationFailedError:capCard 
+                *error = [CSValidationError outputValidationFailedError:capUrn 
                                                          validationRule:rule 
                                                             actualValue:value];
             }
@@ -609,7 +609,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (stringValue.length < [validation.minLength integerValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"minimum length %@", validation.minLength];
-                *error = [CSValidationError outputValidationFailedError:capCard 
+                *error = [CSValidationError outputValidationFailedError:capUrn 
                                                          validationRule:rule 
                                                             actualValue:value];
             }
@@ -622,7 +622,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (stringValue.length > [validation.maxLength integerValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"maximum length %@", validation.maxLength];
-                *error = [CSValidationError outputValidationFailedError:capCard 
+                *error = [CSValidationError outputValidationFailedError:capUrn 
                                                          validationRule:rule 
                                                             actualValue:value];
             }
@@ -642,7 +642,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
             if (!match) {
                 if (error) {
                     NSString *rule = [NSString stringWithFormat:@"pattern '%@'", validation.pattern];
-                    *error = [CSValidationError outputValidationFailedError:capCard 
+                    *error = [CSValidationError outputValidationFailedError:capUrn 
                                                              validationRule:rule 
                                                                 actualValue:value];
                 }
@@ -657,7 +657,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (![validation.allowedValues containsObject:stringValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"allowed values: %@", validation.allowedValues];
-                *error = [CSValidationError outputValidationFailedError:capCard 
+                *error = [CSValidationError outputValidationFailedError:capUrn 
                                                          validationRule:rule 
                                                             actualValue:value];
             }
@@ -674,7 +674,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
 + (BOOL)validateCap:(CSCap *)cap 
                      error:(NSError **)error {
-    NSString *capCard = [cap idString];
+    NSString *capUrn = [cap idString];
     CSCapArguments *args = [cap getArguments];
     
     // Validate that required arguments don't have default values
@@ -682,7 +682,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (arg.defaultValue) {
             if (error) {
                 NSString *issue = [NSString stringWithFormat:@"Required argument '%@' cannot have a default value", arg.name];
-                *error = [CSValidationError invalidCapSchemaError:capCard issue:issue];
+                *error = [CSValidationError invalidCapSchemaError:capUrn issue:issue];
             }
             return NO;
         }
@@ -696,7 +696,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
             if ([positions containsObject:arg.position]) {
                 if (error) {
                     NSString *issue = [NSString stringWithFormat:@"Duplicate argument position %@ for argument '%@'", arg.position, arg.name];
-                    *error = [CSValidationError invalidCapSchemaError:capCard issue:issue];
+                    *error = [CSValidationError invalidCapSchemaError:capUrn issue:issue];
                 }
                 return NO;
             }
@@ -711,7 +711,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
             if ([cliFlags containsObject:arg.cliFlag]) {
                 if (error) {
                     NSString *issue = [NSString stringWithFormat:@"Duplicate CLI flag '%@' for argument '%@'", arg.cliFlag, arg.name];
-                    *error = [CSValidationError invalidCapSchemaError:capCard issue:issue];
+                    *error = [CSValidationError invalidCapSchemaError:capUrn issue:issue];
                 }
                 return NO;
             }
@@ -737,21 +737,21 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 }
 
 - (void)registerCap:(CSCap *)cap {
-    NSString *capCard = [cap idString];
-    _caps[capCard] = cap;
+    NSString *capUrn = [cap idString];
+    _caps[capUrn] = cap;
 }
 
-- (nullable CSCap *)getCap:(NSString *)capCard {
-    return _caps[capCard];
+- (nullable CSCap *)getCap:(NSString *)capUrn {
+    return _caps[capUrn];
 }
 
 - (BOOL)validateInputs:(NSArray *)arguments 
-          capCard:(NSString *)capCard 
+          capUrn:(NSString *)capUrn 
                  error:(NSError **)error {
-    CSCap *cap = [self getCap:capCard];
+    CSCap *cap = [self getCap:capUrn];
     if (!cap) {
         if (error) {
-            *error = [CSValidationError unknownCapError:capCard];
+            *error = [CSValidationError unknownCapError:capUrn];
         }
         return NO;
     }
@@ -760,12 +760,12 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 }
 
 - (BOOL)validateOutput:(id)output 
-          capCard:(NSString *)capCard 
+          capUrn:(NSString *)capUrn 
                  error:(NSError **)error {
-    CSCap *cap = [self getCap:capCard];
+    CSCap *cap = [self getCap:capUrn];
     if (!cap) {
         if (error) {
-            *error = [CSValidationError unknownCapError:capCard];
+            *error = [CSValidationError unknownCapError:capUrn];
         }
         return NO;
     }
@@ -774,12 +774,12 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 }
 
 - (BOOL)validateBinaryOutput:(NSData *)outputData 
-                capCard:(NSString *)capCard 
+                capUrn:(NSString *)capUrn 
                        error:(NSError **)error {
-    CSCap *cap = [self getCap:capCard];
+    CSCap *cap = [self getCap:capUrn];
     if (!cap) {
         if (error) {
-            *error = [CSValidationError unknownCapError:capCard];
+            *error = [CSValidationError unknownCapError:capUrn];
         }
         return NO;
     }
@@ -794,7 +794,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Verify output type is binary
     if (output.type != CSOutputTypeBinary) {
         if (error) {
-            *error = [CSValidationError invalidOutputTypeError:capCard
+            *error = [CSValidationError invalidOutputTypeError:capUrn
                                                   expectedType:output.type
                                                     actualType:@"binary"
                                                    actualValue:outputData];
@@ -808,7 +808,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (outputData.length < [validation.min integerValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"minimum size %@ bytes", validation.min];
-                *error = [CSValidationError outputValidationFailedError:capCard
+                *error = [CSValidationError outputValidationFailedError:capUrn
                                                          validationRule:rule
                                                             actualValue:@(outputData.length)];
             }
@@ -820,7 +820,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (outputData.length > [validation.max integerValue]) {
             if (error) {
                 NSString *rule = [NSString stringWithFormat:@"maximum size %@ bytes", validation.max];
-                *error = [CSValidationError outputValidationFailedError:capCard
+                *error = [CSValidationError outputValidationFailedError:capUrn
                                                          validationRule:rule
                                                             actualValue:@(outputData.length)];
             }

@@ -15,7 +15,7 @@ FOUNDATION_EXPORT double CapNsVersionNumber;
 //! Project version string for CapNs.
 FOUNDATION_EXPORT const unsigned char CapNsVersionString[];
 
-#import "CSCapCard.h"
+#import "CSCapUrn.h"
 #import "CSCap.h"
 #import "CSCapManifest.h"
 #import "CSCapMatcher.h"

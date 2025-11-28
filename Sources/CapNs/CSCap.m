@@ -22,10 +22,10 @@
         return nil;
     }
     
-    // Parse cap card
+    // Parse cap URN
     NSError *keyError;
-    CSCapCard *capCard = [CSCapCard fromString:idString error:&keyError];
-    if (!capCard) {
+    CSCapUrn *capUrn = [CSCapUrn fromString:idString error:&keyError];
+    if (!capUrn) {
         if (error) {
             *error = keyError;
         }
@@ -59,7 +59,7 @@
         }
     }
     
-    return [self capWithId:capCard
+    return [self capWithId:capUrn
                           version:version
                       description:description
                          metadata:metadata
@@ -71,22 +71,22 @@
 
 - (BOOL)matchesRequest:(NSString *)request {
     NSError *error;
-    CSCapCard *requestId = [CSCapCard fromString:request error:&error];
+    CSCapUrn *requestId = [CSCapUrn fromString:request error:&error];
     if (!requestId) {
         return NO;
     }
-    return [self.capCard canHandle:requestId];
+    return [self.capUrn canHandle:requestId];
 }
 
-- (BOOL)canHandleRequest:(CSCapCard *)request {
-    return [self.capCard canHandle:request];
+- (BOOL)canHandleRequest:(CSCapUrn *)request {
+    return [self.capUrn canHandle:request];
 }
 
 - (BOOL)isMoreSpecificThan:(CSCap *)other {
     if (!other) {
         return YES;
     }
-    return [self.capCard isMoreSpecificThan:other.capCard];
+    return [self.capUrn isMoreSpecificThan:other.capUrn];
 }
 
 - (nullable NSString *)metadataForKey:(NSString *)key {
@@ -98,12 +98,12 @@
 }
 
 - (NSString *)idString {
-    return [self.capCard toString];
+    return [self.capUrn toString];
 }
 
 - (NSString *)description {
     NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCap(id: %@, version: %@", 
-                            [self.capCard toString], self.version];
+                            [self.capUrn toString], self.version];
     
     if (self.capDescription) {
         [desc appendFormat:@", description: %@", self.capDescription];
@@ -122,7 +122,7 @@
     if (![object isKindOfClass:[CSCap class]]) return NO;
     
     CSCap *other = (CSCap *)object;
-    return [self.capCard isEqual:other.capCard] &&
+    return [self.capUrn isEqual:other.capUrn] &&
            [self.version isEqualToString:other.version] &&
            ((self.capDescription == nil && other.capDescription == nil) ||
             [self.capDescription isEqualToString:other.capDescription]) &&
@@ -130,7 +130,7 @@
 }
 
 - (NSUInteger)hash {
-    return [self.capCard hash] ^ [self.version hash] ^ [self.metadata hash];
+    return [self.capUrn hash] ^ [self.version hash] ^ [self.metadata hash];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
@@ -138,7 +138,7 @@
     if (!self.command) {
         return nil;
     }
-    return [CSCap capWithId:self.capCard 
+    return [CSCap capWithId:self.capUrn 
                                    version:self.version
                                description:self.capDescription 
                                   metadata:self.metadata
@@ -149,7 +149,7 @@
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.capCard forKey:@"capCard"];
+    [coder encodeObject:self.capUrn forKey:@"capUrn"];
     [coder encodeObject:self.version forKey:@"version"];
     [coder encodeObject:self.command forKey:@"command"];
     [coder encodeObject:self.capDescription forKey:@"capDescription"];
@@ -158,7 +158,7 @@
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    CSCapCard *capCard = [coder decodeObjectOfClass:[CSCapCard class] forKey:@"capCard"];
+    CSCapUrn *capUrn = [coder decodeObjectOfClass:[CSCapUrn class] forKey:@"capUrn"];
     NSString *version = [coder decodeObjectOfClass:[NSString class] forKey:@"version"];
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capDescription"];
@@ -166,11 +166,11 @@
     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
     
     // Fail hard if required fields are missing
-    if (!capCard || !version || !command || !metadata) {
+    if (!capUrn || !version || !command || !metadata) {
         return nil;
     }
     
-    return [CSCap capWithId:capCard 
+    return [CSCap capWithId:capUrn 
                                    version:version
                                description:description 
                                   metadata:metadata
@@ -180,12 +180,12 @@
                               acceptsStdin:acceptsStdin];
 }
 
-- (instancetype)initWithId:(CSCapCard *)capCard
+- (instancetype)initWithId:(CSCapUrn *)capUrn
 					version:(NSString *)version
 					command:(NSString *)command {
 	self = [super init];
 	if (self) {
-		_capCard = [capCard copy];
+		_capUrn = [capUrn copy];
 		_version = [version copy];
 		_command = [command copy];
 		_metadata = @{};
@@ -201,7 +201,7 @@
 #pragma mark - Missing Methods
 
 
-+ (instancetype)capWithId:(CSCapCard *)capCard
++ (instancetype)capWithId:(CSCapUrn *)capUrn
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
@@ -210,7 +210,7 @@
                           output:(nullable CSCapOutput *)output
                     acceptsStdin:(BOOL)acceptsStdin {
     CSCap *cap = [[CSCap alloc] init];
-    cap->_capCard = [capCard copy];
+    cap->_capUrn = [capUrn copy];
     cap->_version = [version copy];
     cap->_capDescription = [description copy];
     // Fail hard if required fields are nil

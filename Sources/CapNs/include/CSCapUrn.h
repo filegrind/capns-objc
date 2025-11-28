@@ -1,5 +1,5 @@
 //
-//  CSCapCard.h
+//  CSCapUrn.h
 //  Flat Tag-Based Cap Identifier System
 //
 //  This provides a flat, tag-based cap identifier system that replaces
@@ -19,7 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
  * - cap:action=extract;target=metadata
  * - cap:action=analysis;format=en;type=constrained
  */
-@interface CSCapCard : NSObject <NSCopying, NSCoding>
+@interface CSCapUrn : NSObject <NSCopying, NSCoding>
 
 /// The tags that define this cap
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *tags;
@@ -28,7 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Create a cap identifier from a string
  * @param string The cap identifier string (e.g., "cap:action=generate")
  * @param error Error if the string format is invalid
- * @return A new CSCapCard instance or nil if invalid
+ * @return A new CSCapUrn instance or nil if invalid
  */
 + (nullable instancetype)fromString:(NSString * _Nonnull)string error:(NSError * _Nullable * _Nullable)error;
 
@@ -36,7 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Create a cap identifier from tags
  * @param tags Dictionary of tag key-value pairs
  * @param error Error if tags are invalid
- * @return A new CSCapCard instance or nil if invalid
+ * @return A new CSCapUrn instance or nil if invalid
  */
 + (nullable instancetype)fromTags:(NSDictionary<NSString *, NSString *> * _Nonnull)tags error:(NSError * _Nullable * _Nullable)error;
 
@@ -56,33 +56,33 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)hasTag:(NSString * _Nonnull)key withValue:(NSString * _Nonnull)value;
 
 /**
- * Create a new cap card with an added or updated tag
+ * Create a new cap URN with an added or updated tag
  * @param key The tag key
  * @param value The tag value
- * @return A new CSCapCard instance with the tag added/updated
+ * @return A new CSCapUrn instance with the tag added/updated
  */
-- (CSCapCard * _Nonnull)withTag:(NSString * _Nonnull)key value:(NSString * _Nonnull)value;
+- (CSCapUrn * _Nonnull)withTag:(NSString * _Nonnull)key value:(NSString * _Nonnull)value;
 
 /**
- * Create a new cap card with a tag removed
+ * Create a new cap URN with a tag removed
  * @param key The tag key to remove
- * @return A new CSCapCard instance with the tag removed
+ * @return A new CSCapUrn instance with the tag removed
  */
-- (CSCapCard * _Nonnull)withoutTag:(NSString * _Nonnull)key;
+- (CSCapUrn * _Nonnull)withoutTag:(NSString * _Nonnull)key;
 
 /**
  * Check if this cap matches another based on tag compatibility
  * @param pattern The pattern cap to match against
  * @return YES if this cap matches the pattern
  */
-- (BOOL)matches:(CSCapCard * _Nonnull)pattern;
+- (BOOL)matches:(CSCapUrn * _Nonnull)pattern;
 
 /**
  * Check if this cap can handle a request
  * @param request The requested cap
  * @return YES if this cap can handle the request
  */
-- (BOOL)canHandle:(CSCapCard * _Nonnull)request;
+- (BOOL)canHandle:(CSCapUrn * _Nonnull)request;
 
 /**
  * Get the specificity score for cap matching
@@ -95,35 +95,35 @@ NS_ASSUME_NONNULL_BEGIN
  * @param other The other cap to compare specificity with
  * @return YES if this cap is more specific
  */
-- (BOOL)isMoreSpecificThan:(CSCapCard * _Nonnull)other;
+- (BOOL)isMoreSpecificThan:(CSCapUrn * _Nonnull)other;
 
 /**
  * Check if this cap is compatible with another
  * @param other The other cap to check compatibility with
  * @return YES if the caps are compatible
  */
-- (BOOL)isCompatibleWith:(CSCapCard * _Nonnull)other;
+- (BOOL)isCompatibleWith:(CSCapUrn * _Nonnull)other;
 
 /**
  * Create a new cap with a specific tag set to wildcard
  * @param key The tag key to set to wildcard
- * @return A new CSCapCard instance with the tag set to wildcard
+ * @return A new CSCapUrn instance with the tag set to wildcard
  */
-- (CSCapCard * _Nonnull)withWildcardTag:(NSString * _Nonnull)key;
+- (CSCapUrn * _Nonnull)withWildcardTag:(NSString * _Nonnull)key;
 
 /**
  * Create a new cap with only specified tags
  * @param keys Array of tag keys to include
- * @return A new CSCapCard instance with only the specified tags
+ * @return A new CSCapUrn instance with only the specified tags
  */
-- (CSCapCard * _Nonnull)subset:(NSArray<NSString *> * _Nonnull)keys;
+- (CSCapUrn * _Nonnull)subset:(NSArray<NSString *> * _Nonnull)keys;
 
 /**
  * Merge with another cap (other takes precedence for conflicts)
  * @param other The cap to merge with
- * @return A new CSCapCard instance with merged tags
+ * @return A new CSCapUrn instance with merged tags
  */
-- (CSCapCard * _Nonnull)merge:(CSCapCard * _Nonnull)other;
+- (CSCapUrn * _Nonnull)merge:(CSCapUrn * _Nonnull)other;
 
 /**
  * Get the canonical string representation of this cap
@@ -134,25 +134,25 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 /// Error domain for cap identifier errors
-FOUNDATION_EXPORT NSErrorDomain const CSCapCardErrorDomain;
+FOUNDATION_EXPORT NSErrorDomain const CSCapUrnErrorDomain;
 
 /// Error codes for cap identifier operations
-typedef NS_ERROR_ENUM(CSCapCardErrorDomain, CSCapCardError) {
-    CSCapCardErrorInvalidFormat = 1,
-    CSCapCardErrorEmptyTag = 2,
-    CSCapCardErrorInvalidCharacter = 3,
-    CSCapCardErrorInvalidTagFormat = 4,
-    CSCapCardErrorMissingCapPrefix = 5
+typedef NS_ERROR_ENUM(CSCapUrnErrorDomain, CSCapUrnError) {
+    CSCapUrnErrorInvalidFormat = 1,
+    CSCapUrnErrorEmptyTag = 2,
+    CSCapUrnErrorInvalidCharacter = 3,
+    CSCapUrnErrorInvalidTagFormat = 4,
+    CSCapUrnErrorMissingCapPrefix = 5
 };
 
 /**
- * Builder for creating cap cards fluently
+ * Builder for creating cap URNs fluently
  */
-@interface CSCapCardBuilder : NSObject
+@interface CSCapUrnBuilder : NSObject
 
 /**
  * Create a new builder
- * @return A new CSCapCardBuilder instance
+ * @return A new CSCapUrnBuilder instance
  */
 + (instancetype)builder;
 
@@ -162,14 +162,14 @@ typedef NS_ERROR_ENUM(CSCapCardErrorDomain, CSCapCardError) {
  * @param value The tag value
  * @return This builder instance for chaining
  */
-- (CSCapCardBuilder * _Nonnull)tag:(NSString * _Nonnull)key value:(NSString * _Nonnull)value;
+- (CSCapUrnBuilder * _Nonnull)tag:(NSString * _Nonnull)key value:(NSString * _Nonnull)value;
 
 /**
- * Build the final CapCard
+ * Build the final CapUrn
  * @param error Error if build fails
- * @return A new CSCapCard instance or nil if error
+ * @return A new CSCapUrn instance or nil if error
  */
-- (nullable CSCapCard *)build:(NSError * _Nullable * _Nullable)error;
+- (nullable CSCapUrn *)build:(NSError * _Nullable * _Nullable)error;
 
 @end
 

@@ -1,17 +1,17 @@
 //
-//  CSCapCard.m
+//  CSCapUrn.m
 //  Flat Tag-Based Cap Identifier Implementation
 //
 
-#import "CSCapCard.h"
+#import "CSCapUrn.h"
 
-NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
+NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 
-@interface CSCapCard ()
+@interface CSCapUrn ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *mutableTags;
 @end
 
-@implementation CSCapCard
+@implementation CSCapUrn
 
 - (NSDictionary<NSString *, NSString *> *)tags {
     return [self.mutableTags copy];
@@ -20,8 +20,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 + (nullable instancetype)fromString:(NSString *)string error:(NSError **)error {
     if (!string || string.length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                         code:CSCapCardErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
@@ -30,8 +30,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     // Ensure "cap:" prefix is present
     if (![string hasPrefix:@"cap:"]) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                         code:CSCapCardErrorMissingCapPrefix
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingCapPrefix
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier must start with 'cap:'"}];
         }
         return nil;
@@ -41,8 +41,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     NSString *tagsPart = [string substringFromIndex:4];
     if (tagsPart.length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                         code:CSCapCardErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
@@ -66,8 +66,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
         NSArray<NSString *> *parts = [trimmedTag componentsSeparatedByString:@"="];
         if (parts.count != 2) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                             code:CSCapCardErrorInvalidTagFormat
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorInvalidTagFormat
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid tag format (must be key=value): %@", trimmedTag]}];
             }
             return nil;
@@ -78,8 +78,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
         
         if (key.length == 0 || value.length == 0) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                             code:CSCapCardErrorEmptyTag
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorEmptyTag
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Tag key or value cannot be empty: %@", trimmedTag]}];
             }
             return nil;
@@ -90,8 +90,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
         if ([key rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound ||
             [value rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound) {
             if (error) {
-                *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                             code:CSCapCardErrorInvalidCharacter
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorInvalidCharacter
                                          userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, *): %@", trimmedTag]}];
             }
             return nil;
@@ -102,8 +102,8 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     
     if (tags.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                         code:CSCapCardErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
@@ -115,14 +115,14 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 + (nullable instancetype)fromTags:(NSDictionary<NSString *, NSString *> *)tags error:(NSError **)error {
     if (!tags || tags.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                         code:CSCapCardErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
     }
     
-    CSCapCard *instance = [[CSCapCard alloc] init];
+    CSCapUrn *instance = [[CSCapUrn alloc] init];
     instance.mutableTags = [tags mutableCopy];
     return instance;
 }
@@ -143,19 +143,19 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return tagValue && [tagValue isEqualToString:value];
 }
 
-- (CSCapCard *)withTag:(NSString *)key value:(NSString *)value {
+- (CSCapUrn *)withTag:(NSString *)key value:(NSString *)value {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     newTags[key] = value;
-    return [CSCapCard fromTags:newTags error:nil];
+    return [CSCapUrn fromTags:newTags error:nil];
 }
 
-- (CSCapCard *)withoutTag:(NSString *)key {
+- (CSCapUrn *)withoutTag:(NSString *)key {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     [newTags removeObjectForKey:key];
-    return [CSCapCard fromTags:newTags error:nil];
+    return [CSCapUrn fromTags:newTags error:nil];
 }
 
-- (BOOL)matches:(CSCapCard *)request {
+- (BOOL)matches:(CSCapUrn *)request {
     if (!request) {
         return YES;
     }
@@ -191,7 +191,7 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return YES;
 }
 
-- (BOOL)canHandle:(CSCapCard *)request {
+- (BOOL)canHandle:(CSCapUrn *)request {
     return [self matches:request];
 }
 
@@ -205,7 +205,7 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return count;
 }
 
-- (BOOL)isMoreSpecificThan:(CSCapCard *)other {
+- (BOOL)isMoreSpecificThan:(CSCapUrn *)other {
     if (!other) {
         return YES;
     }
@@ -218,7 +218,7 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return self.specificity > other.specificity;
 }
 
-- (BOOL)isCompatibleWith:(CSCapCard *)other {
+- (BOOL)isCompatibleWith:(CSCapUrn *)other {
     if (!other) {
         return YES;
     }
@@ -243,14 +243,14 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return YES;
 }
 
-- (CSCapCard *)withWildcardTag:(NSString *)key {
+- (CSCapUrn *)withWildcardTag:(NSString *)key {
     if (self.mutableTags[key]) {
         return [self withTag:key value:@"*"];
     }
     return self;
 }
 
-- (CSCapCard *)subset:(NSArray<NSString *> *)keys {
+- (CSCapUrn *)subset:(NSArray<NSString *> *)keys {
     NSMutableDictionary *newTags = [NSMutableDictionary dictionary];
     for (NSString *key in keys) {
         NSString *value = self.mutableTags[key];
@@ -258,15 +258,15 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
             newTags[key] = value;
         }
     }
-    return [CSCapCard fromTags:newTags error:nil];
+    return [CSCapUrn fromTags:newTags error:nil];
 }
 
-- (CSCapCard *)merge:(CSCapCard *)other {
+- (CSCapUrn *)merge:(CSCapUrn *)other {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     for (NSString *key in other.mutableTags) {
         newTags[key] = other.mutableTags[key];
     }
-    return [CSCapCard fromTags:newTags error:nil];
+    return [CSCapUrn fromTags:newTags error:nil];
 }
 
 - (NSString *)toString {
@@ -291,11 +291,11 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 }
 
 - (BOOL)isEqual:(id)object {
-    if (![object isKindOfClass:[CSCapCard class]]) {
+    if (![object isKindOfClass:[CSCapUrn class]]) {
         return NO;
     }
     
-    CSCapCard *other = (CSCapCard *)object;
+    CSCapUrn *other = (CSCapUrn *)object;
     return [self.mutableTags isEqualToDictionary:other.mutableTags];
 }
 
@@ -306,7 +306,7 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 #pragma mark - NSCopying
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapCard fromTags:self.tags error:nil];
+    return [CSCapUrn fromTags:self.tags error:nil];
 }
 
 #pragma mark - NSCoding
@@ -324,16 +324,16 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
 
 @end
 
-#pragma mark - CSCapCardBuilder
+#pragma mark - CSCapUrnBuilder
 
-@interface CSCapCardBuilder ()
+@interface CSCapUrnBuilder ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *tags;
 @end
 
-@implementation CSCapCardBuilder
+@implementation CSCapUrnBuilder
 
 + (instancetype)builder {
-    return [[CSCapCardBuilder alloc] init];
+    return [[CSCapUrnBuilder alloc] init];
 }
 
 - (instancetype)init {
@@ -343,22 +343,22 @@ NSErrorDomain const CSCapCardErrorDomain = @"CSCapCardErrorDomain";
     return self;
 }
 
-- (CSCapCardBuilder *)tag:(NSString *)key value:(NSString *)value {
+- (CSCapUrnBuilder *)tag:(NSString *)key value:(NSString *)value {
     self.tags[key] = value;
     return self;
 }
 
-- (nullable CSCapCard *)build:(NSError **)error {
+- (nullable CSCapUrn *)build:(NSError **)error {
     if (self.tags.count == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapCardErrorDomain
-                                         code:CSCapCardErrorInvalidFormat
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
         }
         return nil;
     }
     
-    return [CSCapCard fromTags:self.tags error:error];
+    return [CSCapUrn fromTags:self.tags error:error];
 }
 
 @end

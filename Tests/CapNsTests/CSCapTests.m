@@ -5,7 +5,7 @@
 
 #import <XCTest/XCTest.h>
 #import "CSCap.h"
-#import "CSCapCard.h"
+#import "CSCapUrn.h"
 #import "CSCapManifest.h"
 
 @interface CSCapTests : XCTestCase
@@ -16,8 +16,8 @@
 
 - (void)testCapCreation {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=transform;format=json;type=data_processing" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=transform;format=json;type=data_processing" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 
@@ -38,8 +38,8 @@
 
 - (void)testCapWithDescription {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=parse;format=json;type=data" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=parse;format=json;type=data" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 
@@ -58,8 +58,8 @@
 
 - (void)testCapAcceptsStdin {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=generate;target=embeddings" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=generate;target=embeddings" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     // Test with acceptsStdin = NO (default)
     CSCap *cap1 = [CSCap capWithId:key
@@ -90,8 +90,8 @@
 
 - (void)testCapMatching {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=transform;format=json;type=data_processing" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=transform;format=json;type=data_processing" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 
@@ -111,8 +111,8 @@
 
 - (void)testCapStdinSerialization {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=generate;target=embeddings" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=generate;target=embeddings" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     // Test copying preserves acceptsStdin
     CSCap *original = [CSCap capWithId:key
@@ -326,8 +326,8 @@
 
 - (void)testCapManifestCreation {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=extract;target=metadata" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=extract;target=metadata" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 
@@ -353,8 +353,8 @@
 
 - (void)testCapManifestWithAuthor {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=extract;target=metadata" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=extract;target=metadata" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 
@@ -426,11 +426,11 @@
 
 - (void)testCapManifestWithMultipleCaps {
     NSError *error;
-    CSCapCard *key1 = [CSCapCard fromString:@"cap:action=extract;target=metadata" error:&error];
-    XCTAssertNotNil(key1, @"Failed to create cap card: %@", error);
+    CSCapUrn *key1 = [CSCapUrn fromString:@"cap:action=extract;target=metadata" error:&error];
+    XCTAssertNotNil(key1, @"Failed to create cap URN: %@", error);
     
-    CSCapCard *key2 = [CSCapCard fromString:@"cap:action=extract;target=outline" error:&error];
-    XCTAssertNotNil(key2, @"Failed to create cap card: %@", error);
+    CSCapUrn *key2 = [CSCapUrn fromString:@"cap:action=extract;target=outline" error:&error];
+    XCTAssertNotNil(key2, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     
@@ -489,8 +489,8 @@
 
 - (void)testCapManifestOptionalAuthorField {
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=validate;type=file" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=validate;type=file" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 
@@ -535,8 +535,8 @@
 - (void)testCapManifestCompatibility {
     // Test that manifest format is compatible between different component types
     NSError *error;
-    CSCapCard *key = [CSCapCard fromString:@"cap:action=process" error:&error];
-    XCTAssertNotNil(key, @"Failed to create cap card: %@", error);
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:action=process" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithId:key 

@@ -31,36 +31,36 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 @interface CSValidationError : NSError
 
 @property (nonatomic, readonly) CSValidationErrorType validationType;
-@property (nonatomic, readonly, copy) NSString *capCard;
+@property (nonatomic, readonly, copy) NSString *capUrn;
 @property (nonatomic, readonly, copy, nullable) NSString *argumentName;
 @property (nonatomic, readonly, copy, nullable) NSString *validationRule;
 @property (nonatomic, readonly, strong, nullable) id actualValue;
 @property (nonatomic, readonly, copy, nullable) NSString *actualType;
 @property (nonatomic, readonly, copy, nullable) NSString *expectedType;
 
-+ (instancetype)unknownCapError:(NSString *)capCard;
-+ (instancetype)missingRequiredArgumentError:(NSString *)capCard argumentName:(NSString *)argumentName;
-+ (instancetype)invalidArgumentTypeError:(NSString *)capCard 
++ (instancetype)unknownCapError:(NSString *)capUrn;
++ (instancetype)missingRequiredArgumentError:(NSString *)capUrn argumentName:(NSString *)argumentName;
++ (instancetype)invalidArgumentTypeError:(NSString *)capUrn 
                             argumentName:(NSString *)argumentName 
                             expectedType:(CSArgumentType)expectedType 
                               actualType:(NSString *)actualType 
                              actualValue:(id)actualValue;
-+ (instancetype)argumentValidationFailedError:(NSString *)capCard 
++ (instancetype)argumentValidationFailedError:(NSString *)capUrn 
                                  argumentName:(NSString *)argumentName 
                                validationRule:(NSString *)validationRule 
                                   actualValue:(id)actualValue;
-+ (instancetype)invalidOutputTypeError:(NSString *)capCard 
++ (instancetype)invalidOutputTypeError:(NSString *)capUrn 
                           expectedType:(CSOutputType)expectedType 
                             actualType:(NSString *)actualType 
                            actualValue:(id)actualValue;
-+ (instancetype)outputValidationFailedError:(NSString *)capCard 
++ (instancetype)outputValidationFailedError:(NSString *)capUrn 
                              validationRule:(NSString *)validationRule 
                                 actualValue:(id)actualValue;
-+ (instancetype)invalidCapSchemaError:(NSString *)capCard issue:(NSString *)issue;
-+ (instancetype)tooManyArgumentsError:(NSString *)capCard 
++ (instancetype)invalidCapSchemaError:(NSString *)capUrn issue:(NSString *)issue;
++ (instancetype)tooManyArgumentsError:(NSString *)capUrn 
                           maxExpected:(NSInteger)maxExpected 
                           actualCount:(NSInteger)actualCount;
-+ (instancetype)jsonParseError:(NSString *)capCard error:(NSString *)error;
++ (instancetype)jsonParseError:(NSString *)capUrn error:(NSString *)error;
 
 @end
 
@@ -100,21 +100,21 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 - (void)registerCap:(CSCap * _Nonnull)cap;
 
 /// Get a cap by ID
-- (nullable CSCap *)getCap:(NSString * _Nonnull)capCard;
+- (nullable CSCap *)getCap:(NSString * _Nonnull)capUrn;
 
 /// Validate arguments against a cap's input schema
 - (BOOL)validateInputs:(NSArray * _Nonnull)arguments 
-          capCard:(NSString * _Nonnull)capCard 
+          capUrn:(NSString * _Nonnull)capUrn 
                  error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate output against a cap's output schema
 - (BOOL)validateOutput:(id _Nonnull)output 
-          capCard:(NSString * _Nonnull)capCard 
+          capUrn:(NSString * _Nonnull)capUrn 
                  error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate binary output against a cap's output schema
 - (BOOL)validateBinaryOutput:(NSData * _Nonnull)outputData 
-                capCard:(NSString * _Nonnull)capCard 
+                capUrn:(NSString * _Nonnull)capUrn 
                        error:(NSError * _Nullable * _Nullable)error;
 
 /// Validate a cap definition itself  

@@ -7,7 +7,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "CSCapCard.h"
+#import "CSCapUrn.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -22,8 +22,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param request The requested cap
  * @return The best matching cap or nil if none can handle the request
  */
-+ (nullable CSCapCard *)findBestMatchInCaps:(NSArray<CSCapCard *> * _Nonnull)caps 
-                                              forRequest:(CSCapCard * _Nonnull)request;
++ (nullable CSCapUrn *)findBestMatchInCaps:(NSArray<CSCapUrn *> * _Nonnull)caps 
+                                              forRequest:(CSCapUrn * _Nonnull)request;
 
 /**
  * Find all caps that can handle a request
@@ -31,15 +31,15 @@ NS_ASSUME_NONNULL_BEGIN
  * @param request The requested cap
  * @return Array of caps that can handle the request, sorted by specificity (most specific first)
  */
-+ (NSArray<CSCapCard *> * _Nonnull)findAllMatchesInCaps:(NSArray<CSCapCard *> * _Nonnull)caps 
-                                                  forRequest:(CSCapCard * _Nonnull)request;
++ (NSArray<CSCapUrn *> * _Nonnull)findAllMatchesInCaps:(NSArray<CSCapUrn *> * _Nonnull)caps 
+                                                  forRequest:(CSCapUrn * _Nonnull)request;
 
 /**
  * Sort caps by specificity
  * @param caps Array of caps to sort
  * @return Array sorted by specificity (most specific first)
  */
-+ (NSArray<CSCapCard *> * _Nonnull)sortCapsBySpecificity:(NSArray<CSCapCard *> * _Nonnull)caps;
++ (NSArray<CSCapUrn *> * _Nonnull)sortCapsBySpecificity:(NSArray<CSCapUrn *> * _Nonnull)caps;
 
 /**
  * Check if a cap can handle a request with additional context
@@ -48,8 +48,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param context Additional context for matching (optional)
  * @return YES if the cap can handle the request
  */
-+ (BOOL)cap:(CSCapCard * _Nonnull)cap 
-    canHandleRequest:(CSCapCard * _Nonnull)request 
++ (BOOL)cap:(CSCapUrn * _Nonnull)cap 
+    canHandleRequest:(CSCapUrn * _Nonnull)request 
          withContext:(nullable NSDictionary<NSString *, id> *)context;
 
 @end
