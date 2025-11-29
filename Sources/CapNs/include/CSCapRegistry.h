@@ -52,6 +52,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)capExists:(NSString *)urn;
 
 /**
+ * Get all currently cached caps from in-memory cache
+ * @return Array of all cached caps
+ */
+- (NSArray<CSCap *> *)getCachedCaps;
+
+/**
  * Clear all cached registry definitions
  */
 - (void)clearCache;

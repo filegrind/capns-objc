@@ -37,6 +37,8 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
 @interface CSCapRegistry ()
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSString *cacheDirectory;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, CSCap *> *cachedCaps;
+@property (nonatomic, strong) NSLock *cacheLock;
 @end
 
 @implementation CSCapRegistry
@@ -59,20 +61,37 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
                                   withIntermediateDirectories:YES
                                                    attributes:nil
                                                         error:nil];
+        
+        // Initialize in-memory cache
+        _cachedCaps = [[NSMutableDictionary alloc] init];
+        _cacheLock = [[NSLock alloc] init];
+        
+        // Load all cached caps into memory
+        [self loadAllCachedCaps];
     }
     return self;
 }
 
 - (void)getCapWithUrn:(NSString *)urn completion:(void (^)(CSCap *cap, NSError *error))completion {
-    // Try cache first
-    CSCap *cachedCap = [self loadFromCache:urn];
+    // Check in-memory cache first
+    [self.cacheLock lock];
+    CSCap *cachedCap = self.cachedCaps[urn];
+    [self.cacheLock unlock];
+    
     if (cachedCap) {
         completion(cachedCap, nil);
         return;
     }
     
-    // Fetch from registry
-    [self fetchFromRegistryWithUrn:urn completion:completion];
+    // Fetch from registry and update in-memory cache
+    [self fetchFromRegistryWithUrn:urn completion:^(CSCap *cap, NSError *error) {
+        if (cap) {
+            [self.cacheLock lock];
+            self.cachedCaps[urn] = cap;
+            [self.cacheLock unlock];
+        }
+        completion(cap, error);
+    }];
 }
 
 - (void)getCapsWithUrns:(NSArray<NSString *> *)urns completion:(void (^)(NSArray<CSCap *> *caps, NSError *error))completion {
@@ -141,19 +160,27 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
     }];
 }
 
+- (NSArray<CSCap *> *)getCachedCaps {
+    [self.cacheLock lock];
+    NSArray<CSCap *> *caps = [self.cachedCaps allValues];
+    [self.cacheLock unlock];
+    return caps;
+}
+
 - (BOOL)capExists:(NSString *)urn {
-    // First check cache
-    if ([self loadFromCache:urn]) {
-        return YES;
-    }
-    
-    // For sync check, we'd need to make synchronous request
-    // This is not recommended in iOS. For now, return NO for uncached caps
-    // In real implementation, you'd probably want an async version
-    return NO;
+    [self.cacheLock lock];
+    BOOL exists = (self.cachedCaps[urn] != nil);
+    [self.cacheLock unlock];
+    return exists;
 }
 
 - (void)clearCache {
+    // Clear in-memory cache
+    [self.cacheLock lock];
+    [self.cachedCaps removeAllObjects];
+    [self.cacheLock unlock];
+    
+    // Clear filesystem cache
     [[NSFileManager defaultManager] removeItemAtPath:self.cacheDirectory error:nil];
     [[NSFileManager defaultManager] createDirectoryAtPath:self.cacheDirectory
                               withIntermediateDirectories:YES
@@ -180,36 +207,48 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
     return [self.cacheDirectory stringByAppendingPathComponent:[key stringByAppendingString:@".json"]];
 }
 
-- (CSCap *)loadFromCache:(NSString *)urn {
-    NSString *cacheFile = [self cacheFilePathForUrn:urn];
+- (void)loadAllCachedCaps {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSArray *files = [fileManager contentsOfDirectoryAtPath:self.cacheDirectory error:nil];
     
-    NSData *data = [NSData dataWithContentsOfFile:cacheFile];
-    if (!data) {
-        return nil;
+    for (NSString *filename in files) {
+        if (![filename hasSuffix:@".json"]) {
+            continue;
+        }
+        
+        NSString *filePath = [self.cacheDirectory stringByAppendingPathComponent:filename];
+        NSData *data = [NSData dataWithContentsOfFile:filePath];
+        if (!data) {
+            continue;
+        }
+        
+        NSError *error;
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+        if (!json) {
+            continue;
+        }
+        
+        CSCacheEntry *entry = [[CSCacheEntry alloc] init];
+        entry.cachedAt = [json[@"cached_at"] doubleValue];
+        entry.ttlHours = [json[@"ttl_hours"] doubleValue];
+        
+        if ([entry isExpired]) {
+            // Remove expired cache file
+            [fileManager removeItemAtPath:filePath error:nil];
+            continue;
+        }
+        
+        NSDictionary *capDict = json[@"definition"];
+        CSCap *cap = [CSCap capWithDictionary:capDict error:&error];
+        if (!cap) {
+            continue;
+        }
+        
+        NSString *urn = [cap.capUrn toString];
+        [self.cacheLock lock];
+        self.cachedCaps[urn] = cap;
+        [self.cacheLock unlock];
     }
-    
-    NSError *error;
-    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
-    if (!json) {
-        return nil;
-    }
-    
-    CSCacheEntry *entry = [[CSCacheEntry alloc] init];
-    entry.cachedAt = [json[@"cached_at"] doubleValue];
-    entry.ttlHours = [json[@"ttl_hours"] doubleValue];
-    
-    if ([entry isExpired]) {
-        [[NSFileManager defaultManager] removeItemAtPath:cacheFile error:nil];
-        return nil;
-    }
-    
-    NSDictionary *capDict = json[@"definition"];
-    CSCap *cap = [CSCap capWithDictionary:capDict error:&error];
-    if (!cap) {
-        return nil;
-    }
-    
-    return cap;
 }
 
 - (void)saveToCache:(CSCap *)cap {
