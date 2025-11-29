@@ -68,7 +68,7 @@
     }
     
     // Optional fields
-    NSString *description = dictionary[@"description"];
+    NSString *capDescription = dictionary[@"cap_description"];
     NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
     BOOL acceptsStdin = [dictionary[@"accepts_stdin"] boolValue]; // defaults to NO if missing
     
@@ -96,7 +96,7 @@
     
     return [self capWithUrn:capUrn
                           version:version
-                      description:description
+                      description:capDescription
                          metadata:metadata
                           command:command
                         arguments:arguments
@@ -112,7 +112,7 @@
     dict[@"command"] = self.command;
     
     if (self.capDescription) {
-        dict[@"description"] = self.capDescription;
+        dict[@"cap_description"] = self.capDescription;
     }
     
     if (self.metadata && self.metadata.count > 0) {
@@ -424,16 +424,16 @@
 @implementation CSCapArgument
 
 + (instancetype)argumentWithName:(NSString *)name
-                            type:(CSArgumentType)type
-                     description:(NSString *)description
+                         argType:(CSArgumentType)argType
+                   argDescription:(NSString *)argDescription
                          cliFlag:(NSString *)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue {
     CSCapArgument *argument = [[CSCapArgument alloc] init];
     argument->_name = [name copy];
-    argument->_type = type;
-    argument->_argumentDescription = [description copy];
+    argument->_argType = argType;
+    argument->_argDescription = [argDescription copy];
     argument->_cliFlag = [cliFlag copy];
     argument->_position = position;
     argument->_validation = validation;
@@ -443,19 +443,17 @@
 
 + (instancetype)argumentWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     NSString *name = dictionary[@"name"];
-    // Handle both "type" and "arg_type" field names (registry format uses "arg_type")
-    NSString *typeString = dictionary[@"type"] ?: dictionary[@"arg_type"];
-    NSString *description = dictionary[@"description"];
+    NSString *typeString = dictionary[@"arg_type"];
+    NSString *argDescription = dictionary[@"arg_description"];
     NSString *cliFlag = dictionary[@"cli_flag"];
     NSNumber *position = dictionary[@"position"];
-    // Handle both "default_value" and "default" field names (registry format uses "default")
-    id defaultValue = dictionary[@"default_value"] ?: dictionary[@"default"];
+    id defaultValue = dictionary[@"default_value"];
     
-    if (!name || !typeString || !description || !cliFlag) {
+    if (!name || !typeString || !argDescription || !cliFlag) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapArgumentError"
                                          code:1002
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required argument fields: name, type, description, or cli_flag"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required argument fields: name, arg_type, arg_description, or cli_flag"}];
         }
         return nil;
     }
@@ -494,8 +492,8 @@
     }
     
     return [self argumentWithName:name
-                             type:type
-                      description:description
+                          argType:type
+                    argDescription:argDescription
                           cliFlag:cliFlag
                          position:position
                        validation:validation
@@ -504,18 +502,18 @@
 
 - (id)copyWithZone:(NSZone *)zone {
     return [CSCapArgument argumentWithName:self.name
-                                              type:self.type
-                                       description:self.argumentDescription
-                                           cliFlag:self.cliFlag
-                                          position:self.position
-                                        validation:self.validation
-                                      defaultValue:self.defaultValue];
+                                       argType:self.argType
+                                 argDescription:self.argDescription
+                                       cliFlag:self.cliFlag
+                                      position:self.position
+                                    validation:self.validation
+                                  defaultValue:self.defaultValue];
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeObject:self.name forKey:@"name"];
-    [coder encodeInteger:self.type forKey:@"type"];
-    [coder encodeObject:self.argumentDescription forKey:@"argumentDescription"];
+    [coder encodeInteger:self.argType forKey:@"argType"];
+    [coder encodeObject:self.argDescription forKey:@"argDescription"];
     [coder encodeObject:self.cliFlag forKey:@"cli_flag"];
     [coder encodeObject:self.position forKey:@"position"];
     [coder encodeObject:self.validation forKey:@"validation"];
@@ -524,16 +522,16 @@
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
     NSString *name = [coder decodeObjectOfClass:[NSString class] forKey:@"name"];
-    CSArgumentType type = (CSArgumentType)[coder decodeIntegerForKey:@"type"];
-    NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"argumentDescription"];
+    CSArgumentType argType = (CSArgumentType)[coder decodeIntegerForKey:@"argType"];
+    NSString *argDescription = [coder decodeObjectOfClass:[NSString class] forKey:@"argDescription"];
     
-    if (!name || !description) return nil;
+    if (!name || !argDescription) return nil;
     
     self = [super init];
     if (self) {
         _name = name;
-        _type = type;
-        _argumentDescription = description;
+        _argType = argType;
+        _argDescription = argDescription;
         _cliFlag = [coder decodeObjectOfClass:[NSString class] forKey:@"cli_flag"];
         _position = [coder decodeObjectOfClass:[NSNumber class] forKey:@"position"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
@@ -546,8 +544,8 @@
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
     
     dict[@"name"] = self.name;
-    dict[@"type"] = [self typeString];
-    dict[@"description"] = self.argumentDescription;
+    dict[@"arg_type"] = [self argTypeString];
+    dict[@"arg_description"] = self.argDescription;
     dict[@"cli_flag"] = self.cliFlag;
     
     if (self.position) {
@@ -555,7 +553,7 @@
     }
     
     if (self.defaultValue) {
-        dict[@"default"] = self.defaultValue;
+        dict[@"default_value"] = self.defaultValue;
     }
     
     // Add validation if present
@@ -566,8 +564,8 @@
     return [dict copy];
 }
 
-- (NSString *)typeString {
-    switch (self.type) {
+- (NSString *)argTypeString {
+    switch (self.argType) {
         case CSArgumentTypeString: return @"string";
         case CSArgumentTypeInteger: return @"integer";
         case CSArgumentTypeNumber: return @"number";
@@ -773,32 +771,31 @@
 
 @implementation CSCapOutput
 
-+ (instancetype)outputWithType:(CSOutputType)type
++ (instancetype)outputWithType:(CSOutputType)outputType
                      schemaRef:(nullable NSString *)schemaRef
                    contentType:(nullable NSString *)contentType
                     validation:(nullable CSArgumentValidation *)validation
-                   description:(NSString *)description {
+           outputDescription:(NSString *)outputDescription {
     CSCapOutput *output = [[CSCapOutput alloc] init];
-    output->_type = type;
+    output->_outputType = outputType;
     output->_schemaRef = [schemaRef copy];
     output->_contentType = [contentType copy];
     output->_validation = validation;
-    output->_outputDescription = [description copy];
+    output->_outputDescription = [outputDescription copy];
     return output;
 }
 
 + (instancetype)outputWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
-    // Handle both "type" and "output_type" field names (registry format uses "output_type")
-    NSString *typeString = dictionary[@"type"] ?: dictionary[@"output_type"];
+    NSString *typeString = dictionary[@"output_type"];
     NSString *schemaRef = dictionary[@"schema_ref"];
     NSString *contentType = dictionary[@"content_type"];
-    NSString *description = dictionary[@"description"];
+    NSString *outputDescription = dictionary[@"output_description"];
     
-    if (!typeString || !description) {
+    if (!typeString || !outputDescription) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapOutputError"
                                          code:1004
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required output fields: type or description"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required output fields: output_type or output_description"}];
         }
         return nil;
     }
@@ -842,19 +839,19 @@
                       schemaRef:schemaRef
                     contentType:contentType
                      validation:validation
-                    description:description];
+              outputDescription:outputDescription];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapOutput outputWithType:self.type
+    return [CSCapOutput outputWithType:self.outputType
                                      schemaRef:self.schemaRef
                                    contentType:self.contentType
                                     validation:self.validation
-                                   description:self.outputDescription];
+                             outputDescription:self.outputDescription];
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeInteger:self.type forKey:@"type"];
+    [coder encodeInteger:self.outputType forKey:@"outputType"];
     [coder encodeObject:self.schemaRef forKey:@"schemaRef"];
     [coder encodeObject:self.contentType forKey:@"contentType"];
     [coder encodeObject:self.validation forKey:@"validation"];
@@ -862,16 +859,16 @@
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"outputDescription"];
-    if (!description) return nil;
+    NSString *outputDescription = [coder decodeObjectOfClass:[NSString class] forKey:@"outputDescription"];
+    if (!outputDescription) return nil;
     
     self = [super init];
     if (self) {
-        _type = (CSOutputType)[coder decodeIntegerForKey:@"type"];
+        _outputType = (CSOutputType)[coder decodeIntegerForKey:@"outputType"];
         _schemaRef = [coder decodeObjectOfClass:[NSString class] forKey:@"schemaRef"];
         _contentType = [coder decodeObjectOfClass:[NSString class] forKey:@"contentType"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
-        _outputDescription = description;
+        _outputDescription = outputDescription;
     }
     return self;
 }
@@ -879,8 +876,8 @@
 - (NSDictionary *)toDictionary {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
     
-    dict[@"output_type"] = [self typeString];
-    dict[@"description"] = self.outputDescription;
+    dict[@"output_type"] = [self outputTypeString];
+    dict[@"output_description"] = self.outputDescription;
     
     if (self.schemaRef) {
         dict[@"schema_ref"] = self.schemaRef;
@@ -897,8 +894,8 @@
     return [dict copy];
 }
 
-- (NSString *)typeString {
-    switch (self.type) {
+- (NSString *)outputTypeString {
+    switch (self.outputType) {
         case CSOutputTypeString: return @"string";
         case CSOutputTypeInteger: return @"integer";
         case CSOutputTypeNumber: return @"number";

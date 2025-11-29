@@ -290,7 +290,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     NSString *actualType = [self getJsonTypeName:value];
     
     BOOL typeMatches = NO;
-    switch (argDef.type) {
+    switch (argDef.argType) {
         case CSArgumentTypeString:
             typeMatches = [value isKindOfClass:[NSString class]];
             break;
@@ -323,7 +323,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         if (error) {
             *error = [CSValidationError invalidArgumentTypeError:capUrn 
                                                     argumentName:argDef.name 
-                                                    expectedType:argDef.type 
+                                                    expectedType:argDef.argType 
                                                       actualType:actualType 
                                                      actualValue:value];
         }
@@ -524,7 +524,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     NSString *actualType = [CSInputValidator getJsonTypeName:value];
     
     BOOL typeMatches = NO;
-    switch (outputDef.type) {
+    switch (outputDef.outputType) {
         case CSOutputTypeString:
             typeMatches = [value isKindOfClass:[NSString class]];
             break;
@@ -556,7 +556,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     if (!typeMatches) {
         if (error) {
             *error = [CSValidationError invalidOutputTypeError:capUrn 
-                                                  expectedType:outputDef.type 
+                                                  expectedType:outputDef.outputType 
                                                     actualType:actualType 
                                                    actualValue:value];
         }
@@ -792,10 +792,10 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     }
     
     // Verify output type is binary
-    if (output.type != CSOutputTypeBinary) {
+    if (output.outputType != CSOutputTypeBinary) {
         if (error) {
             *error = [CSValidationError invalidOutputTypeError:capUrn
-                                                  expectedType:output.type
+                                                  expectedType:output.outputType
                                                     actualType:@"binary"
                                                    actualValue:outputData];
         }

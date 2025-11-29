@@ -72,16 +72,16 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @interface CSCapArgument : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly) NSString *name;
-@property (nonatomic, readonly) CSArgumentType type;
-@property (nonatomic, readonly) NSString *argumentDescription;
+@property (nonatomic, readonly) CSArgumentType argType;
+@property (nonatomic, readonly) NSString *argDescription;
 @property (nonatomic, readonly) NSString *cliFlag;
 @property (nonatomic, readonly, nullable) NSNumber *position;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly, nullable) id defaultValue;
 
 + (instancetype)argumentWithName:(NSString * _Nonnull)name
-                            type:(CSArgumentType)type
-                     description:(NSString * _Nonnull)description
+                         argType:(CSArgumentType)argType
+                   argDescription:(NSString * _Nonnull)argDescription
                          cliFlag:(NSString * _Nonnull)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
@@ -130,17 +130,17 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  */
 @interface CSCapOutput : NSObject <NSCopying, NSCoding>
 
-@property (nonatomic, readonly) CSOutputType type;
+@property (nonatomic, readonly) CSOutputType outputType;
 @property (nonatomic, readonly, nullable) NSString *schemaRef;
 @property (nonatomic, readonly, nullable) NSString *contentType;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
 
-+ (instancetype)outputWithType:(CSOutputType)type
++ (instancetype)outputWithType:(CSOutputType)outputType
                      schemaRef:(nullable NSString *)schemaRef
                    contentType:(nullable NSString *)contentType
                     validation:(nullable CSArgumentValidation *)validation
-                   description:(NSString * _Nonnull)description;
+           outputDescription:(NSString * _Nonnull)outputDescription;
 + (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**
