@@ -9,7 +9,7 @@
 
 + (instancetype)capWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     // Required fields
-    NSString *urnString = dictionary[@"id"];
+    NSString *urnString = dictionary[@"urn"];
     NSString *version = dictionary[@"version"];
     NSString *command = dictionary[@"command"];
     
@@ -17,7 +17,7 @@
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapError"
                                          code:1001
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required cap fields: id, version, or command"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required cap fields: urn, version, or command"}];
         }
         return nil;
     }
@@ -59,7 +59,7 @@
         }
     }
     
-    return [self capWithId:capUrn
+    return [self capWithUrn:capUrn
                           version:version
                       description:description
                          metadata:metadata
@@ -102,7 +102,7 @@
 }
 
 - (NSString *)description {
-    NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCap(id: %@, version: %@", 
+    NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCap(urn: %@, version: %@", 
                             [self.capUrn toString], self.version];
     
     if (self.capDescription) {
@@ -138,7 +138,7 @@
     if (!self.command) {
         return nil;
     }
-    return [CSCap capWithId:self.capUrn 
+    return [CSCap capWithUrn:self.capUrn 
                                    version:self.version
                                description:self.capDescription 
                                   metadata:self.metadata
@@ -170,7 +170,7 @@
         return nil;
     }
     
-    return [CSCap capWithId:capUrn 
+    return [CSCap capWithUrn:capUrn 
                                    version:version
                                description:description 
                                   metadata:metadata
@@ -180,7 +180,7 @@
                               acceptsStdin:acceptsStdin];
 }
 
-- (instancetype)initWithId:(CSCapUrn *)capUrn
+- (instancetype)initWithUrn:(CSCapUrn *)capUrn
 					version:(NSString *)version
 					command:(NSString *)command {
 	self = [super init];
@@ -201,7 +201,7 @@
 #pragma mark - Missing Methods
 
 
-+ (instancetype)capWithId:(CSCapUrn *)capUrn
++ (instancetype)capWithUrn:(CSCapUrn *)capUrn
                          version:(NSString *)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata

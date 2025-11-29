@@ -20,7 +20,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -42,7 +42,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:@"Parse JSON data" 
                                                      metadata:@{} 
@@ -62,7 +62,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     // Test with acceptsStdin = NO (default)
-    CSCap *cap1 = [CSCap capWithId:key
+    CSCap *cap1 = [CSCap capWithUrn:key
                                                        version:@"1.0.0"
                                                    description:@"Generate embeddings"
                                                       metadata:@{}
@@ -75,7 +75,7 @@
     XCTAssertFalse(cap1.acceptsStdin, @"Should not accept stdin when explicitly set to NO");
     
     // Test with acceptsStdin = YES
-    CSCap *cap2 = [CSCap capWithId:key
+    CSCap *cap2 = [CSCap capWithUrn:key
                                                        version:@"1.0.0"
                                                    description:@"Generate embeddings"
                                                       metadata:@{}
@@ -94,7 +94,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -115,7 +115,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     // Test copying preserves acceptsStdin
-    CSCap *original = [CSCap capWithId:key
+    CSCap *original = [CSCap capWithUrn:key
                                                     version:@"1.0.0"
                                                 description:@"Generate embeddings"
                                                    metadata:@{@"model": @"sentence-transformer"}
@@ -133,7 +133,7 @@
 - (void)testCanonicalDictionaryDeserialization {
     // Test CSCap.capWithDictionary
     NSDictionary *capDict = @{
-        @"id": @"cap:action=extract;target=metadata",
+        @"urn": @"cap:action=extract;target=metadata",
         @"version": @"1.0.0",
         @"command": @"extract-metadata",
         @"description": @"Extract metadata from documents",
@@ -156,7 +156,7 @@
     NSDictionary *invalidDict = @{
         @"version": @"1.0.0",
         @"command": @"extract-metadata"
-        // Missing "id" field
+        // Missing "urn" field
     };
     
     error = nil;
@@ -247,7 +247,7 @@
 - (void)testCompleteCapDeserialization {
     // Test a complete cap with all nested structures
     NSDictionary *completeCapDict = @{
-        @"id": @"cap:action=transform;format=json;type=data",
+        @"urn": @"cap:action=transform;format=json;type=data",
         @"version": @"2.0.0",
         @"command": @"transform-data",
         @"description": @"Transform JSON data with validation",
@@ -330,7 +330,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -357,7 +357,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -383,7 +383,7 @@
         @"author": @"Test Author",
         @"caps": @[
             @{
-                @"id": @"cap:action=extract;target=metadata",
+                @"urn": @"cap:action=extract;target=metadata",
                 @"version": @"1.0.0",
                 @"command": @"extract-metadata",
                 @"accepts_stdin": @YES,
@@ -434,7 +434,7 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     
-    CSCap *cap1 = [CSCap capWithId:key1 
+    CSCap *cap1 = [CSCap capWithUrn:key1 
                                                        version:@"1.0.0" 
                                                    description:nil 
                                                       metadata:@{} 
@@ -443,7 +443,7 @@
                                                         output:nil 
                                                   acceptsStdin:NO];
     
-    CSCap *cap2 = [CSCap capWithId:key2 
+    CSCap *cap2 = [CSCap capWithUrn:key2 
                                                        version:@"1.0.0" 
                                                    description:nil 
                                                       metadata:@{@"supports_outline": @"true"} 
@@ -493,7 +493,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 
@@ -514,7 +514,7 @@
         @"description": @"File validation component", 
         @"caps": @[
             @{
-                @"id": @"cap:action=validate;type=file",
+                @"urn": @"cap:action=validate;type=file",
                 @"version": @"1.0.0",
                 @"command": @"validate",
                 @"arguments": @{
@@ -539,7 +539,7 @@
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
     
     CSCapArguments *arguments = [CSCapArguments arguments];
-    CSCap *cap = [CSCap capWithId:key 
+    CSCap *cap = [CSCap capWithUrn:key 
                                                       version:@"1.0.0" 
                                                   description:nil 
                                                      metadata:@{} 

@@ -169,7 +169,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param acceptsStdin Whether this cap accepts stdin input
  * @return A new CSCap instance
  */
-+ (instancetype)capWithId:(CSCapUrn * _Nonnull)capUrn
++ (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
                          version:(NSString * _Nonnull)version
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
