@@ -58,6 +58,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                     allowedValues:(nullable NSArray<NSString *> *)allowedValues;
 + (instancetype)validationWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
+/**
+ * Convert validation to dictionary representation
+ * @return Dictionary representation of the validation
+ */
+- (NSDictionary * _Nonnull)toDictionary;
+
 @end
 
 /**
@@ -82,6 +88,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                     defaultValue:(nullable id)defaultValue;
 + (instancetype)argumentWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
+/**
+ * Convert argument to dictionary representation
+ * @return Dictionary representation of the argument
+ */
+- (NSDictionary * _Nonnull)toDictionary;
+
 @end
 
 /**
@@ -96,6 +108,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 + (instancetype)argumentsWithRequired:(NSArray<CSCapArgument *> * _Nonnull)required
                              optional:(NSArray<CSCapArgument *> * _Nonnull)optional;
 + (instancetype)argumentsWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
+
+/**
+ * Convert arguments to dictionary representation
+ * @return Dictionary representation of the arguments
+ */
+- (NSDictionary * _Nonnull)toDictionary;
 
 - (void)addRequiredArgument:(CSCapArgument * _Nonnull)argument;
 - (void)addOptionalArgument:(CSCapArgument * _Nonnull)argument;
@@ -124,6 +142,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                     validation:(nullable CSArgumentValidation *)validation
                    description:(NSString * _Nonnull)description;
 + (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
+
+/**
+ * Convert output to dictionary representation
+ * @return Dictionary representation of the output
+ */
+- (NSDictionary * _Nonnull)toDictionary;
 
 @end
 
@@ -185,6 +209,12 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @return A new CSCap instance, or nil if parsing fails
  */
 + (instancetype)capWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
+
+/**
+ * Convert cap to dictionary representation
+ * @return Dictionary representation of the cap
+ */
+- (NSDictionary * _Nonnull)toDictionary;
 
 /**
  * Check if this cap matches a request string

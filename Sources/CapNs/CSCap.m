@@ -9,11 +9,11 @@
 
 + (instancetype)capWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     // Required fields
-    NSString *urnString = dictionary[@"urn"];
+    id urnField = dictionary[@"urn"];
     NSString *version = dictionary[@"version"];
     NSString *command = dictionary[@"command"];
     
-    if (!urnString || !version || !command) {
+    if (!urnField || !version || !command) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapError"
                                          code:1001
@@ -22,9 +22,44 @@
         return nil;
     }
     
-    // Parse cap URN
+    // Parse cap URN - handle both string and object formats
     NSError *keyError;
-    CSCapUrn *capUrn = [CSCapUrn fromString:urnString error:&keyError];
+    CSCapUrn *capUrn = nil;
+    
+    if ([urnField isKindOfClass:[NSString class]]) {
+        // Standard string format
+        capUrn = [CSCapUrn fromString:(NSString *)urnField error:&keyError];
+    } else if ([urnField isKindOfClass:[NSDictionary class]]) {
+        // Registry object format with tags
+        NSDictionary *urnDict = (NSDictionary *)urnField;
+        NSDictionary *tags = urnDict[@"tags"];
+        
+        if ([tags isKindOfClass:[NSDictionary class]]) {
+            CSCapUrnBuilder *builder = [CSCapUrnBuilder new];
+            for (NSString *key in tags) {
+                NSString *value = tags[key];
+                if ([value isKindOfClass:[NSString class]]) {
+                    builder = [builder tag:key value:value];
+                }
+            }
+            capUrn = [builder build:&keyError];
+        } else {
+            if (error) {
+                *error = [NSError errorWithDomain:@"CSCapError"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid URN object format - missing or invalid tags"}];
+            }
+            return nil;
+        }
+    } else {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapError"
+                                         code:1003
+                                     userInfo:@{NSLocalizedDescriptionKey: @"URN must be string or object"}];
+        }
+        return nil;
+    }
+    
     if (!capUrn) {
         if (error) {
             *error = keyError;
@@ -67,6 +102,34 @@
                         arguments:arguments
                            output:output
                      acceptsStdin:acceptsStdin];
+}
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    dict[@"urn"] = [self.capUrn toString];
+    dict[@"version"] = self.version;
+    dict[@"command"] = self.command;
+    
+    if (self.capDescription) {
+        dict[@"description"] = self.capDescription;
+    }
+    
+    if (self.metadata && self.metadata.count > 0) {
+        dict[@"metadata"] = self.metadata;
+    }
+    
+    if (self.arguments && !self.arguments.isEmpty) {
+        dict[@"arguments"] = [self.arguments toDictionary];
+    }
+    
+    if (self.output) {
+        dict[@"output"] = [self.output toDictionary];
+    }
+    
+    dict[@"accepts_stdin"] = @(self.acceptsStdin);
+    
+    return [dict copy];
 }
 
 - (BOOL)matchesRequest:(NSString *)request {
@@ -320,6 +383,36 @@
     return self;
 }
 
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    if (self.min) {
+        dict[@"min"] = self.min;
+    }
+    
+    if (self.max) {
+        dict[@"max"] = self.max;
+    }
+    
+    if (self.minLength) {
+        dict[@"min_length"] = self.minLength;
+    }
+    
+    if (self.maxLength) {
+        dict[@"max_length"] = self.maxLength;
+    }
+    
+    if (self.pattern) {
+        dict[@"pattern"] = self.pattern;
+    }
+    
+    if (self.allowedValues && self.allowedValues.count > 0) {
+        dict[@"allowed_values"] = self.allowedValues;
+    }
+    
+    return [dict copy];
+}
+
 + (BOOL)supportsSecureCoding {
     return YES;
 }
@@ -350,11 +443,13 @@
 
 + (instancetype)argumentWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     NSString *name = dictionary[@"name"];
-    NSString *typeString = dictionary[@"type"];
+    // Handle both "type" and "arg_type" field names (registry format uses "arg_type")
+    NSString *typeString = dictionary[@"type"] ?: dictionary[@"arg_type"];
     NSString *description = dictionary[@"description"];
     NSString *cliFlag = dictionary[@"cli_flag"];
     NSNumber *position = dictionary[@"position"];
-    id defaultValue = dictionary[@"default_value"];
+    // Handle both "default_value" and "default" field names (registry format uses "default")
+    id defaultValue = dictionary[@"default_value"] ?: dictionary[@"default"];
     
     if (!name || !typeString || !description || !cliFlag) {
         if (error) {
@@ -445,6 +540,43 @@
         _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
     }
     return self;
+}
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    dict[@"name"] = self.name;
+    dict[@"type"] = [self typeString];
+    dict[@"description"] = self.argumentDescription;
+    dict[@"cli_flag"] = self.cliFlag;
+    
+    if (self.position) {
+        dict[@"position"] = self.position;
+    }
+    
+    if (self.defaultValue) {
+        dict[@"default"] = self.defaultValue;
+    }
+    
+    // Add validation if present
+    if (self.validation) {
+        dict[@"validation"] = [self.validation toDictionary];
+    }
+    
+    return [dict copy];
+}
+
+- (NSString *)typeString {
+    switch (self.type) {
+        case CSArgumentTypeString: return @"string";
+        case CSArgumentTypeInteger: return @"integer";
+        case CSArgumentTypeNumber: return @"number";
+        case CSArgumentTypeBoolean: return @"boolean";
+        case CSArgumentTypeArray: return @"array";
+        case CSArgumentTypeObject: return @"object";
+        case CSArgumentTypeBinary: return @"binary";
+        default: return @"string";
+    }
 }
 
 + (BOOL)supportsSecureCoding {
@@ -609,6 +741,28 @@
     return self;
 }
 
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    NSMutableArray *requiredDicts = [NSMutableArray array];
+    for (CSCapArgument *arg in self.required) {
+        [requiredDicts addObject:[arg toDictionary]];
+    }
+    if (requiredDicts.count > 0) {
+        dict[@"required"] = requiredDicts;
+    }
+    
+    NSMutableArray *optionalDicts = [NSMutableArray array];
+    for (CSCapArgument *arg in self.optional) {
+        [optionalDicts addObject:[arg toDictionary]];
+    }
+    if (optionalDicts.count > 0) {
+        dict[@"optional"] = optionalDicts;
+    }
+    
+    return [dict copy];
+}
+
 + (BOOL)supportsSecureCoding {
     return YES;
 }
@@ -634,7 +788,8 @@
 }
 
 + (instancetype)outputWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
-    NSString *typeString = dictionary[@"type"];
+    // Handle both "type" and "output_type" field names (registry format uses "output_type")
+    NSString *typeString = dictionary[@"type"] ?: dictionary[@"output_type"];
     NSString *schemaRef = dictionary[@"schema_ref"];
     NSString *contentType = dictionary[@"content_type"];
     NSString *description = dictionary[@"description"];
@@ -719,6 +874,40 @@
         _outputDescription = description;
     }
     return self;
+}
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    dict[@"output_type"] = [self typeString];
+    dict[@"description"] = self.outputDescription;
+    
+    if (self.schemaRef) {
+        dict[@"schema_ref"] = self.schemaRef;
+    }
+    
+    if (self.contentType) {
+        dict[@"content_type"] = self.contentType;
+    }
+    
+    if (self.validation) {
+        dict[@"validation"] = [self.validation toDictionary];
+    }
+    
+    return [dict copy];
+}
+
+- (NSString *)typeString {
+    switch (self.type) {
+        case CSOutputTypeString: return @"string";
+        case CSOutputTypeInteger: return @"integer";
+        case CSOutputTypeNumber: return @"number";
+        case CSOutputTypeBoolean: return @"boolean";
+        case CSOutputTypeArray: return @"array";
+        case CSOutputTypeObject: return @"object";
+        case CSOutputTypeBinary: return @"binary";
+        default: return @"string";
+    }
 }
 
 + (BOOL)supportsSecureCoding {

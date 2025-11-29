@@ -17,7 +17,11 @@ let package = Package(
             name: "CapNs",
             dependencies: [],
             path: "Sources/CapNs",
-            publicHeadersPath: "include"
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .linkedFramework("Foundation"),
+                .linkedFramework("Security")
+            ]
         ),
         .testTarget(
             name: "CapNsTests",
