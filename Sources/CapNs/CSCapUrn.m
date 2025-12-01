@@ -27,8 +27,11 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
         return nil;
     }
     
+    // Normalize to lowercase for case-insensitive handling
+    NSString *normalizedString = [string lowercaseString];
+    
     // Ensure "cap:" prefix is present
-    if (![string hasPrefix:@"cap:"]) {
+    if (![normalizedString hasPrefix:@"cap:"]) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                          code:CSCapUrnErrorMissingCapPrefix
@@ -38,7 +41,7 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
     }
     
     // Remove the "cap:" prefix
-    NSString *tagsPart = [string substringFromIndex:4];
+    NSString *tagsPart = [normalizedString substringFromIndex:4];
     if (tagsPart.length == 0) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
@@ -122,8 +125,15 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
         return nil;
     }
     
+    // Normalize all keys and values to lowercase for case-insensitive matching
+    NSMutableDictionary<NSString *, NSString *> *normalizedTags = [NSMutableDictionary dictionary];
+    for (NSString *key in tags) {
+        NSString *value = tags[key];
+        normalizedTags[[key lowercaseString]] = [value lowercaseString];
+    }
+    
     CSCapUrn *instance = [[CSCapUrn alloc] init];
-    instance.mutableTags = [tags mutableCopy];
+    instance.mutableTags = normalizedTags;
     return instance;
 }
 
@@ -135,23 +145,23 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 }
 
 - (nullable NSString *)getTag:(NSString *)key {
-    return self.mutableTags[key];
+    return self.mutableTags[[key lowercaseString]];
 }
 
 - (BOOL)hasTag:(NSString *)key withValue:(NSString *)value {
-    NSString *tagValue = self.mutableTags[key];
-    return tagValue && [tagValue isEqualToString:value];
+    NSString *tagValue = self.mutableTags[[key lowercaseString]];
+    return tagValue && [tagValue isEqualToString:[value lowercaseString]];
 }
 
 - (CSCapUrn *)withTag:(NSString *)key value:(NSString *)value {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
-    newTags[key] = value;
+    newTags[[key lowercaseString]] = [value lowercaseString];
     return [CSCapUrn fromTags:newTags error:nil];
 }
 
 - (CSCapUrn *)withoutTag:(NSString *)key {
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
-    [newTags removeObjectForKey:key];
+    [newTags removeObjectForKey:[key lowercaseString]];
     return [CSCapUrn fromTags:newTags error:nil];
 }
 
@@ -344,7 +354,7 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 }
 
 - (CSCapUrnBuilder *)tag:(NSString *)key value:(NSString *)value {
-    self.tags[key] = value;
+    self.tags[[key lowercaseString]] = [value lowercaseString];
     return self;
 }
 

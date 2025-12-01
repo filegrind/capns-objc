@@ -17,6 +17,8 @@ FOUNDATION_EXPORT const unsigned char CapNsVersionString[];
 
 #import "CSCapUrn.h"
 #import "CSCap.h"
+#import "CSCapCaller.h"
+#import "CSResponseWrapper.h"
 #import "CSCapManifest.h"
 #import "CSCapMatcher.h"
 #import "CSCapValidator.h"

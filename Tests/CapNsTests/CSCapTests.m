@@ -21,17 +21,15 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"test-command" 
                                                   description:nil 
                                                      metadata:@{} 
-                                                      command:@"test-command" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];
     
     XCTAssertNotNil(cap);
     XCTAssertEqualObjects([cap urnString], @"cap:action=transform;format=json;type=data_processing");
-    XCTAssertEqualObjects(cap.version, @"1.0.0");
     XCTAssertEqualObjects(cap.command, @"test-command");
     XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
 }
@@ -43,10 +41,9 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"parse-cmd" 
                                                   description:@"Parse JSON data" 
                                                      metadata:@{} 
-                                                      command:@"parse-cmd" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];
@@ -63,10 +60,9 @@
     
     // Test with acceptsStdin = NO (default)
     CSCap *cap1 = [CSCap capWithUrn:key
-                                                       version:@"1.0.0"
+                                                       command:@"generate"
                                                    description:@"Generate embeddings"
                                                       metadata:@{}
-                                                       command:@"generate"
                                                      arguments:[CSCapArguments arguments]
                                                         output:nil
                                                   acceptsStdin:NO];
@@ -76,10 +72,9 @@
     
     // Test with acceptsStdin = YES
     CSCap *cap2 = [CSCap capWithUrn:key
-                                                       version:@"1.0.0"
+                                                       command:@"generate"
                                                    description:@"Generate embeddings"
                                                       metadata:@{}
-                                                       command:@"generate"
                                                      arguments:[CSCapArguments arguments]
                                                         output:nil
                                                   acceptsStdin:YES];
@@ -95,10 +90,9 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"test-command" 
                                                   description:nil 
                                                      metadata:@{} 
-                                                      command:@"test-command" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];
@@ -116,10 +110,9 @@
     
     // Test copying preserves acceptsStdin
     CSCap *original = [CSCap capWithUrn:key
-                                                    version:@"1.0.0"
+                                                    command:@"generate"
                                                 description:@"Generate embeddings"
                                                    metadata:@{@"model": @"sentence-transformer"}
-                                                    command:@"generate"
                                                   arguments:[CSCapArguments arguments]
                                                      output:nil
                                                acceptsStdin:YES];
@@ -134,9 +127,8 @@
     // Test CSCap.capWithDictionary
     NSDictionary *capDict = @{
         @"urn": @"cap:action=extract;target=metadata",
-        @"version": @"1.0.0",
         @"command": @"extract-metadata",
-        @"description": @"Extract metadata from documents",
+        @"cap_description": @"Extract metadata from documents",
         @"metadata": @{@"ext": @"json"},
         @"accepts_stdin": @YES
     };
@@ -147,14 +139,12 @@
     XCTAssertNil(error, @"Dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(cap, @"Cap should be created from dictionary");
     XCTAssertEqualObjects([cap urnString], @"cap:action=extract;target=metadata");
-    XCTAssertEqualObjects(cap.version, @"1.0.0");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
     XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when specified in dictionary");
     
     // Test with missing required fields - should fail hard
     NSDictionary *invalidDict = @{
-        @"version": @"1.0.0",
         @"command": @"extract-metadata"
         // Missing "urn" field
     };
@@ -173,8 +163,8 @@
         @"required": @[
             @{
                 @"name": @"file_path",
-                @"type": @"string", 
-                @"description": @"Path to file",
+                @"arg_type": @"string", 
+                @"arg_description": @"Path to file",
                 @"cli_flag": @"file_path",
                 @"position": @0
             }
@@ -182,8 +172,8 @@
         @"optional": @[
             @{
                 @"name": @"output_format",
-                @"type": @"string",
-                @"description": @"Output format",
+                @"arg_type": @"string",
+                @"arg_description": @"Output format",
                 @"cli_flag": @"ext",
                 @"default_value": @"json"
             }
@@ -200,15 +190,15 @@
     
     CSCapArgument *requiredArg = arguments.required.firstObject;
     XCTAssertEqualObjects(requiredArg.name, @"file_path");
-    XCTAssertEqual(requiredArg.type, CSArgumentTypeString);
+    XCTAssertEqual(requiredArg.argType, CSArgumentTypeString);
     XCTAssertEqualObjects(requiredArg.position, @0);
 }
 
 - (void)testCanonicalOutputDeserialization {
     // Test CSCapOutput.outputWithDictionary
     NSDictionary *outputDict = @{
-        @"type": @"object",
-        @"description": @"JSON metadata object",
+        @"output_type": @"object",
+        @"output_description": @"JSON metadata object",
         @"content_type": @"application/json",
         @"schema_ref": @"file-metadata.json"
     };
@@ -218,7 +208,7 @@
     
     XCTAssertNil(error, @"Output dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(output, @"Output should be created from dictionary");
-    XCTAssertEqual(output.type, CSOutputTypeObject);
+    XCTAssertEqual(output.outputType, CSOutputTypeObject);
     XCTAssertEqualObjects(output.outputDescription, @"JSON metadata object");
     XCTAssertEqualObjects(output.contentType, @"application/json");
     XCTAssertEqualObjects(output.schemaRef, @"file-metadata.json");
@@ -248,17 +238,16 @@
     // Test a complete cap with all nested structures
     NSDictionary *completeCapDict = @{
         @"urn": @"cap:action=transform;format=json;type=data",
-        @"version": @"2.0.0",
         @"command": @"transform-data",
-        @"description": @"Transform JSON data with validation",
+        @"cap_description": @"Transform JSON data with validation",
         @"metadata": @{@"engine": @"jq", @"performance": @"high"},
         @"accepts_stdin": @YES,
         @"arguments": @{
             @"required": @[
                 @{
                     @"name": @"transformation",
-                    @"type": @"string",
-                    @"description": @"JQ transformation expression",
+                    @"arg_type": @"string",
+                    @"arg_description": @"JQ transformation expression",
                     @"cli_flag": @"transform",
                     @"position": @0,
                     @"validation": @{
@@ -270,8 +259,8 @@
             @"optional": @[
                 @{
                     @"name": @"output_format",
-                    @"type": @"string", 
-                    @"description": @"Output format",
+                    @"arg_type": @"string", 
+                    @"arg_description": @"Output format",
                     @"cli_flag": @"ext",
                     @"default_value": @"json",
                     @"validation": @{
@@ -281,8 +270,8 @@
             ]
         },
         @"output": @{
-            @"type": @"object",
-            @"description": @"Transformed data",
+            @"output_type": @"object",
+            @"output_description": @"Transformed data",
             @"content_type": @"application/json"
         }
     };
@@ -295,7 +284,6 @@
     
     // Verify basic properties
     XCTAssertEqualObjects([cap urnString], @"cap:action=transform;format=json;type=data");
-    XCTAssertEqualObjects(cap.version, @"2.0.0");
     XCTAssertEqualObjects(cap.command, @"transform-data");
     XCTAssertTrue(cap.acceptsStdin);
     
@@ -318,7 +306,7 @@
     
     // Verify output
     XCTAssertNotNil(cap.output);
-    XCTAssertEqual(cap.output.type, CSOutputTypeObject);
+    XCTAssertEqual(cap.output.outputType, CSOutputTypeObject);
     XCTAssertEqualObjects(cap.output.contentType, @"application/json");
 }
 
@@ -331,10 +319,9 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"extract-metadata" 
                                                   description:nil 
                                                      metadata:@{} 
-                                                      command:@"extract-metadata" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];
@@ -358,10 +345,9 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"extract-metadata" 
                                                   description:nil 
                                                      metadata:@{} 
-                                                      command:@"extract-metadata" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];
@@ -384,7 +370,6 @@
         @"caps": @[
             @{
                 @"urn": @"cap:action=extract;target=metadata",
-                @"version": @"1.0.0",
                 @"command": @"extract-metadata",
                 @"accepts_stdin": @YES,
                 @"arguments": @{
@@ -435,19 +420,17 @@
     CSCapArguments *arguments = [CSCapArguments arguments];
     
     CSCap *cap1 = [CSCap capWithUrn:key1 
-                                                       version:@"1.0.0" 
+                                                       command:@"extract-metadata" 
                                                    description:nil 
                                                       metadata:@{} 
-                                                       command:@"extract-metadata" 
                                                      arguments:arguments 
                                                         output:nil 
                                                   acceptsStdin:NO];
     
     CSCap *cap2 = [CSCap capWithUrn:key2 
-                                                       version:@"1.0.0" 
+                                                       command:@"extract-outline" 
                                                    description:nil 
                                                       metadata:@{@"supports_outline": @"true"} 
-                                                       command:@"extract-outline" 
                                                      arguments:arguments 
                                                         output:nil 
                                                   acceptsStdin:NO];
@@ -494,10 +477,9 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"validate" 
                                                   description:nil 
                                                      metadata:@{} 
-                                                      command:@"validate" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];
@@ -515,7 +497,6 @@
         @"caps": @[
             @{
                 @"urn": @"cap:action=validate;type=file",
-                @"version": @"1.0.0",
                 @"command": @"validate",
                 @"arguments": @{
                     @"required": @[],
@@ -540,10 +521,9 @@
     
     CSCapArguments *arguments = [CSCapArguments arguments];
     CSCap *cap = [CSCap capWithUrn:key 
-                                                      version:@"1.0.0" 
+                                                      command:@"process" 
                                                   description:nil 
                                                      metadata:@{} 
-                                                      command:@"process" 
                                                     arguments:arguments 
                                                        output:nil 
                                                  acceptsStdin:NO];

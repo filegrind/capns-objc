@@ -17,25 +17,22 @@
 @implementation CSCapRegistryTests
 
 - (void)testRegistryCreation {
-    CSCapRegistry *registry = [CSCapRegistry registry];
+    CSCapRegistry *registry = [[CSCapRegistry alloc] init];
     XCTAssertNotNil(registry);
 }
 
-- (void)testRegistryValidatorCreation {
-    CSRegistryValidator *validator = [CSRegistryValidator validator];
-    XCTAssertNotNil(validator);
-}
+// Registry validator tests removed - not part of current API
 
-- (void)testCacheKeyGeneration {
-    CSCapRegistry *registry = [CSCapRegistry registry];
+- (void)testRegistryValidCapCheck {
+    CSCapRegistry *registry = [[CSCapRegistry alloc] init];
     
-    NSString *key1 = [registry cacheKeyForUrn:@"cap:action=extract;target=metadata"];
-    NSString *key2 = [registry cacheKeyForUrn:@"cap:action=extract;target=metadata"];
-    NSString *key3 = [registry cacheKeyForUrn:@"cap:action=different"];
+    // Test that registry checks if cap exists in cache
+    BOOL exists1 = [registry capExists:@"cap:action=extract;target=metadata"];
+    BOOL exists2 = [registry capExists:@"cap:action=different"];
     
-    XCTAssertEqualObjects(key1, key2);
-    XCTAssertNotEqualObjects(key1, key3);
-    XCTAssertEqual(key1.length, 64); // SHA256 hex string length
+    // These should both be NO since cache is empty initially
+    XCTAssertFalse(exists1);
+    XCTAssertFalse(exists2);
 }
 
 // Note: These tests would make actual HTTP requests to capns.org

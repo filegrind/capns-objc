@@ -159,8 +159,6 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Formal cap URN with hierarchical naming
 @property (nonatomic, readonly) CSCapUrn *capUrn;
 
-/// Cap version
-@property (nonatomic, readonly) NSString *version;
 
 /// Optional description
 @property (nonatomic, readonly, nullable) NSString *capDescription;
@@ -184,23 +182,30 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /**
  * Create a fully specified cap
  * @param capUrn The cap URN
- * @param version The cap version
+ * @param command The command string
  * @param description The cap description
  * @param metadata The cap metadata
- * @param command The command string
  * @param arguments The cap arguments
  * @param output The output definition
  * @param acceptsStdin Whether this cap accepts stdin input
  * @return A new CSCap instance
  */
 + (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
-                         version:(NSString * _Nonnull)version
+                         command:(NSString * _Nonnull)command
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
-                         command:(NSString * _Nonnull)command
                        arguments:(CSCapArguments * _Nonnull)arguments
                           output:(nullable CSCapOutput *)output
                     acceptsStdin:(BOOL)acceptsStdin;
+
+/**
+ * Create a cap with URN and command (minimal constructor)
+ * @param capUrn The cap URN
+ * @param command The command string
+ * @return A new CSCap instance
+ */
++ (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
+                         command:(NSString * _Nonnull)command;
 
 /**
  * Create a cap from a dictionary representation

@@ -131,14 +131,7 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
             return;
         }
         
-        // Validate basic properties
-        if (![cap.version isEqualToString:canonicalCap.version]) {
-            NSError *validationError = [NSError errorWithDomain:@"CSCapRegistryError"
-                                                           code:1002
-                                                       userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Version mismatch. Local: %@, Canonical: %@", cap.version, canonicalCap.version]}];
-            completion(validationError);
-            return;
-        }
+        // Validate basic properties (version validation removed as per new architecture)
         
         if (![cap.command isEqualToString:canonicalCap.command]) {
             NSError *validationError = [NSError errorWithDomain:@"CSCapRegistryError"

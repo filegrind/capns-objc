@@ -10,14 +10,13 @@
 + (instancetype)capWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     // Required fields
     id urnField = dictionary[@"urn"];
-    NSString *version = dictionary[@"version"];
     NSString *command = dictionary[@"command"];
     
-    if (!urnField || !version || !command) {
+    if (!urnField || !command) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapError"
                                          code:1001
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required cap fields: urn, version, or command"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required cap fields: urn or command"}];
         }
         return nil;
     }
@@ -95,10 +94,9 @@
     }
     
     return [self capWithUrn:capUrn
-                          version:version
+                          command:command
                       description:capDescription
                          metadata:metadata
-                          command:command
                         arguments:arguments
                            output:output
                      acceptsStdin:acceptsStdin];
@@ -108,7 +106,6 @@
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
     
     dict[@"urn"] = [self.capUrn toString];
-    dict[@"version"] = self.version;
     dict[@"command"] = self.command;
     
     if (self.capDescription) {
@@ -165,8 +162,8 @@
 }
 
 - (NSString *)description {
-    NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCap(urn: %@, version: %@", 
-                            [self.capUrn toString], self.version];
+    NSMutableString *desc = [NSMutableString stringWithFormat:@"CSCap(urn: %@, command: %@", 
+                            [self.capUrn toString], self.command];
     
     if (self.capDescription) {
         [desc appendFormat:@", description: %@", self.capDescription];
@@ -186,14 +183,14 @@
     
     CSCap *other = (CSCap *)object;
     return [self.capUrn isEqual:other.capUrn] &&
-           [self.version isEqualToString:other.version] &&
+           [self.command isEqualToString:other.command] &&
            ((self.capDescription == nil && other.capDescription == nil) ||
             [self.capDescription isEqualToString:other.capDescription]) &&
            [self.metadata isEqualToDictionary:other.metadata];
 }
 
 - (NSUInteger)hash {
-    return [self.capUrn hash] ^ [self.version hash] ^ [self.metadata hash];
+    return [self.capUrn hash] ^ [self.command hash] ^ [self.metadata hash];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
@@ -202,10 +199,9 @@
         return nil;
     }
     return [CSCap capWithUrn:self.capUrn 
-                                   version:self.version
+                                   command:self.command
                                description:self.capDescription 
                                   metadata:self.metadata
-                                   command:self.command
                                  arguments:self.arguments
                                     output:self.output
                               acceptsStdin:self.acceptsStdin];
@@ -213,46 +209,46 @@
 
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeObject:self.capUrn forKey:@"capUrn"];
-    [coder encodeObject:self.version forKey:@"version"];
     [coder encodeObject:self.command forKey:@"command"];
     [coder encodeObject:self.capDescription forKey:@"capDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
+    [coder encodeObject:self.arguments forKey:@"arguments"];
+    [coder encodeObject:self.output forKey:@"output"];
     [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
     CSCapUrn *capUrn = [coder decodeObjectOfClass:[CSCapUrn class] forKey:@"capUrn"];
-    NSString *version = [coder decodeObjectOfClass:[NSString class] forKey:@"version"];
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
+    CSCapArguments *arguments = [coder decodeObjectOfClass:[CSCapArguments class] forKey:@"arguments"];
+    CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
     
     // Fail hard if required fields are missing
-    if (!capUrn || !version || !command || !metadata) {
+    if (!capUrn || !command || !metadata) {
         return nil;
     }
     
     return [CSCap capWithUrn:capUrn 
-                                   version:version
+                                   command:command
                                description:description 
                                   metadata:metadata
-                                   command:command
-                                 arguments:[CSCapArguments arguments]
-                                    output:nil
+                                 arguments:arguments ?: [CSCapArguments arguments]
+                                    output:output
                               acceptsStdin:acceptsStdin];
 }
 
 - (instancetype)initWithUrn:(CSCapUrn *)capUrn
-					version:(NSString *)version
 					command:(NSString *)command {
 	self = [super init];
 	if (self) {
 		_capUrn = [capUrn copy];
-		_version = [version copy];
 		_command = [command copy];
 		_metadata = @{};
 		_arguments = [CSCapArguments arguments];
+		_acceptsStdin = NO;
 	}
 	return self;
 }
@@ -265,23 +261,32 @@
 
 
 + (instancetype)capWithUrn:(CSCapUrn *)capUrn
-                         version:(NSString *)version
+                         command:(NSString *)command {
+    return [self capWithUrn:capUrn
+                        command:command
+                    description:nil
+                       metadata:@{}
+                      arguments:[CSCapArguments arguments]
+                         output:nil
+                   acceptsStdin:NO];
+}
+
++ (instancetype)capWithUrn:(CSCapUrn *)capUrn
+                         command:(NSString *)command
                      description:(nullable NSString *)description
                         metadata:(NSDictionary<NSString *, NSString *> *)metadata
-                         command:(NSString *)command
                        arguments:(CSCapArguments *)arguments
                           output:(nullable CSCapOutput *)output
                     acceptsStdin:(BOOL)acceptsStdin {
     CSCap *cap = [[CSCap alloc] init];
     cap->_capUrn = [capUrn copy];
-    cap->_version = [version copy];
+    cap->_command = [command copy];
     cap->_capDescription = [description copy];
     // Fail hard if required fields are nil
     if (!metadata || !arguments) {
         return nil;
     }
     cap->_metadata = [metadata copy];
-    cap->_command = [command copy];
     cap->_arguments = arguments;
     cap->_output = output;
     cap->_acceptsStdin = acceptsStdin;
