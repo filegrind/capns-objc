@@ -42,14 +42,6 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
     
     // Remove the "cap:" prefix
     NSString *tagsPart = [normalizedString substringFromIndex:4];
-    if (tagsPart.length == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
-        }
-        return nil;
-    }
     
     NSMutableDictionary<NSString *, NSString *> *tags = [NSMutableDictionary dictionary];
     
@@ -57,6 +49,11 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
     NSString *normalizedTagsPart = tagsPart;
     if ([tagsPart hasSuffix:@";"]) {
         normalizedTagsPart = [tagsPart substringToIndex:tagsPart.length - 1];
+    }
+    
+    // Handle empty cap URN (cap: with no tags)
+    if (normalizedTagsPart.length == 0) {
+        return [self fromTags:tags error:error];
     }
     
     NSArray<NSString *> *tagStrings = [normalizedTagsPart componentsSeparatedByString:@";"];
@@ -88,14 +85,38 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
             return nil;
         }
         
+        // Check for duplicate keys
+        if (tags[key] != nil) {
+            if (error) {
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorDuplicateKey
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Duplicate tag key: %@", key]}];
+            }
+            return nil;
+        }
+        
+        // Validate key cannot be purely numeric
+        NSCharacterSet *numericSet = [NSCharacterSet decimalDigitCharacterSet];
+        NSCharacterSet *nonNumericSet = [numericSet invertedSet];
+        if ([key rangeOfCharacterFromSet:nonNumericSet].location == NSNotFound && key.length > 0) {
+            if (error) {
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorNumericKey
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Tag key cannot be purely numeric: %@", key]}];
+            }
+            return nil;
+        }
+        
         // Validate key and value characters
-        NSCharacterSet *validChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-*"];
-        if ([key rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound ||
-            [value rangeOfCharacterFromSet:[validChars invertedSet]].location != NSNotFound) {
+        NSCharacterSet *validKeyChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/:"];
+        NSCharacterSet *validValueChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/:*"];
+        
+        if ([key rangeOfCharacterFromSet:[validKeyChars invertedSet]].location != NSNotFound ||
+            [value rangeOfCharacterFromSet:[validValueChars invertedSet]].location != NSNotFound) {
             if (error) {
                 *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                              code:CSCapUrnErrorInvalidCharacter
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, *): %@", trimmedTag]}];
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, /, :, * in values only): %@", trimmedTag]}];
             }
             return nil;
         }
@@ -103,26 +124,12 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
         tags[key] = value;
     }
     
-    if (tags.count == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
-        }
-        return nil;
-    }
-    
     return [self fromTags:tags error:error];
 }
 
 + (nullable instancetype)fromTags:(NSDictionary<NSString *, NSString *> *)tags error:(NSError **)error {
-    if (!tags || tags.count == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
-        }
-        return nil;
+    if (!tags) {
+        tags = @{};
     }
     
     // Normalize all keys and values to lowercase for case-insensitive matching
@@ -281,7 +288,7 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 
 - (NSString *)toString {
     if (self.mutableTags.count == 0) {
-        return @"";
+        return @"cap:";
     }
     
     // Sort keys for canonical representation
@@ -319,7 +326,11 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
     return [CSCapUrn fromTags:self.tags error:nil];
 }
 
-#pragma mark - NSCoding
+#pragma mark - NSSecureCoding
+
++ (BOOL)supportsSecureCoding {
+    return YES;
+}
 
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeObject:self.mutableTags forKey:@"tags"];
@@ -327,7 +338,10 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
     if (self = [super init]) {
-        _mutableTags = [[coder decodeObjectForKey:@"tags"] mutableCopy];
+        _mutableTags = [[coder decodeObjectOfClass:[NSMutableDictionary class] forKey:@"tags"] mutableCopy];
+        if (!_mutableTags) {
+            _mutableTags = [NSMutableDictionary dictionary];
+        }
     }
     return self;
 }

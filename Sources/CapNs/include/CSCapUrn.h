@@ -19,7 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
  * - cap:action=extract;target=metadata
  * - cap:action=analysis;format=en;type=constrained
  */
-@interface CSCapUrn : NSObject <NSCopying, NSCoding>
+@interface CSCapUrn : NSObject <NSCopying, NSSecureCoding>
 
 /// The tags that define this cap
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *tags;
@@ -142,7 +142,9 @@ typedef NS_ERROR_ENUM(CSCapUrnErrorDomain, CSCapUrnError) {
     CSCapUrnErrorEmptyTag = 2,
     CSCapUrnErrorInvalidCharacter = 3,
     CSCapUrnErrorInvalidTagFormat = 4,
-    CSCapUrnErrorMissingCapPrefix = 5
+    CSCapUrnErrorMissingCapPrefix = 5,
+    CSCapUrnErrorDuplicateKey = 6,
+    CSCapUrnErrorNumericKey = 7
 };
 
 /**

@@ -72,7 +72,7 @@
                                      outputDescription:@"Operation response"];
     
     // Create capability
-    CSCapUrn *urn = [CSCapUrn builderWithAction:@"create"].target(@"user").build(nil);
+    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"action" value:@"create"] tag:@"target" value:@"user"] build:nil];
     CSCapArguments *arguments = [CSCapArguments argumentsWithRequired:@[userArg] optional:@[]];
     
     CSCap *cap = [CSCap capWithUrn:urn

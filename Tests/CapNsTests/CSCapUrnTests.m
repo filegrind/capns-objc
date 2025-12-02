@@ -264,10 +264,14 @@
     XCTAssertNil(error);
     
     // Test NSCoding
-    NSData *data = [NSKeyedArchiver archivedDataWithRootObject:original];
+    NSError *archiveError = nil;
+    NSData *data = [NSKeyedArchiver archivedDataWithRootObject:original requiringSecureCoding:YES error:&archiveError];
+    XCTAssertNil(archiveError, @"Archive should succeed");
     XCTAssertNotNil(data);
     
-    CSCapUrn *decoded = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+    NSError *unarchiveError = nil;
+    CSCapUrn *decoded = [NSKeyedUnarchiver unarchivedObjectOfClass:[CSCapUrn class] fromData:data error:&unarchiveError];
+    XCTAssertNil(unarchiveError, @"Unarchive should succeed");
     XCTAssertNotNil(decoded);
     XCTAssertEqualObjects(original, decoded);
 }
@@ -279,6 +283,91 @@
     
     XCTAssertEqualObjects(original, copy);
     XCTAssertNotEqual(original, copy); // Different objects
+}
+
+#pragma mark - New Rule Tests
+
+- (void)testEmptyCapUrn {
+    NSError *error = nil;
+    // Empty cap URN should be valid and match everything
+    CSCapUrn *empty = [CSCapUrn fromString:@"cap:" error:&error];
+    XCTAssertNotNil(empty);
+    XCTAssertNil(error);
+    XCTAssertEqual(empty.tags.count, 0);
+    XCTAssertEqualObjects([empty toString], @"cap:");
+    
+    error = nil;
+    // Should match any other cap
+    CSCapUrn *specific = [CSCapUrn fromString:@"cap:action=generate;ext=pdf" error:&error];
+    XCTAssertTrue([empty matches:specific]);
+    XCTAssertTrue([empty matches:empty]);
+}
+
+- (void)testExtendedCharacterSupport {
+    NSError *error = nil;
+    // Test forward slashes and colons in tag components
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:url=https://example_org/api;path=/some/file" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getTag:@"url"], @"https://example_org/api");
+    XCTAssertEqualObjects([cap getTag:@"path"], @"/some/file");
+}
+
+- (void)testWildcardRestrictions {
+    NSError *error = nil;
+    // Wildcard should be rejected in keys
+    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:*=value" error:&error];
+    XCTAssertNil(invalidKey);
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorInvalidCharacter);
+    
+    // Reset error for next test
+    error = nil;
+    
+    // Wildcard should be accepted in values
+    CSCapUrn *validValue = [CSCapUrn fromString:@"cap:key=*" error:&error];
+    XCTAssertNotNil(validValue);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([validValue getTag:@"key"], @"*");
+}
+
+- (void)testDuplicateKeyRejection {
+    NSError *error = nil;
+    // Duplicate keys should be rejected
+    CSCapUrn *duplicate = [CSCapUrn fromString:@"cap:key=value1;key=value2" error:&error];
+    XCTAssertNil(duplicate);
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorDuplicateKey);
+}
+
+- (void)testNumericKeyRestriction {
+    NSError *error = nil;
+    
+    // Pure numeric keys should be rejected
+    CSCapUrn *numericKey = [CSCapUrn fromString:@"cap:123=value" error:&error];
+    XCTAssertNil(numericKey);
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorNumericKey);
+    
+    // Reset error for next test
+    error = nil;
+    
+    // Mixed alphanumeric keys should be allowed
+    CSCapUrn *mixedKey1 = [CSCapUrn fromString:@"cap:key123=value" error:&error];
+    XCTAssertNotNil(mixedKey1);
+    XCTAssertNil(error);
+    
+    error = nil;
+    CSCapUrn *mixedKey2 = [CSCapUrn fromString:@"cap:123key=value" error:&error];
+    XCTAssertNotNil(mixedKey2);
+    XCTAssertNil(error);
+    
+    error = nil;
+    // Pure numeric values should be allowed
+    CSCapUrn *numericValue = [CSCapUrn fromString:@"cap:key=123" error:&error];
+    XCTAssertNotNil(numericValue);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([numericValue getTag:@"key"], @"123");
 }
 
 @end

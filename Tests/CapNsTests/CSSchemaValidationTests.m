@@ -246,7 +246,7 @@
 
 - (void)testIntegrationWithInputValidation {
     // Create cap with schema-enabled arguments
-    CSCapUrn *urn = [CSCapUrn builderWithAction:@"process"].target(@"user").build(nil);
+    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"action" value:@"process"] tag:@"target" value:@"user"] build:nil];
     
     NSDictionary *userSchema = @{
         @"type": @"object",
@@ -305,7 +305,7 @@
 
 - (void)testIntegrationWithOutputValidation {
     // Create cap with schema-enabled output
-    CSCapUrn *urn = [CSCapUrn builderWithAction:@"query"].target(@"data").build(nil);
+    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"action" value:@"query"] tag:@"target" value:@"data"] build:nil];
     
     NSDictionary *resultSchema = @{
         @"type": @"array",
