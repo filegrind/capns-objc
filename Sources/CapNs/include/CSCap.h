@@ -78,6 +78,8 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly, nullable) NSNumber *position;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly, nullable) id defaultValue;
+@property (nonatomic, readonly, nullable) NSString *schemaRef;
+@property (nonatomic, readonly, nullable) NSDictionary *schema;
 
 + (instancetype)argumentWithName:(NSString * _Nonnull)name
                          argType:(CSArgumentType)argType
@@ -86,6 +88,36 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue;
+
+/**
+ * Create an argument with schema validation
+ * @param name Argument name
+ * @param argType Argument type
+ * @param argDescription Argument description
+ * @param cliFlag CLI flag
+ * @param schema JSON schema for validation (takes precedence over schemaRef)
+ * @return A new CSCapArgument instance
+ */
++ (instancetype)argumentWithName:(NSString * _Nonnull)name
+                         argType:(CSArgumentType)argType
+                   argDescription:(NSString * _Nonnull)argDescription
+                         cliFlag:(NSString * _Nonnull)cliFlag
+                          schema:(NSDictionary * _Nonnull)schema;
+
+/**
+ * Create an argument with schema reference
+ * @param name Argument name
+ * @param argType Argument type
+ * @param argDescription Argument description
+ * @param cliFlag CLI flag
+ * @param schemaRef Reference to external schema
+ * @return A new CSCapArgument instance
+ */
++ (instancetype)argumentWithName:(NSString * _Nonnull)name
+                         argType:(CSArgumentType)argType
+                   argDescription:(NSString * _Nonnull)argDescription
+                         cliFlag:(NSString * _Nonnull)cliFlag
+                       schemaRef:(NSString * _Nonnull)schemaRef;
 + (instancetype)argumentWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**
@@ -132,6 +164,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 @property (nonatomic, readonly) CSOutputType outputType;
 @property (nonatomic, readonly, nullable) NSString *schemaRef;
+@property (nonatomic, readonly, nullable) NSDictionary *schema;
 @property (nonatomic, readonly, nullable) NSString *contentType;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
@@ -141,6 +174,28 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                    contentType:(nullable NSString *)contentType
                     validation:(nullable CSArgumentValidation *)validation
            outputDescription:(NSString * _Nonnull)outputDescription;
+
+/**
+ * Create an output with embedded schema
+ * @param outputType The output type
+ * @param schema JSON schema for validation (takes precedence over schemaRef)
+ * @param outputDescription Description of the output
+ * @return A new CSCapOutput instance
+ */
++ (instancetype)outputWithType:(CSOutputType)outputType
+                        schema:(NSDictionary * _Nonnull)schema
+               outputDescription:(NSString * _Nonnull)outputDescription;
+
+/**
+ * Create an output with schema reference
+ * @param outputType The output type
+ * @param schemaRef Reference to external schema
+ * @param outputDescription Description of the output
+ * @return A new CSCapOutput instance
+ */
++ (instancetype)outputWithType:(CSOutputType)outputType
+                     schemaRef:(NSString * _Nonnull)schemaRef
+               outputDescription:(NSString * _Nonnull)outputDescription;
 + (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**

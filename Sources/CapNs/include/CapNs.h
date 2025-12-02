@@ -22,4 +22,5 @@ FOUNDATION_EXPORT const unsigned char CapNsVersionString[];
 #import "CSCapManifest.h"
 #import "CSCapMatcher.h"
 #import "CSCapValidator.h"
+#import "CSSchemaValidator.h"
 #import "CSCapRegistry.h"

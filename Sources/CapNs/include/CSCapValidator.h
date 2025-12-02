@@ -24,7 +24,8 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
     CSValidationErrorTypeOutputValidationFailed,
     CSValidationErrorTypeInvalidCapSchema,
     CSValidationErrorTypeTooManyArguments,
-    CSValidationErrorTypeJSONParseError
+    CSValidationErrorTypeJSONParseError,
+    CSValidationErrorTypeSchemaValidationFailed
 };
 
 /// Validation error information
@@ -61,6 +62,9 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
                           maxExpected:(NSInteger)maxExpected 
                           actualCount:(NSInteger)actualCount;
 + (instancetype)jsonParseError:(NSString *)capUrn error:(NSString *)error;
++ (instancetype)schemaValidationFailedError:(NSString *)capUrn 
+                               argumentName:(nullable NSString *)argumentName 
+                           underlyingError:(NSError *)underlyingError;
 
 @end
 

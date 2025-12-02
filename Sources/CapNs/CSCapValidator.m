@@ -7,6 +7,7 @@
 //
 
 #import "CSCapValidator.h"
+#import "CSSchemaValidator.h"
 
 // Error domain
 NSErrorDomain const CSValidationErrorDomain = @"CSValidationErrorDomain";
@@ -188,6 +189,26 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              userInfo:@{NSLocalizedDescriptionKey: description}];
 }
 
++ (instancetype)schemaValidationFailedError:(NSString *)capUrn 
+                               argumentName:(nullable NSString *)argumentName 
+                           underlyingError:(NSError *)underlyingError {
+    NSString *context = argumentName ? [NSString stringWithFormat:@"argument '%@'", argumentName] : @"output";
+    NSString *description = [NSString stringWithFormat:@"Cap '%@' %@ failed schema validation: %@", 
+                            capUrn, context, underlyingError.localizedDescription];
+    
+    NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithObject:description 
+                                                                       forKey:NSLocalizedDescriptionKey];
+    if (argumentName) {
+        userInfo[CSValidationErrorArgumentNameKey] = argumentName;
+    }
+    userInfo[NSUnderlyingErrorKey] = underlyingError;
+    
+    return [[self alloc] initWithType:CSValidationErrorTypeSchemaValidationFailed 
+                         capUrn:capUrn 
+                          description:description 
+                             userInfo:userInfo];
+}
+
 @end
 
 // Internal helper functions
@@ -277,6 +298,23 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Validation rules
     if (![self validateArgumentRules:argDef value:value cap:cap error:error]) {
         return NO;
+    }
+    
+    // Schema validation for structured types
+    if ((argDef.argType == CSArgumentTypeObject || argDef.argType == CSArgumentTypeArray) &&
+        (argDef.schema || argDef.schemaRef)) {
+        CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
+        NSError *schemaError = nil;
+        
+        if (![schemaValidator validateArgument:argDef withValue:value error:&schemaError]) {
+            if (error) {
+                NSString *capUrn = [cap urnString];
+                *error = [CSValidationError schemaValidationFailedError:capUrn 
+                                                           argumentName:argDef.name 
+                                                        underlyingError:schemaError];
+            }
+            return NO;
+        }
     }
     
     return YES;
@@ -511,6 +549,22 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Validation rules
     if (![self validateOutputRules:outputDef value:output cap:cap error:error]) {
         return NO;
+    }
+    
+    // Schema validation for structured types
+    if ((outputDef.outputType == CSOutputTypeObject || outputDef.outputType == CSOutputTypeArray) &&
+        (outputDef.schema || outputDef.schemaRef)) {
+        CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
+        NSError *schemaError = nil;
+        
+        if (![schemaValidator validateOutput:outputDef withValue:output error:&schemaError]) {
+            if (error) {
+                *error = [CSValidationError schemaValidationFailedError:capUrn 
+                                                           argumentName:nil 
+                                                        underlyingError:schemaError];
+            }
+            return NO;
+        }
     }
     
     return YES;

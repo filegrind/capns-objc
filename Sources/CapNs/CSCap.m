@@ -443,6 +443,44 @@
     argument->_position = position;
     argument->_validation = validation;
     argument->_defaultValue = defaultValue;
+    argument->_schemaRef = nil;
+    argument->_schema = nil;
+    return argument;
+}
+
++ (instancetype)argumentWithName:(NSString *)name
+                         argType:(CSArgumentType)argType
+                   argDescription:(NSString *)argDescription
+                         cliFlag:(NSString *)cliFlag
+                          schema:(NSDictionary *)schema {
+    CSCapArgument *argument = [[CSCapArgument alloc] init];
+    argument->_name = [name copy];
+    argument->_argType = argType;
+    argument->_argDescription = [argDescription copy];
+    argument->_cliFlag = [cliFlag copy];
+    argument->_position = nil;
+    argument->_validation = nil;
+    argument->_defaultValue = nil;
+    argument->_schemaRef = nil;
+    argument->_schema = [schema copy];
+    return argument;
+}
+
++ (instancetype)argumentWithName:(NSString *)name
+                         argType:(CSArgumentType)argType
+                   argDescription:(NSString *)argDescription
+                         cliFlag:(NSString *)cliFlag
+                       schemaRef:(NSString *)schemaRef {
+    CSCapArgument *argument = [[CSCapArgument alloc] init];
+    argument->_name = [name copy];
+    argument->_argType = argType;
+    argument->_argDescription = [argDescription copy];
+    argument->_cliFlag = [cliFlag copy];
+    argument->_position = nil;
+    argument->_validation = nil;
+    argument->_defaultValue = nil;
+    argument->_schemaRef = [schemaRef copy];
+    argument->_schema = nil;
     return argument;
 }
 
@@ -453,6 +491,8 @@
     NSString *cliFlag = dictionary[@"cli_flag"];
     NSNumber *position = dictionary[@"position"];
     id defaultValue = dictionary[@"default_value"];
+    NSString *schemaRef = dictionary[@"schema_ref"];
+    NSDictionary *schema = dictionary[@"schema"];
     
     if (!name || !typeString || !argDescription || !cliFlag) {
         if (error) {
@@ -496,23 +536,33 @@
         }
     }
     
-    return [self argumentWithName:name
-                          argType:type
-                    argDescription:argDescription
-                          cliFlag:cliFlag
-                         position:position
-                       validation:validation
-                     defaultValue:defaultValue];
+    // Create argument with all fields
+    CSCapArgument *argument = [[CSCapArgument alloc] init];
+    argument->_name = [name copy];
+    argument->_argType = type;
+    argument->_argDescription = [argDescription copy];
+    argument->_cliFlag = [cliFlag copy];
+    argument->_position = position;
+    argument->_validation = validation;
+    argument->_defaultValue = defaultValue;
+    argument->_schemaRef = [schemaRef copy];
+    argument->_schema = [schema copy];
+    
+    return argument;
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapArgument argumentWithName:self.name
-                                       argType:self.argType
-                                 argDescription:self.argDescription
-                                       cliFlag:self.cliFlag
-                                      position:self.position
-                                    validation:self.validation
-                                  defaultValue:self.defaultValue];
+    CSCapArgument *copy = [[CSCapArgument alloc] init];
+    copy->_name = [self.name copy];
+    copy->_argType = self.argType;
+    copy->_argDescription = [self.argDescription copy];
+    copy->_cliFlag = [self.cliFlag copy];
+    copy->_position = self.position;
+    copy->_validation = [self.validation copy];
+    copy->_defaultValue = self.defaultValue;
+    copy->_schemaRef = [self.schemaRef copy];
+    copy->_schema = [self.schema copy];
+    return copy;
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
@@ -523,6 +573,8 @@
     [coder encodeObject:self.position forKey:@"position"];
     [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
+    [coder encodeObject:self.schemaRef forKey:@"schemaRef"];
+    [coder encodeObject:self.schema forKey:@"schema"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
@@ -541,6 +593,8 @@
         _position = [coder decodeObjectOfClass:[NSNumber class] forKey:@"position"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
+        _schemaRef = [coder decodeObjectOfClass:[NSString class] forKey:@"schemaRef"];
+        _schema = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"schema"];
     }
     return self;
 }
@@ -564,6 +618,15 @@
     // Add validation if present
     if (self.validation) {
         dict[@"validation"] = [self.validation toDictionary];
+    }
+    
+    // Add schema fields
+    if (self.schemaRef) {
+        dict[@"schema_ref"] = self.schemaRef;
+    }
+    
+    if (self.schema) {
+        dict[@"schema"] = self.schema;
     }
     
     return [dict copy];
@@ -784,8 +847,35 @@
     CSCapOutput *output = [[CSCapOutput alloc] init];
     output->_outputType = outputType;
     output->_schemaRef = [schemaRef copy];
+    output->_schema = nil;
     output->_contentType = [contentType copy];
     output->_validation = validation;
+    output->_outputDescription = [outputDescription copy];
+    return output;
+}
+
++ (instancetype)outputWithType:(CSOutputType)outputType
+                        schema:(NSDictionary *)schema
+               outputDescription:(NSString *)outputDescription {
+    CSCapOutput *output = [[CSCapOutput alloc] init];
+    output->_outputType = outputType;
+    output->_schemaRef = nil;
+    output->_schema = [schema copy];
+    output->_contentType = nil;
+    output->_validation = nil;
+    output->_outputDescription = [outputDescription copy];
+    return output;
+}
+
++ (instancetype)outputWithType:(CSOutputType)outputType
+                     schemaRef:(NSString *)schemaRef
+               outputDescription:(NSString *)outputDescription {
+    CSCapOutput *output = [[CSCapOutput alloc] init];
+    output->_outputType = outputType;
+    output->_schemaRef = [schemaRef copy];
+    output->_schema = nil;
+    output->_contentType = nil;
+    output->_validation = nil;
     output->_outputDescription = [outputDescription copy];
     return output;
 }
@@ -793,6 +883,7 @@
 + (instancetype)outputWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     NSString *typeString = dictionary[@"output_type"];
     NSString *schemaRef = dictionary[@"schema_ref"];
+    NSDictionary *schema = dictionary[@"schema"];
     NSString *contentType = dictionary[@"content_type"];
     NSString *outputDescription = dictionary[@"output_description"];
     
@@ -840,24 +931,33 @@
         }
     }
     
-    return [self outputWithType:type
-                      schemaRef:schemaRef
-                    contentType:contentType
-                     validation:validation
-              outputDescription:outputDescription];
+    // Create output with all fields
+    CSCapOutput *output = [[CSCapOutput alloc] init];
+    output->_outputType = type;
+    output->_schemaRef = [schemaRef copy];
+    output->_schema = [schema copy];
+    output->_contentType = [contentType copy];
+    output->_validation = validation;
+    output->_outputDescription = [outputDescription copy];
+    
+    return output;
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapOutput outputWithType:self.outputType
-                                     schemaRef:self.schemaRef
-                                   contentType:self.contentType
-                                    validation:self.validation
-                             outputDescription:self.outputDescription];
+    CSCapOutput *copy = [[CSCapOutput alloc] init];
+    copy->_outputType = self.outputType;
+    copy->_schemaRef = [self.schemaRef copy];
+    copy->_schema = [self.schema copy];
+    copy->_contentType = [self.contentType copy];
+    copy->_validation = [self.validation copy];
+    copy->_outputDescription = [self.outputDescription copy];
+    return copy;
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeInteger:self.outputType forKey:@"outputType"];
     [coder encodeObject:self.schemaRef forKey:@"schemaRef"];
+    [coder encodeObject:self.schema forKey:@"schema"];
     [coder encodeObject:self.contentType forKey:@"contentType"];
     [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.outputDescription forKey:@"outputDescription"];
@@ -871,6 +971,7 @@
     if (self) {
         _outputType = (CSOutputType)[coder decodeIntegerForKey:@"outputType"];
         _schemaRef = [coder decodeObjectOfClass:[NSString class] forKey:@"schemaRef"];
+        _schema = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"schema"];
         _contentType = [coder decodeObjectOfClass:[NSString class] forKey:@"contentType"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _outputDescription = outputDescription;
@@ -886,6 +987,10 @@
     
     if (self.schemaRef) {
         dict[@"schema_ref"] = self.schemaRef;
+    }
+    
+    if (self.schema) {
+        dict[@"schema"] = self.schema;
     }
     
     if (self.contentType) {
