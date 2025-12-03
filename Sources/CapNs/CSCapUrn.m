@@ -108,15 +108,15 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
         }
         
         // Validate key and value characters
-        NSCharacterSet *validKeyChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/:"];
-        NSCharacterSet *validValueChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/:*"];
+        NSCharacterSet *validKeyChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/:."];
+        NSCharacterSet *validValueChars = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/:.*"];
         
         if ([key rangeOfCharacterFromSet:[validKeyChars invertedSet]].location != NSNotFound ||
             [value rangeOfCharacterFromSet:[validValueChars invertedSet]].location != NSNotFound) {
             if (error) {
                 *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                              code:CSCapUrnErrorInvalidCharacter
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, /, :, * in values only): %@", trimmedTag]}];
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid character in tag (use alphanumeric, _, -, /, :, ., * in values only): %@", trimmedTag]}];
             }
             return nil;
         }

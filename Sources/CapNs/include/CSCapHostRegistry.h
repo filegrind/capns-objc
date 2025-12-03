@@ -77,13 +77,15 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
                                             error:(NSError * _Nullable * _Nullable)error;
 
 /**
- * Find the best capability host for the request using specificity ranking
+ * Find the best capability host and cap definition for the request using specificity ranking
  * @param requestUrn The capability URN to find the best host for
  * @param error Error pointer for any lookup failures
+ * @param capDefinition Output parameter for the matching cap definition
  * @return The best capability host, or nil if none found or error occurred
  */
 - (nullable id<CSCapHost>)findBestCapHost:(NSString *)requestUrn
-                                    error:(NSError * _Nullable * _Nullable)error;
+                                    error:(NSError * _Nullable * _Nullable)error
+                            capDefinition:(CSCap * _Nullable * _Nullable)capDefinition;
 
 /**
  * Get all registered capability host names

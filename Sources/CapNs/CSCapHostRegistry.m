@@ -127,7 +127,8 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
 }
 
 - (nullable id<CSCapHost>)findBestCapHost:(NSString *)requestUrn
-                                    error:(NSError * _Nullable * _Nullable)error {
+                                    error:(NSError * _Nullable * _Nullable)error
+                            capDefinition:(CSCap * _Nullable * _Nullable)capDefinition {
     
     NSError *parseError = nil;
     CSCapUrn *request = [CSCapUrn fromString:requestUrn error:&parseError];
@@ -140,6 +141,7 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     }
     
     id<CSCapHost> bestHost = nil;
+    CSCap *bestCap = nil;
     NSInteger bestSpecificity = -1;
     
     for (CSCapHostEntry *entry in [self.hosts allValues]) {
@@ -148,6 +150,7 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
                 NSInteger specificity = [cap.capUrn specificity];
                 if (bestSpecificity == -1 || specificity > bestSpecificity) {
                     bestHost = entry.host;
+                    bestCap = cap;
                     bestSpecificity = specificity;
                 }
                 break; // Found a matching capability for this host, check next host
@@ -160,6 +163,10 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
             *error = [CSCapHostRegistryError noHostsFoundErrorForCapability:requestUrn];
         }
         return nil;
+    }
+    
+    if (capDefinition) {
+        *capDefinition = bestCap;
     }
     
     return bestHost;
