@@ -126,9 +126,11 @@
     
     // Request should match the more specific host (using valid URN characters)
     NSError *error = nil;
-    id<CSCapHost> bestHost = [self.registry findBestCapHost:@"cap:action=generate;type=text;model=gpt-4;temperature=low" error:&error];
+    CSCap *capDefinition = nil;
+    id<CSCapHost> bestHost = [self.registry findBestCapHost:@"cap:action=generate;type=text;model=gpt-4;temperature=low" error:&error capDefinition:&capDefinition];
     XCTAssertNotNil(bestHost, @"Should find a best host");
     XCTAssertNil(error, @"Should not have error finding best host");
+    XCTAssertNotNil(capDefinition, @"Should return cap definition");
     
     // Both hosts should match
     NSArray<id<CSCapHost>> *allHosts = [self.registry findCapHosts:@"cap:action=generate;type=text;model=gpt-4;temperature=low" error:&error];
