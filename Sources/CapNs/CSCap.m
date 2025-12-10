@@ -115,9 +115,8 @@
         dict[@"cap_description"] = self.capDescription;
     }
     
-    if (self.metadata && self.metadata.count > 0) {
-        dict[@"metadata"] = self.metadata;
-    }
+    // Always include metadata (empty or populated)
+    dict[@"metadata"] = self.metadata ?: @{};
     
     if (self.arguments && !self.arguments.isEmpty) {
         dict[@"arguments"] = [self.arguments toDictionary];

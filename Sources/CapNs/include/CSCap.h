@@ -282,6 +282,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  */
 - (NSDictionary * _Nonnull)toDictionary;
 
+
 /**
  * Check if this cap matches a request string
  * @param request The request string
