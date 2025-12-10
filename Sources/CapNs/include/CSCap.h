@@ -214,6 +214,8 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Formal cap URN with hierarchical naming
 @property (nonatomic, readonly) CSCapUrn *capUrn;
 
+/// Human-readable title of the capability (required)
+@property (nonatomic, readonly) NSString *title;
 
 /// Optional description
 @property (nonatomic, readonly, nullable) NSString *capDescription;
@@ -237,6 +239,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /**
  * Create a fully specified cap
  * @param capUrn The cap URN
+ * @param title The human-readable title (required)
  * @param command The command string
  * @param description The cap description
  * @param metadata The cap metadata
@@ -246,21 +249,24 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @return A new CSCap instance
  */
 + (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
-                         command:(NSString * _Nonnull)command
-                     description:(nullable NSString *)description
-                        metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
-                       arguments:(CSCapArguments * _Nonnull)arguments
-                          output:(nullable CSCapOutput *)output
-                    acceptsStdin:(BOOL)acceptsStdin;
+                     title:(NSString * _Nonnull)title
+                   command:(NSString * _Nonnull)command
+               description:(nullable NSString *)description
+                  metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
+                 arguments:(CSCapArguments * _Nonnull)arguments
+                    output:(nullable CSCapOutput *)output
+              acceptsStdin:(BOOL)acceptsStdin;
 
 /**
- * Create a cap with URN and command (minimal constructor)
+ * Create a cap with URN, title and command (minimal constructor)
  * @param capUrn The cap URN
+ * @param title The human-readable title (required)
  * @param command The command string
  * @return A new CSCap instance
  */
 + (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
-                         command:(NSString * _Nonnull)command;
+                     title:(NSString * _Nonnull)title
+                   command:(NSString * _Nonnull)command;
 
 /**
  * Create a cap from a dictionary representation
