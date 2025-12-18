@@ -72,6 +72,7 @@
     NSString *capDescription = dictionary[@"cap_description"];
     NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
     BOOL acceptsStdin = [dictionary[@"accepts_stdin"] boolValue]; // defaults to NO if missing
+    NSDictionary *metadataJSON = dictionary[@"metadata_json"];
     
     // Parse arguments
     CSCapArguments *arguments;
@@ -103,7 +104,8 @@
                        metadata:metadata
                       arguments:arguments
                          output:output
-                   acceptsStdin:acceptsStdin];
+                   acceptsStdin:acceptsStdin
+                   metadataJSON:metadataJSON];
 }
 
 - (NSDictionary *)toDictionary {
@@ -133,6 +135,10 @@
     }
     
     dict[@"accepts_stdin"] = @(self.acceptsStdin);
+    
+    if (self.metadataJSON) {
+        dict[@"metadata_json"] = self.metadataJSON;
+    }
     
     return [dict copy];
 }
@@ -217,7 +223,8 @@
                     metadata:self.metadata
                    arguments:self.arguments
                       output:self.output
-                acceptsStdin:self.acceptsStdin];
+                acceptsStdin:self.acceptsStdin
+                metadataJSON:self.metadataJSON];
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
@@ -230,6 +237,7 @@
     [coder encodeObject:self.arguments forKey:@"arguments"];
     [coder encodeObject:self.output forKey:@"output"];
     [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
+    [coder encodeObject:self.metadataJSON forKey:@"metadataJSON"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
@@ -242,6 +250,7 @@
     CSCapArguments *arguments = [coder decodeObjectOfClass:[CSCapArguments class] forKey:@"arguments"];
     CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
+    NSDictionary *metadataJSON = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadataJSON"];
     
     // Fail hard if required fields are missing
     if (!capUrn || !title || !command || !metadata) {
@@ -256,7 +265,8 @@
                     metadata:metadata
                    arguments:arguments ?: [CSCapArguments arguments]
                       output:output
-                acceptsStdin:acceptsStdin];
+                acceptsStdin:acceptsStdin
+                metadataJSON:metadataJSON];
 }
 
 - (instancetype)initWithUrn:(CSCapUrn *)capUrn
@@ -292,7 +302,8 @@
                    metadata:@{}
                   arguments:[CSCapArguments arguments]
                      output:nil
-               acceptsStdin:NO];
+               acceptsStdin:NO
+               metadataJSON:nil];
 }
 
 + (instancetype)capWithUrn:(CSCapUrn *)capUrn
@@ -303,7 +314,8 @@
                   metadata:(NSDictionary<NSString *, NSString *> *)metadata
                  arguments:(CSCapArguments *)arguments
                     output:(nullable CSCapOutput *)output
-              acceptsStdin:(BOOL)acceptsStdin {
+              acceptsStdin:(BOOL)acceptsStdin
+              metadataJSON:(nullable NSDictionary *)metadataJSON {
     CSCap *cap = [[CSCap alloc] init];
     cap->_capUrn = [capUrn copy];
     cap->_title = [title copy];
@@ -318,6 +330,7 @@
     cap->_arguments = arguments;
     cap->_output = output;
     cap->_acceptsStdin = acceptsStdin;
+    cap->_metadataJSON = [metadataJSON copy];
     return cap;
 }
 
@@ -345,6 +358,18 @@
         _arguments = [CSCapArguments arguments];
     }
     [_arguments addOptionalArgument:argument];
+}
+
+- (nullable NSDictionary *)getMetadataJSON {
+    return self.metadataJSON;
+}
+
+- (void)setMetadataJSON:(nullable NSDictionary *)metadata {
+    _metadataJSON = [metadata copy];
+}
+
+- (void)clearMetadataJSON {
+    _metadataJSON = nil;
 }
 
 @end
@@ -473,6 +498,7 @@
     argument->_defaultValue = defaultValue;
     argument->_schemaRef = nil;
     argument->_schema = nil;
+    argument->_metadata = nil;
     return argument;
 }
 
@@ -491,6 +517,7 @@
     argument->_defaultValue = nil;
     argument->_schemaRef = nil;
     argument->_schema = [schema copy];
+    argument->_metadata = nil;
     return argument;
 }
 
@@ -509,6 +536,7 @@
     argument->_defaultValue = nil;
     argument->_schemaRef = [schemaRef copy];
     argument->_schema = nil;
+    argument->_metadata = nil;
     return argument;
 }
 
@@ -521,6 +549,7 @@
     id defaultValue = dictionary[@"default_value"];
     NSString *schemaRef = dictionary[@"schema_ref"];
     NSDictionary *schema = dictionary[@"schema"];
+    NSDictionary *metadata = dictionary[@"metadata"];
     
     if (!name || !typeString || !argDescription || !cliFlag) {
         if (error) {
@@ -575,6 +604,7 @@
     argument->_defaultValue = defaultValue;
     argument->_schemaRef = [schemaRef copy];
     argument->_schema = [schema copy];
+    argument->_metadata = [metadata copy];
     
     return argument;
 }
@@ -590,6 +620,7 @@
     copy->_defaultValue = self.defaultValue;
     copy->_schemaRef = [self.schemaRef copy];
     copy->_schema = [self.schema copy];
+    copy->_metadata = [self.metadata copy];
     return copy;
 }
 
@@ -603,6 +634,7 @@
     [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
     [coder encodeObject:self.schemaRef forKey:@"schemaRef"];
     [coder encodeObject:self.schema forKey:@"schema"];
+    [coder encodeObject:self.metadata forKey:@"metadata"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
@@ -623,6 +655,7 @@
         _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
         _schemaRef = [coder decodeObjectOfClass:[NSString class] forKey:@"schemaRef"];
         _schema = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"schema"];
+        _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     }
     return self;
 }
@@ -657,6 +690,10 @@
         dict[@"schema"] = self.schema;
     }
     
+    if (self.metadata) {
+        dict[@"metadata"] = self.metadata;
+    }
+    
     return [dict copy];
 }
 
@@ -671,6 +708,18 @@
         case CSArgumentTypeBinary: return @"binary";
         default: return @"string";
     }
+}
+
+- (nullable NSDictionary *)getMetadata {
+    return self.metadata;
+}
+
+- (void)setMetadata:(nullable NSDictionary *)metadata {
+    _metadata = [metadata copy];
+}
+
+- (void)clearMetadata {
+    _metadata = nil;
 }
 
 + (BOOL)supportsSecureCoding {
@@ -879,6 +928,7 @@
     output->_contentType = [contentType copy];
     output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
+    output->_metadata = nil;
     return output;
 }
 
@@ -892,6 +942,7 @@
     output->_contentType = nil;
     output->_validation = nil;
     output->_outputDescription = [outputDescription copy];
+    output->_metadata = nil;
     return output;
 }
 
@@ -905,6 +956,7 @@
     output->_contentType = nil;
     output->_validation = nil;
     output->_outputDescription = [outputDescription copy];
+    output->_metadata = nil;
     return output;
 }
 
@@ -914,6 +966,7 @@
     NSDictionary *schema = dictionary[@"schema"];
     NSString *contentType = dictionary[@"content_type"];
     NSString *outputDescription = dictionary[@"output_description"];
+    NSDictionary *metadata = dictionary[@"metadata"];
     
     if (!typeString || !outputDescription) {
         if (error) {
@@ -967,6 +1020,7 @@
     output->_contentType = [contentType copy];
     output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
+    output->_metadata = [metadata copy];
     
     return output;
 }
@@ -979,6 +1033,7 @@
     copy->_contentType = [self.contentType copy];
     copy->_validation = [self.validation copy];
     copy->_outputDescription = [self.outputDescription copy];
+    copy->_metadata = [self.metadata copy];
     return copy;
 }
 
@@ -989,6 +1044,7 @@
     [coder encodeObject:self.contentType forKey:@"contentType"];
     [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.outputDescription forKey:@"outputDescription"];
+    [coder encodeObject:self.metadata forKey:@"metadata"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
@@ -1003,6 +1059,7 @@
         _contentType = [coder decodeObjectOfClass:[NSString class] forKey:@"contentType"];
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _outputDescription = outputDescription;
+        _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     }
     return self;
 }
@@ -1029,6 +1086,10 @@
         dict[@"validation"] = [self.validation toDictionary];
     }
     
+    if (self.metadata) {
+        dict[@"metadata"] = self.metadata;
+    }
+    
     return [dict copy];
 }
 
@@ -1043,6 +1104,18 @@
         case CSOutputTypeBinary: return @"binary";
         default: return @"string";
     }
+}
+
+- (nullable NSDictionary *)getMetadata {
+    return self.metadata;
+}
+
+- (void)setMetadata:(nullable NSDictionary *)metadata {
+    _metadata = [metadata copy];
+}
+
+- (void)clearMetadata {
+    _metadata = nil;
 }
 
 + (BOOL)supportsSecureCoding {

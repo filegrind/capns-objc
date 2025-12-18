@@ -80,6 +80,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly, nullable) id defaultValue;
 @property (nonatomic, readonly, nullable) NSString *schemaRef;
 @property (nonatomic, readonly, nullable) NSDictionary *schema;
+@property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
 + (instancetype)argumentWithName:(NSString * _Nonnull)name
                          argType:(CSArgumentType)argType
@@ -126,6 +127,23 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  */
 - (NSDictionary * _Nonnull)toDictionary;
 
+/**
+ * Get the metadata JSON
+ * @return The metadata JSON dictionary or nil
+ */
+- (nullable NSDictionary *)getMetadata;
+
+/**
+ * Set the metadata JSON
+ * @param metadata The metadata JSON dictionary
+ */
+- (void)setMetadata:(nullable NSDictionary *)metadata;
+
+/**
+ * Clear the metadata JSON
+ */
+- (void)clearMetadata;
+
 @end
 
 /**
@@ -168,6 +186,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 @property (nonatomic, readonly, nullable) NSString *contentType;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
+@property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
 + (instancetype)outputWithType:(CSOutputType)outputType
                      schemaRef:(nullable NSString *)schemaRef
@@ -204,6 +223,23 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  */
 - (NSDictionary * _Nonnull)toDictionary;
 
+/**
+ * Get the metadata JSON
+ * @return The metadata JSON dictionary or nil
+ */
+- (nullable NSDictionary *)getMetadata;
+
+/**
+ * Set the metadata JSON
+ * @param metadata The metadata JSON dictionary
+ */
+- (void)setMetadata:(nullable NSDictionary *)metadata;
+
+/**
+ * Clear the metadata JSON
+ */
+- (void)clearMetadata;
+
 @end
 
 /**
@@ -238,6 +274,9 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Whether this cap accepts input via stdin
 @property (nonatomic, readonly) BOOL acceptsStdin;
 
+/// Arbitrary metadata as JSON object
+@property (nonatomic, readonly, nullable) NSDictionary *metadataJSON;
+
 
 /**
  * Create a fully specified cap
@@ -260,7 +299,8 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                   metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
                  arguments:(CSCapArguments * _Nonnull)arguments
                     output:(nullable CSCapOutput *)output
-              acceptsStdin:(BOOL)acceptsStdin;
+              acceptsStdin:(BOOL)acceptsStdin
+              metadataJSON:(nullable NSDictionary *)metadataJSON;
 
 /**
  * Create a cap with URN, title and command (minimal constructor)
@@ -358,6 +398,23 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param argument The argument to add
  */
 - (void)addOptionalArgument:(CSCapArgument * _Nonnull)argument;
+
+/**
+ * Get the metadata JSON
+ * @return The metadata JSON dictionary or nil
+ */
+- (nullable NSDictionary *)getMetadataJSON;
+
+/**
+ * Set the metadata JSON
+ * @param metadata The metadata JSON dictionary
+ */
+- (void)setMetadataJSON:(nullable NSDictionary *)metadata;
+
+/**
+ * Clear the metadata JSON
+ */
+- (void)clearMetadataJSON;
 
 @end
 
