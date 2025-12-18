@@ -18,6 +18,7 @@ FOUNDATION_EXPORT NSErrorDomain const CSValidationErrorDomain;
 typedef NS_ENUM(NSInteger, CSValidationErrorType) {
     CSValidationErrorTypeUnknownCap,
     CSValidationErrorTypeMissingRequiredArgument,
+    CSValidationErrorTypeUnknownArgument,
     CSValidationErrorTypeInvalidArgumentType,
     CSValidationErrorTypeArgumentValidationFailed,
     CSValidationErrorTypeInvalidOutputType,
@@ -41,6 +42,7 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 
 + (instancetype)unknownCapError:(NSString *)capUrn;
 + (instancetype)missingRequiredArgumentError:(NSString *)capUrn argumentName:(NSString *)argumentName;
++ (instancetype)unknownArgumentError:(NSString *)capUrn argumentName:(NSString *)argumentName;
 + (instancetype)invalidArgumentTypeError:(NSString *)capUrn 
                             argumentName:(NSString *)argumentName 
                             expectedType:(CSArgumentType)expectedType 
@@ -71,10 +73,15 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 /// Input argument validator
 @interface CSInputValidator : NSObject
 
-/// Validate arguments against cap input schema
+/// Validate positional arguments against cap input schema
 + (BOOL)validateArguments:(NSArray * _Nonnull)arguments 
                cap:(CSCap * _Nonnull)cap 
                     error:(NSError * _Nullable * _Nullable)error;
+
+/// Validate named arguments against cap input schema
++ (BOOL)validateNamedArguments:(NSArray * _Nonnull)namedArguments 
+                           cap:(CSCap * _Nonnull)cap 
+                         error:(NSError * _Nullable * _Nullable)error;
 
 @end
 
