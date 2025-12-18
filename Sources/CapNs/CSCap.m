@@ -68,6 +68,7 @@
     }
     
     // Optional fields
+    NSString *category = dictionary[@"category"];
     NSString *capDescription = dictionary[@"cap_description"];
     NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
     BOOL acceptsStdin = [dictionary[@"accepts_stdin"] boolValue]; // defaults to NO if missing
@@ -96,6 +97,7 @@
     
     return [self capWithUrn:capUrn
                           title:title
+                       category:category
                         command:command
                     description:capDescription
                        metadata:metadata
@@ -110,6 +112,10 @@
     dict[@"urn"] = [self.capUrn toString];
     dict[@"title"] = self.title;
     dict[@"command"] = self.command;
+    
+    if (self.category) {
+        dict[@"category"] = self.category;
+    }
     
     if (self.capDescription) {
         dict[@"cap_description"] = self.capDescription;
@@ -186,6 +192,8 @@
     CSCap *other = (CSCap *)object;
     return [self.capUrn isEqual:other.capUrn] &&
            [self.title isEqualToString:other.title] &&
+           ((self.category == nil && other.category == nil) ||
+            [self.category isEqualToString:other.category]) &&
            [self.command isEqualToString:other.command] &&
            ((self.capDescription == nil && other.capDescription == nil) ||
             [self.capDescription isEqualToString:other.capDescription]) &&
@@ -203,6 +211,7 @@
     }
     return [CSCap capWithUrn:self.capUrn
                        title:self.title
+                    category:self.category
                      command:self.command
                  description:self.capDescription 
                     metadata:self.metadata
@@ -214,6 +223,7 @@
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeObject:self.capUrn forKey:@"capUrn"];
     [coder encodeObject:self.title forKey:@"title"];
+    [coder encodeObject:self.category forKey:@"category"];
     [coder encodeObject:self.command forKey:@"command"];
     [coder encodeObject:self.capDescription forKey:@"capDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
@@ -225,6 +235,7 @@
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
     CSCapUrn *capUrn = [coder decodeObjectOfClass:[CSCapUrn class] forKey:@"capUrn"];
     NSString *title = [coder decodeObjectOfClass:[NSString class] forKey:@"title"];
+    NSString *category = [coder decodeObjectOfClass:[NSString class] forKey:@"category"];
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
@@ -239,6 +250,7 @@
     
     return [CSCap capWithUrn:capUrn
                        title:title
+                    category:category
                      command:command
                  description:description 
                     metadata:metadata
@@ -274,6 +286,7 @@
                    command:(NSString *)command {
     return [self capWithUrn:capUrn
                       title:title
+                   category:nil
                     command:command
                 description:nil
                    metadata:@{}
@@ -284,6 +297,7 @@
 
 + (instancetype)capWithUrn:(CSCapUrn *)capUrn
                      title:(NSString *)title
+                  category:(nullable NSString *)category
                    command:(NSString *)command
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> *)metadata
@@ -293,6 +307,7 @@
     CSCap *cap = [[CSCap alloc] init];
     cap->_capUrn = [capUrn copy];
     cap->_title = [title copy];
+    cap->_category = [category copy];
     cap->_command = [command copy];
     cap->_capDescription = [description copy];
     // Fail hard if required fields are nil
