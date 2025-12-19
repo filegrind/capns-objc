@@ -253,9 +253,6 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 /// Human-readable title of the capability (required)
 @property (nonatomic, readonly) NSString *title;
 
-/// Category for visual grouping and display of caps (optional)
-@property (nonatomic, readonly, nullable) NSString *category;
-
 /// Optional description
 @property (nonatomic, readonly, nullable) NSString *capDescription;
 
@@ -282,7 +279,6 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * Create a fully specified cap
  * @param capUrn The cap URN
  * @param title The human-readable title (required)
- * @param category The category for visual grouping (optional)
  * @param command The command string
  * @param description The cap description
  * @param metadata The cap metadata
@@ -293,7 +289,6 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  */
 + (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
                      title:(NSString * _Nonnull)title
-                  category:(nullable NSString *)category
                    command:(NSString * _Nonnull)command
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
