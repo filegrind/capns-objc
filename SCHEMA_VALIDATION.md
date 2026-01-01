@@ -145,22 +145,22 @@ BOOL outputValid = [CSOutputValidator validateOutput:resultData cap:cap error:&e
 
 ## Plugin SDK Integration
 
-The FMIO Plugin SDK provides convenience methods for common document processing schemas:
+The FGRND Plugin SDK provides convenience methods for common document processing schemas:
 
 ```objc
 // Standard document metadata schema
 CSCapArgument *metadataArg = [CSCapArgument documentMetadataArgumentWithName:@"metadata"
                                                                   description:@"Document metadata"
                                                                       cliFlag:@"--metadata"
-                                                                       schema:[FMIOSchemaValidationHelper standardDocumentMetadataSchema]];
+                                                                       schema:[FGRNDSchemaValidationHelper standardDocumentMetadataSchema]];
 
 // Standard document pages schema
-CSCapOutput *pagesOutput = [CSCapOutput documentPagesOutputWithSchema:[FMIOSchemaValidationHelper standardDocumentPagesSchema]
+CSCapOutput *pagesOutput = [CSCapOutput documentPagesOutputWithSchema:[FGRNDSchemaValidationHelper standardDocumentPagesSchema]
                                                           description:@"Extracted document pages"];
 
 // Validate plugin manifest schemas
 NSError *error = nil;
-BOOL manifestValid = [FMIOSchemaValidationHelper validatePluginManifest:manifest error:&error];
+BOOL manifestValid = [FGRNDSchemaValidationHelper validatePluginManifest:manifest error:&error];
 ```
 
 ## Error Handling
