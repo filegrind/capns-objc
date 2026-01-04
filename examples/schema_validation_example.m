@@ -98,17 +98,17 @@
     BOOL result = [self.validator validateArgument:userArg withValue:validUser error:&error];
     
     if (result) {
-        NSLog(@"✅ Valid user data passed schema validation");
+        NSLog(@"OK Valid user data passed schema validation");
         
         // Test integrated validation
         result = [CSInputValidator validateArguments:@[validUser] cap:cap error:&error];
         if (result) {
-            NSLog(@"✅ Valid user data passed integrated validation");
+            NSLog(@"OK Valid user data passed integrated validation");
         } else {
-            NSLog(@"❌ Valid user data failed integrated validation: %@", error.localizedDescription);
+            NSLog(@"ERR Valid user data failed integrated validation: %@", error.localizedDescription);
         }
     } else {
-        NSLog(@"❌ Valid user data failed schema validation: %@", error.localizedDescription);
+        NSLog(@"ERR Valid user data failed schema validation: %@", error.localizedDescription);
     }
     
     // Test with invalid data
@@ -127,7 +127,7 @@
     result = [self.validator validateArgument:userArg withValue:invalidUser error:&error];
     
     if (!result) {
-        NSLog(@"✅ Invalid user data correctly failed validation");
+        NSLog(@"OK Invalid user data correctly failed validation");
         NSLog(@"   Error: %@", error.localizedDescription);
         
         if ([error isKindOfClass:[CSSchemaValidationError class]]) {
@@ -135,7 +135,7 @@
             NSLog(@"   Validation errors: %@", [schemaError.validationErrors componentsJoinedByString:@", "]);
         }
     } else {
-        NSLog(@"❌ Invalid user data incorrectly passed validation");
+        NSLog(@"ERR Invalid user data incorrectly passed validation");
     }
 }
 
@@ -156,7 +156,7 @@
     BOOL result = [self.validator validateArgument:configArg withValue:testConfig error:&error];
     
     if (!result) {
-        NSLog(@"✅ Schema reference correctly failed (schema file not found)");
+        NSLog(@"OK Schema reference correctly failed (schema file not found)");
         NSLog(@"   Error: %@", error.localizedDescription);
         
         if ([error isKindOfClass:[CSSchemaValidationError class]]) {
@@ -202,9 +202,9 @@
     BOOL result = [self.validator validateOutput:output withValue:validResults error:&error];
     
     if (result) {
-        NSLog(@"✅ Valid output passed schema validation");
+        NSLog(@"OK Valid output passed schema validation");
     } else {
-        NSLog(@"❌ Valid output failed schema validation: %@", error.localizedDescription);
+        NSLog(@"ERR Valid output failed schema validation: %@", error.localizedDescription);
     }
     
     // Test with invalid output
@@ -218,10 +218,10 @@
     result = [self.validator validateOutput:output withValue:invalidResults error:&error];
     
     if (!result) {
-        NSLog(@"✅ Invalid output correctly failed validation");
+        NSLog(@"OK Invalid output correctly failed validation");
         NSLog(@"   Error: %@", error.localizedDescription);
     } else {
-        NSLog(@"❌ Invalid output incorrectly passed validation");
+        NSLog(@"ERR Invalid output incorrectly passed validation");
     }
 }
 
@@ -323,9 +323,9 @@
     BOOL result = [self.validator validateArgument:documentArg withValue:validDocument error:&error];
     
     if (result) {
-        NSLog(@"✅ Complex nested document passed schema validation");
+        NSLog(@"OK Complex nested document passed schema validation");
     } else {
-        NSLog(@"❌ Complex nested document failed schema validation: %@", error.localizedDescription);
+        NSLog(@"ERR Complex nested document failed schema validation: %@", error.localizedDescription);
     }
 }
 
@@ -358,12 +358,12 @@
     }
     
     NSTimeInterval duration = [[NSDate date] timeIntervalSinceDate:startTime];
-    NSLog(@"✅ Validated 1000 objects in %.3f seconds (%.3f ms per validation)",
+    NSLog(@"OK Validated 1000 objects in %.3f seconds (%.3f ms per validation)",
           duration, duration * 1000.0 / 1000.0);
 }
 
 - (void)runAllExamples {
-    NSLog(@"🚀 Starting JSON Schema Validation Examples\n");
+    NSLog(@" Starting JSON Schema Validation Examples\n");
     
     [self demonstrateEmbeddedSchemaValidation];
     [self demonstrateSchemaReferenceValidation];
@@ -371,7 +371,7 @@
     [self demonstrateComplexNestedValidation];
     [self demonstratePerformanceConsiderations];
     
-    NSLog(@"\n✅ All examples completed successfully!");
+    NSLog(@"\nOK All examples completed successfully!");
 }
 
 @end

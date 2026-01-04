@@ -206,13 +206,13 @@ Only structured types (objects and arrays) with schemas are validated:
 
 ```objc
 // These will be schema validated (if schema is present):
-CSArgumentTypeObject + schema  ✅
-CSArgumentTypeArray + schema   ✅
+CSArgumentTypeObject + schema  OK
+CSArgumentTypeArray + schema   OK
 
 // These skip schema validation:
-CSArgumentTypeString          ❌ (no schema needed)
-CSArgumentTypeInteger         ❌ (no schema needed)
-CSArgumentTypeObject (no schema) ❌ (no schema to validate against)
+CSArgumentTypeString          ERR (no schema needed)
+CSArgumentTypeInteger         ERR (no schema needed)
+CSArgumentTypeObject (no schema) ERR (no schema to validate against)
 ```
 
 ## JSON Schema Support
