@@ -4,6 +4,7 @@
 //
 
 #import "include/CSCapCaller.h"
+#import "include/CSMediaSpec.h"
 
 @interface CSCapCaller ()
 @property (nonatomic, strong) NSString *cap;
@@ -231,10 +232,25 @@
            strcmp([number objCType], @encode(long long)) == 0;
 }
 
+- (BOOL)isBinaryCap {
+    CSCapUrn *capUrn = self.capDefinition.capUrn;
+    NSError *error = nil;
+    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn error:&error];
+    if (error || !mediaSpec) {
+        return NO;
+    }
+    return [mediaSpec isBinary];
+}
+
 - (BOOL)isJsonCap {
     CSCapUrn *capUrn = self.capDefinition.capUrn;
-    NSString *output = [capUrn getTag:@"output"];
-    return output && (![output isEqualToString:@"binary"]);
+    NSError *error = nil;
+    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn error:&error];
+    if (error || !mediaSpec) {
+        // Default to text/plain (not JSON) if no media_spec is specified
+        return NO;
+    }
+    return [mediaSpec isJSON];
 }
 
 @end
