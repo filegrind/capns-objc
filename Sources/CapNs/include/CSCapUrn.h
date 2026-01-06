@@ -145,7 +145,9 @@ typedef NS_ERROR_ENUM(CSCapUrnErrorDomain, CSCapUrnError) {
     CSCapUrnErrorInvalidTagFormat = 4,
     CSCapUrnErrorMissingCapPrefix = 5,
     CSCapUrnErrorDuplicateKey = 6,
-    CSCapUrnErrorNumericKey = 7
+    CSCapUrnErrorNumericKey = 7,
+    CSCapUrnErrorUnterminatedQuote = 8,
+    CSCapUrnErrorInvalidEscapeSequence = 9
 };
 
 /**

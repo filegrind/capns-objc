@@ -266,12 +266,14 @@
     
     CSCapArguments *arguments = [CSCapArguments argumentsWithRequired:@[userArg] optional:@[]];
     CSCap *cap = [CSCap capWithUrn:urn
+                             title:@"Process User"
                            command:@"process-user"
                        description:@"Process user data"
                           metadata:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO];
+                      acceptsStdin:NO
+                      metadataJSON:nil];
     
     // Valid user data
     NSDictionary *validUser = @{
@@ -325,12 +327,14 @@
                                      outputDescription:@"Query results array"];
     
     CSCap *cap = [CSCap capWithUrn:urn
+                             title:@"Query Data"
                            command:@"query-data"
                        description:@"Query data"
                           metadata:@{}
                          arguments:[CSCapArguments arguments]
                             output:output
-                      acceptsStdin:NO];
+                      acceptsStdin:NO
+                      metadataJSON:nil];
     
     // Valid output
     NSArray *validOutput = @[

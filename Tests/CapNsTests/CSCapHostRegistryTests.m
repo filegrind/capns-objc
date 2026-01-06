@@ -61,14 +61,16 @@
     XCTAssertNotNil(capUrn, @"Failed to create CapUrn: %@", error.localizedDescription);
     XCTAssertNil(error, @"Should not have error creating CapUrn");
     
-    CSCap *cap = [CSCap capWithUrn:capUrn 
-                            command:@"test"
-                        description:@"Test capability"
-                           metadata:@{}
-                          arguments:[[CSCapArguments alloc] init]
-                             output:nil
-                       acceptsStdin:NO];
-    
+    CSCap *cap = [CSCap capWithUrn:capUrn
+                             title:@"Test"
+                           command:@"test"
+                       description:@"Test capability"
+                          metadata:@{}
+                         arguments:[[CSCapArguments alloc] init]
+                            output:nil
+                      acceptsStdin:NO
+                      metadataJSON:nil];
+
     NSError *registerError = nil;
     BOOL success = [self.registry registerCapHost:@"test-host" 
                                              host:host 
@@ -102,24 +104,28 @@
     // Register general host
     MockCapHost *generalHost = [[MockCapHost alloc] initWithName:@"general"];
     CSCapUrn *generalCapUrn = [CSCapUrn fromString:@"cap:action=generate" error:nil];
-    CSCap *generalCap = [CSCap capWithUrn:generalCapUrn 
-                                   command:@"generate"
-                               description:@"General generation"
-                                  metadata:@{}
-                                 arguments:[[CSCapArguments alloc] init]
-                                    output:nil
-                              acceptsStdin:NO];
-    
+    CSCap *generalCap = [CSCap capWithUrn:generalCapUrn
+                                   title:@"Generate"
+                                 command:@"generate"
+                             description:@"General generation"
+                                metadata:@{}
+                               arguments:[[CSCapArguments alloc] init]
+                                  output:nil
+                            acceptsStdin:NO
+                            metadataJSON:nil];
+
     // Register specific host
     MockCapHost *specificHost = [[MockCapHost alloc] initWithName:@"specific"];
     CSCapUrn *specificCapUrn = [CSCapUrn fromString:@"cap:action=generate;type=text;model=gpt-4" error:nil];
-    CSCap *specificCap = [CSCap capWithUrn:specificCapUrn 
-                                    command:@"generate"
-                                description:@"Specific text generation"
-                                   metadata:@{}
-                                  arguments:[[CSCapArguments alloc] init]
-                                     output:nil
-                               acceptsStdin:NO];
+    CSCap *specificCap = [CSCap capWithUrn:specificCapUrn
+                                    title:@"Generate"
+                                  command:@"generate"
+                              description:@"Specific text generation"
+                                 metadata:@{}
+                                arguments:[[CSCapArguments alloc] init]
+                                   output:nil
+                             acceptsStdin:NO
+                             metadataJSON:nil];
     
     [self.registry registerCapHost:@"general" host:generalHost capabilities:@[generalCap] error:nil];
     [self.registry registerCapHost:@"specific" host:specificHost capabilities:@[specificCap] error:nil];
@@ -155,16 +161,18 @@
     // After registration
     MockCapHost *host = [[MockCapHost alloc] initWithName:@"test"];
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:action=test" error:nil];
-    CSCap *cap = [CSCap capWithUrn:capUrn 
+    CSCap *cap = [CSCap capWithUrn:capUrn
+                             title:@"Test"
                            command:@"test"
                        description:@"Test"
                           metadata:@{}
                          arguments:[[CSCapArguments alloc] init]
                             output:nil
-                      acceptsStdin:NO];
-    
+                      acceptsStdin:NO
+                      metadataJSON:nil];
+
     [self.registry registerCapHost:@"test" host:host capabilities:@[cap] error:nil];
-    
+
     canHandle = [self.registry canHandle:@"cap:action=test"];
     XCTAssertTrue(canHandle, @"Registry should handle registered capability");
     
@@ -178,14 +186,16 @@
 - (void)testUnregisterCapHost {
     MockCapHost *host = [[MockCapHost alloc] initWithName:@"test"];
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:action=test" error:nil];
-    CSCap *cap = [CSCap capWithUrn:capUrn 
+    CSCap *cap = [CSCap capWithUrn:capUrn
+                             title:@"Test"
                            command:@"test"
                        description:@"Test"
                           metadata:@{}
                          arguments:[[CSCapArguments alloc] init]
                             output:nil
-                      acceptsStdin:NO];
-    
+                      acceptsStdin:NO
+                      metadataJSON:nil];
+
     [self.registry registerCapHost:@"test" host:host capabilities:@[cap] error:nil];
     
     // Verify it's registered
@@ -206,14 +216,16 @@
 - (void)testClear {
     MockCapHost *host = [[MockCapHost alloc] initWithName:@"test"];
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:action=test" error:nil];
-    CSCap *cap = [CSCap capWithUrn:capUrn 
+    CSCap *cap = [CSCap capWithUrn:capUrn
+                             title:@"Test"
                            command:@"test"
                        description:@"Test"
                           metadata:@{}
                          arguments:[[CSCapArguments alloc] init]
                             output:nil
-                      acceptsStdin:NO];
-    
+                      acceptsStdin:NO
+                      metadataJSON:nil];
+
     [self.registry registerCapHost:@"test" host:host capabilities:@[cap] error:nil];
     
     // Verify it's registered

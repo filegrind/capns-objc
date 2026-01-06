@@ -103,19 +103,19 @@
 - (void)testTagMatching {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:action=generate;ext=pdf;target=thumbnail;" error:&error];
-    
+
     // Exact match
     CSCapUrn *request1 = [CSCapUrn fromString:@"cap:action=generate;ext=pdf;target=thumbnail;" error:&error];
     XCTAssertTrue([cap matches:request1]);
-    
+
     // Subset match
-    CSCapUrn *request2 = [CSCapUrn fromString:@"action=generate" error:&error];
+    CSCapUrn *request2 = [CSCapUrn fromString:@"cap:action=generate" error:&error];
     XCTAssertTrue([cap matches:request2]);
-    
+
     // Wildcard request should match specific cap
     CSCapUrn *request3 = [CSCapUrn fromString:@"cap:ext=*" error:&error];
     XCTAssertTrue([cap matches:request3]);
-    
+
     // No match - conflicting value
     CSCapUrn *request4 = [CSCapUrn fromString:@"cap:action=extract" error:&error];
     XCTAssertFalse([cap matches:request4]);
@@ -342,32 +342,247 @@
 
 - (void)testNumericKeyRestriction {
     NSError *error = nil;
-    
+
     // Pure numeric keys should be rejected
     CSCapUrn *numericKey = [CSCapUrn fromString:@"cap:123=value" error:&error];
     XCTAssertNil(numericKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorNumericKey);
-    
+
     // Reset error for next test
     error = nil;
-    
+
     // Mixed alphanumeric keys should be allowed
     CSCapUrn *mixedKey1 = [CSCapUrn fromString:@"cap:key123=value" error:&error];
     XCTAssertNotNil(mixedKey1);
     XCTAssertNil(error);
-    
+
     error = nil;
     CSCapUrn *mixedKey2 = [CSCapUrn fromString:@"cap:123key=value" error:&error];
     XCTAssertNotNil(mixedKey2);
     XCTAssertNil(error);
-    
+
     error = nil;
     // Pure numeric values should be allowed
     CSCapUrn *numericValue = [CSCapUrn fromString:@"cap:key=123" error:&error];
     XCTAssertNotNil(numericValue);
     XCTAssertNil(error);
     XCTAssertEqualObjects([numericValue getTag:@"key"], @"123");
+}
+
+#pragma mark - Quoted Value Tests
+
+- (void)testUnquotedValuesLowercased {
+    NSError *error = nil;
+    // Unquoted values are normalized to lowercase
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:ACTION=Generate;EXT=PDF;Target=Thumbnail;" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+
+    // Keys are always lowercase
+    XCTAssertEqualObjects([cap getTag:@"action"], @"generate");
+    XCTAssertEqualObjects([cap getTag:@"ext"], @"pdf");
+    XCTAssertEqualObjects([cap getTag:@"target"], @"thumbnail");
+
+    // Key lookup is case-insensitive
+    XCTAssertEqualObjects([cap getTag:@"ACTION"], @"generate");
+    XCTAssertEqualObjects([cap getTag:@"Action"], @"generate");
+
+    // Both URNs parse to same lowercase values
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:action=generate;ext=pdf;target=thumbnail;" error:&error];
+    XCTAssertEqualObjects([cap toString], [cap2 toString]);
+    XCTAssertEqualObjects(cap, cap2);
+}
+
+- (void)testQuotedValuesPreserveCase {
+    NSError *error = nil;
+    // Quoted values preserve their case
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:key=\"Value With Spaces\"" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getTag:@"key"], @"Value With Spaces");
+
+    // Key is still lowercase
+    error = nil;
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:KEY=\"Value With Spaces\"" error:&error];
+    XCTAssertNotNil(cap2);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap2 getTag:@"key"], @"Value With Spaces");
+
+    // Unquoted vs quoted case difference
+    error = nil;
+    CSCapUrn *unquoted = [CSCapUrn fromString:@"cap:key=UPPERCASE" error:&error];
+    XCTAssertNotNil(unquoted);
+    error = nil;
+    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:key=\"UPPERCASE\"" error:&error];
+    XCTAssertNotNil(quoted);
+
+    XCTAssertEqualObjects([unquoted getTag:@"key"], @"uppercase"); // lowercase
+    XCTAssertEqualObjects([quoted getTag:@"key"], @"UPPERCASE"); // preserved
+    XCTAssertNotEqualObjects(unquoted, quoted); // NOT equal
+}
+
+- (void)testQuotedValueSpecialChars {
+    NSError *error = nil;
+    // Semicolons in quoted values
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:key=\"value;with;semicolons\"" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getTag:@"key"], @"value;with;semicolons");
+
+    // Equals in quoted values
+    error = nil;
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:key=\"value=with=equals\"" error:&error];
+    XCTAssertNotNil(cap2);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap2 getTag:@"key"], @"value=with=equals");
+
+    // Spaces in quoted values
+    error = nil;
+    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:key=\"hello world\"" error:&error];
+    XCTAssertNotNil(cap3);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap3 getTag:@"key"], @"hello world");
+}
+
+- (void)testQuotedValueEscapeSequences {
+    NSError *error = nil;
+    // Escaped quotes
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:key=\"value\\\"quoted\\\"\"" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getTag:@"key"], @"value\"quoted\"");
+
+    // Escaped backslashes
+    error = nil;
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:key=\"path\\\\file\"" error:&error];
+    XCTAssertNotNil(cap2);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap2 getTag:@"key"], @"path\\file");
+}
+
+- (void)testMixedQuotedUnquoted {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:a=\"Quoted\";b=simple" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getTag:@"a"], @"Quoted");
+    XCTAssertEqualObjects([cap getTag:@"b"], @"simple");
+}
+
+- (void)testUnterminatedQuoteError {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:key=\"unterminated" error:&error];
+    XCTAssertNil(cap);
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorUnterminatedQuote);
+}
+
+- (void)testInvalidEscapeSequenceError {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:key=\"bad\\n\"" error:&error];
+    XCTAssertNil(cap);
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorInvalidEscapeSequence);
+}
+
+- (void)testSerializationSmartQuoting {
+    NSError *error = nil;
+    // Simple lowercase value - no quoting needed
+    CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
+    [builder tag:@"key" value:@"simple"];
+    CSCapUrn *cap = [builder build:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects([cap toString], @"cap:key=simple");
+
+    // Value with spaces - needs quoting
+    builder = [CSCapUrnBuilder builder];
+    [builder tag:@"key" value:@"has spaces"];
+    CSCapUrn *cap2 = [builder build:&error];
+    XCTAssertNotNil(cap2);
+    XCTAssertEqualObjects([cap2 toString], @"cap:key=\"has spaces\"");
+
+    // Value with uppercase - needs quoting to preserve
+    builder = [CSCapUrnBuilder builder];
+    [builder tag:@"key" value:@"HasUpper"];
+    CSCapUrn *cap3 = [builder build:&error];
+    XCTAssertNotNil(cap3);
+    XCTAssertEqualObjects([cap3 toString], @"cap:key=\"HasUpper\"");
+
+    // Value with quotes - needs quoting and escaping
+    builder = [CSCapUrnBuilder builder];
+    [builder tag:@"key" value:@"has\"quote"];
+    CSCapUrn *cap4 = [builder build:&error];
+    XCTAssertNotNil(cap4);
+    XCTAssertEqualObjects([cap4 toString], @"cap:key=\"has\\\"quote\"");
+}
+
+- (void)testRoundTripSimple {
+    NSError *error = nil;
+    NSString *original = @"cap:action=generate;ext=pdf";
+    CSCapUrn *cap = [CSCapUrn fromString:original error:&error];
+    XCTAssertNotNil(cap);
+    NSString *serialized = [cap toString];
+    CSCapUrn *reparsed = [CSCapUrn fromString:serialized error:&error];
+    XCTAssertNotNil(reparsed);
+    XCTAssertEqualObjects(cap, reparsed);
+}
+
+- (void)testRoundTripQuoted {
+    NSError *error = nil;
+    NSString *original = @"cap:key=\"Value With Spaces\"";
+    CSCapUrn *cap = [CSCapUrn fromString:original error:&error];
+    XCTAssertNotNil(cap);
+    NSString *serialized = [cap toString];
+    CSCapUrn *reparsed = [CSCapUrn fromString:serialized error:&error];
+    XCTAssertNotNil(reparsed);
+    XCTAssertEqualObjects(cap, reparsed);
+    XCTAssertEqualObjects([reparsed getTag:@"key"], @"Value With Spaces");
+}
+
+- (void)testHasTagCaseSensitive {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:key=\"Value\"" error:&error];
+    XCTAssertNotNil(cap);
+
+    // Exact case match works
+    XCTAssertTrue([cap hasTag:@"key" withValue:@"Value"]);
+
+    // Different case does not match
+    XCTAssertFalse([cap hasTag:@"key" withValue:@"value"]);
+    XCTAssertFalse([cap hasTag:@"key" withValue:@"VALUE"]);
+
+    // Key lookup is case-insensitive
+    XCTAssertTrue([cap hasTag:@"KEY" withValue:@"Value"]);
+    XCTAssertTrue([cap hasTag:@"Key" withValue:@"Value"]);
+}
+
+- (void)testBuilderPreservesCase {
+    NSError *error = nil;
+    CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
+    [builder tag:@"KEY" value:@"ValueWithCase"];
+    CSCapUrn *cap = [builder build:&error];
+    XCTAssertNotNil(cap);
+
+    // Key is lowercase
+    XCTAssertEqualObjects([cap getTag:@"key"], @"ValueWithCase");
+
+    // Value case preserved, so needs quoting
+    XCTAssertEqualObjects([cap toString], @"cap:key=\"ValueWithCase\"");
+}
+
+- (void)testSemanticEquivalence {
+    NSError *error = nil;
+    // Unquoted and quoted simple lowercase values are equivalent
+    CSCapUrn *unquoted = [CSCapUrn fromString:@"cap:key=simple" error:&error];
+    XCTAssertNotNil(unquoted);
+    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:key=\"simple\"" error:&error];
+    XCTAssertNotNil(quoted);
+    XCTAssertEqualObjects(unquoted, quoted);
+
+    // Both serialize the same way (unquoted)
+    XCTAssertEqualObjects([unquoted toString], @"cap:key=simple");
+    XCTAssertEqualObjects([quoted toString], @"cap:key=simple");
 }
 
 @end
