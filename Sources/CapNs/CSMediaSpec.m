@@ -12,17 +12,17 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 // BUILT-IN SPEC ID CONSTANTS
 // ============================================================================
 
-NSString * const CSSpecIdStr = @"capns:ms:str.v1";
-NSString * const CSSpecIdInt = @"capns:ms:int.v1";
-NSString * const CSSpecIdNum = @"capns:ms:num.v1";
-NSString * const CSSpecIdBool = @"capns:ms:bool.v1";
-NSString * const CSSpecIdObj = @"capns:ms:obj.v1";
-NSString * const CSSpecIdStrArray = @"capns:ms:str-array.v1";
-NSString * const CSSpecIdIntArray = @"capns:ms:int-array.v1";
-NSString * const CSSpecIdNumArray = @"capns:ms:num-array.v1";
-NSString * const CSSpecIdBoolArray = @"capns:ms:bool-array.v1";
-NSString * const CSSpecIdObjArray = @"capns:ms:obj-array.v1";
-NSString * const CSSpecIdBinary = @"capns:ms:binary.v1";
+NSString * const CSSpecIdStr = @"std:str.v1";
+NSString * const CSSpecIdInt = @"std:int.v1";
+NSString * const CSSpecIdNum = @"std:num.v1";
+NSString * const CSSpecIdBool = @"std:bool.v1";
+NSString * const CSSpecIdObj = @"std:obj.v1";
+NSString * const CSSpecIdStrArray = @"std:str-array.v1";
+NSString * const CSSpecIdIntArray = @"std:int-array.v1";
+NSString * const CSSpecIdNumArray = @"std:num-array.v1";
+NSString * const CSSpecIdBoolArray = @"std:bool-array.v1";
+NSString * const CSSpecIdObjArray = @"std:obj-array.v1";
+NSString * const CSSpecIdBinary = @"std:binary.v1";
 
 // Built-in spec ID definitions - maps spec ID to canonical media spec string
 static NSDictionary<NSString *, NSString *> *_builtinSpecs = nil;

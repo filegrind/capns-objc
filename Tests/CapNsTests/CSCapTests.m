@@ -4,7 +4,7 @@
 //
 //  NOTE: All ArgumentType/OutputType enums have been removed.
 //  Arguments and outputs now use mediaSpec fields containing spec IDs
-//  (e.g., "capns:ms:str.v1") that resolve via the mediaSpecs table.
+//  (e.g., "std:str.v1") that resolve via the mediaSpecs table.
 //
 
 #import <XCTest/XCTest.h>

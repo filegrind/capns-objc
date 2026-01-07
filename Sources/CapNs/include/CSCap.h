@@ -8,7 +8,7 @@
 //
 //  NOTE: ArgumentType and OutputType enums have been REMOVED.
 //  All type information is now conveyed via mediaSpec fields that
-//  contain spec IDs (e.g., "capns:ms:str.v1") which resolve to
+//  contain spec IDs (e.g., "std:str.v1") which resolve to
 //  MediaSpec definitions via the mediaSpecs table.
 //
 
@@ -49,13 +49,13 @@ NS_ASSUME_NONNULL_BEGIN
  * Cap argument definition
  *
  * NOTE: argType enum has been replaced with mediaSpec string field.
- * The mediaSpec contains a spec ID (e.g., "capns:ms:str.v1") that resolves
+ * The mediaSpec contains a spec ID (e.g., "std:str.v1") that resolves
  * to a MediaSpec definition. Schema is now stored in the cap's mediaSpecs table.
  */
 @interface CSCapArgument : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly) NSString *name;
-@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "capns:ms:str.v1")
+@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "std:str.v1")
 @property (nonatomic, readonly) NSString *argDescription;
 @property (nonatomic, readonly) NSString *cliFlag;
 @property (nonatomic, readonly, nullable) NSNumber *position;
@@ -66,7 +66,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Create an argument with spec ID
  * @param name Argument name
- * @param mediaSpec Spec ID (e.g., "capns:ms:str.v1")
+ * @param mediaSpec Spec ID (e.g., "std:str.v1")
  * @param argDescription Argument description
  * @param cliFlag CLI flag
  * @param position Optional position for positional arguments
@@ -142,19 +142,19 @@ NS_ASSUME_NONNULL_BEGIN
  * Output definition
  *
  * NOTE: outputType enum has been replaced with mediaSpec string field.
- * The mediaSpec contains a spec ID (e.g., "capns:ms:obj.v1") that resolves
+ * The mediaSpec contains a spec ID (e.g., "std:obj.v1") that resolves
  * to a MediaSpec definition. Schema is now stored in the cap's mediaSpecs table.
  */
 @interface CSCapOutput : NSObject <NSCopying, NSCoding>
 
-@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "capns:ms:obj.v1")
+@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "std:obj.v1")
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
 /**
  * Create an output with spec ID
- * @param mediaSpec Spec ID (e.g., "capns:ms:obj.v1")
+ * @param mediaSpec Spec ID (e.g., "std:obj.v1")
  * @param validation Optional validation rules
  * @param outputDescription Description of the output
  * @return A new CSCapOutput instance
@@ -374,7 +374,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Resolve a spec ID to a MediaSpec using this cap's mediaSpecs table
- * @param specId The spec ID (e.g., "capns:ms:str.v1")
+ * @param specId The spec ID (e.g., "std:str.v1")
  * @param error Error if spec ID cannot be resolved
  * @return The resolved MediaSpec or nil on error
  */

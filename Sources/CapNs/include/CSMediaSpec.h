@@ -35,17 +35,17 @@ typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
 // ============================================================================
 
 /// Well-known built-in spec IDs - these do not need to be declared in mediaSpecs
-FOUNDATION_EXPORT NSString * const CSSpecIdStr;      // capns:ms:str.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdInt;      // capns:ms:int.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdNum;      // capns:ms:num.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdBool;     // capns:ms:bool.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdObj;      // capns:ms:obj.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdStrArray; // capns:ms:str-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdIntArray; // capns:ms:int-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdNumArray; // capns:ms:num-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdBoolArray;// capns:ms:bool-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdObjArray; // capns:ms:obj-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdBinary;   // capns:ms:binary.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdStr;      // std:str.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdInt;      // std:int.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdNum;      // std:num.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdBool;     // std:bool.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdObj;      // std:obj.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdStrArray; // std:str-array.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdIntArray; // std:int-array.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdNumArray; // std:num-array.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdBoolArray;// std:bool-array.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdObjArray; // std:obj-array.v1
+FOUNDATION_EXPORT NSString * const CSSpecIdBinary;   // std:binary.v1
 
 /**
  * A parsed MediaSpec value
@@ -140,10 +140,10 @@ FOUNDATION_EXPORT NSString * const CSSpecIdBinary;   // capns:ms:binary.v1
  *
  * Resolution algorithm:
  * 1. Look up spec_id in mediaSpecs table
- * 2. If not found AND spec_id is a known built-in (capns:ms:*): use built-in definition
+ * 2. If not found AND spec_id is a known built-in (std:*): use built-in definition
  * 3. If not found and not a built-in: FAIL HARD
  *
- * @param specId The spec ID (e.g., "capns:ms:str.v1")
+ * @param specId The spec ID (e.g., "std:str.v1")
  * @param mediaSpecs The mediaSpecs lookup table (can be nil)
  * @param error Error if spec ID cannot be resolved
  * @return The resolved MediaSpec or nil on error
