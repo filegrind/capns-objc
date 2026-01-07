@@ -2,6 +2,8 @@
 //  CSCapCaller.m
 //  Pure cap-based execution with strict input validation
 //
+//  NOTE: Type validation now uses mediaSpec -> spec ID resolution.
+//
 
 #import "include/CSCapCaller.h"
 #import "include/CSMediaSpec.h"
@@ -28,7 +30,7 @@
                      namedArgs:(NSArray *)namedArgs
                      stdinData:(NSData * _Nullable)stdinData
                     completion:(void (^)(CSResponseWrapper * _Nullable response, NSError * _Nullable error))completion {
-    
+
     // Validate inputs against cap definition
     NSError *validationError = nil;
     if (![self validateInputs:positionalArgs namedArgs:namedArgs error:&validationError]) {
@@ -37,21 +39,21 @@
         });
         return;
     }
-    
+
     // Execute via cap host
     [self.capHost executeCap:self.cap
               positionalArgs:positionalArgs
                    namedArgs:namedArgs
                    stdinData:stdinData
                   completion:^(CSResponseWrapper * _Nullable response, NSError * _Nullable error) {
-        
+
         if (error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
             });
             return;
         }
-        
+
         if (!response) {
             NSError *noOutputError = [NSError errorWithDomain:@"CSCapCaller"
                                                           code:1001
@@ -61,7 +63,7 @@
             });
             return;
         }
-        
+
         // Validate output against cap definition
         NSError *outputValidationError = nil;
         if (![self validateOutput:response error:&outputValidationError]) {
@@ -70,7 +72,7 @@
             });
             return;
         }
-        
+
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(response, nil);
         });
@@ -82,13 +84,10 @@
 - (BOOL)validateInputs:(NSArray *)positionalArgs
              namedArgs:(NSArray *)namedArgs
                  error:(NSError * _Nullable * _Nullable)error {
-    
-    // For now, we'll validate positional args since that's what most caps use
-    // Named args validation can be added later when we have caps that use them
-    
+
     CSCapArguments *arguments = [self.capDefinition getArguments];
     NSArray<CSCapArgument *> *requiredArgs = arguments.required;
-    
+
     // Check if we have enough positional arguments for required arguments
     if (positionalArgs.count < requiredArgs.count) {
         if (error) {
@@ -100,79 +99,100 @@
         }
         return NO;
     }
-    
+
     // Validate each positional argument
     for (NSUInteger i = 0; i < positionalArgs.count && i < requiredArgs.count; i++) {
         CSCapArgument *argDef = requiredArgs[i];
         id value = positionalArgs[i];
-        
+
         if (![self validateArgumentValue:value againstDefinition:argDef error:error]) {
             return NO;
         }
     }
-    
+
     return YES;
 }
 
 - (BOOL)validateArgumentValue:(id)value
             againstDefinition:(CSCapArgument *)argDef
                         error:(NSError * _Nullable * _Nullable)error {
-    
-    // Basic type checking
-    switch (argDef.argType) {
-        case CSArgumentTypeString:
-            if (![value isKindOfClass:[NSString class]]) {
-                if (error) {
-                    NSString *message = [NSString stringWithFormat:@"Argument '%@' expects string but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
-                    *error = [NSError errorWithDomain:@"CSCapCaller"
-                                                 code:1003
-                                             userInfo:@{NSLocalizedDescriptionKey: message}];
-                }
-                return NO;
+
+    // Resolve the mediaSpec to determine expected type
+    NSString *specId = argDef.mediaSpec;
+    if (!specId) {
+        // No mediaSpec, skip type validation
+        return YES;
+    }
+
+    NSError *resolveError = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(specId, self.capDefinition.mediaSpecs, &resolveError);
+    if (!mediaSpec) {
+        // FAIL HARD on unresolvable spec ID
+        if (error) {
+            NSString *message = [NSString stringWithFormat:@"Cannot resolve spec ID '%@' for argument '%@': %@",
+                               specId, argDef.name, resolveError.localizedDescription];
+            *error = [NSError errorWithDomain:@"CSCapCaller"
+                                         code:1010
+                                     userInfo:@{NSLocalizedDescriptionKey: message}];
+        }
+        return NO;
+    }
+
+    // Determine expected type from profile
+    NSString *profile = mediaSpec.profile;
+    if (!profile) {
+        // No profile, skip type validation
+        return YES;
+    }
+
+    // Validate based on profile URL
+    if ([profile containsString:@"/schema/str"]) {
+        if (![value isKindOfClass:[NSString class]]) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Argument '%@' expects string but received %@",
+                                   argDef.name, NSStringFromClass([value class])];
+                *error = [NSError errorWithDomain:@"CSCapCaller"
+                                             code:1003
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
             }
-            break;
-            
-        case CSArgumentTypeInteger:
-            if (![value isKindOfClass:[NSNumber class]] || ![self isInteger:(NSNumber *)value]) {
-                if (error) {
-                    NSString *message = [NSString stringWithFormat:@"Argument '%@' expects integer but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
-                    *error = [NSError errorWithDomain:@"CSCapCaller"
-                                                 code:1004
-                                             userInfo:@{NSLocalizedDescriptionKey: message}];
-                }
-                return NO;
+            return NO;
+        }
+    } else if ([profile containsString:@"/schema/int"]) {
+        if (![value isKindOfClass:[NSNumber class]] || ![self isInteger:(NSNumber *)value]) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Argument '%@' expects integer but received %@",
+                                   argDef.name, NSStringFromClass([value class])];
+                *error = [NSError errorWithDomain:@"CSCapCaller"
+                                             code:1004
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
             }
-            break;
-            
-        case CSArgumentTypeNumber:
-            if (![value isKindOfClass:[NSNumber class]]) {
-                if (error) {
-                    NSString *message = [NSString stringWithFormat:@"Argument '%@' expects number but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
-                    *error = [NSError errorWithDomain:@"CSCapCaller"
-                                                 code:1005
-                                             userInfo:@{NSLocalizedDescriptionKey: message}];
-                }
-                return NO;
+            return NO;
+        }
+    } else if ([profile containsString:@"/schema/num"]) {
+        if (![value isKindOfClass:[NSNumber class]]) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Argument '%@' expects number but received %@",
+                                   argDef.name, NSStringFromClass([value class])];
+                *error = [NSError errorWithDomain:@"CSCapCaller"
+                                             code:1005
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
             }
-            break;
-            
-        case CSArgumentTypeBoolean:
-            if (![value isKindOfClass:[NSNumber class]]) {
-                if (error) {
-                    NSString *message = [NSString stringWithFormat:@"Argument '%@' expects boolean but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
-                    *error = [NSError errorWithDomain:@"CSCapCaller"
-                                                 code:1006
-                                             userInfo:@{NSLocalizedDescriptionKey: message}];
-                }
-                return NO;
+            return NO;
+        }
+    } else if ([profile containsString:@"/schema/bool"]) {
+        if (![value isKindOfClass:[NSNumber class]]) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Argument '%@' expects boolean but received %@",
+                                   argDef.name, NSStringFromClass([value class])];
+                *error = [NSError errorWithDomain:@"CSCapCaller"
+                                             code:1006
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
             }
-            break;
-            
-        case CSArgumentTypeArray:
+            return NO;
+        }
+    } else if ([profile containsString:@"/schema/obj"]) {
+        // Check for obj-array first
+        if ([profile containsString:@"-array"]) {
             if (![value isKindOfClass:[NSArray class]]) {
                 if (error) {
                     NSString *message = [NSString stringWithFormat:@"Argument '%@' expects array but received %@",
@@ -183,9 +203,7 @@
                 }
                 return NO;
             }
-            break;
-            
-        case CSArgumentTypeObject:
+        } else {
             if (![value isKindOfClass:[NSDictionary class]]) {
                 if (error) {
                     NSString *message = [NSString stringWithFormat:@"Argument '%@' expects object but received %@",
@@ -196,31 +214,41 @@
                 }
                 return NO;
             }
-            break;
-            
-        case CSArgumentTypeBinary:
-            if (![value isKindOfClass:[NSData class]]) {
-                if (error) {
-                    NSString *message = [NSString stringWithFormat:@"Argument '%@' expects binary data but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
-                    *error = [NSError errorWithDomain:@"CSCapCaller"
-                                                 code:1009
-                                             userInfo:@{NSLocalizedDescriptionKey: message}];
-                }
-                return NO;
+        }
+    } else if ([profile containsString:@"-array"]) {
+        // Any array type
+        if (![value isKindOfClass:[NSArray class]]) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Argument '%@' expects array but received %@",
+                                   argDef.name, NSStringFromClass([value class])];
+                *error = [NSError errorWithDomain:@"CSCapCaller"
+                                             code:1007
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
             }
-            break;
+            return NO;
+        }
     }
-    
-    // TODO: Add validation rules checking (min/max, length, pattern, etc.)
-    // This would involve checking argDef.validation and applying the rules
-    
+
+    // Check for binary based on media type
+    if ([mediaSpec isBinary]) {
+        if (![value isKindOfClass:[NSData class]] && ![value isKindOfClass:[NSString class]]) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Argument '%@' expects binary data but received %@",
+                                   argDef.name, NSStringFromClass([value class])];
+                *error = [NSError errorWithDomain:@"CSCapCaller"
+                                             code:1009
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
+            }
+            return NO;
+        }
+    }
+
     return YES;
 }
 
 - (BOOL)validateOutput:(CSResponseWrapper *)response
                  error:(NSError * _Nullable * _Nullable)error {
-    
+
     return [response validateAgainstCap:self.capDefinition error:error];
 }
 
@@ -235,7 +263,7 @@
 - (BOOL)isBinaryCap {
     CSCapUrn *capUrn = self.capDefinition.capUrn;
     NSError *error = nil;
-    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn error:&error];
+    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn mediaSpecs:self.capDefinition.mediaSpecs error:&error];
     if (error || !mediaSpec) {
         return NO;
     }
@@ -245,9 +273,8 @@
 - (BOOL)isJsonCap {
     CSCapUrn *capUrn = self.capDefinition.capUrn;
     NSError *error = nil;
-    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn error:&error];
+    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn mediaSpecs:self.capDefinition.mediaSpecs error:&error];
     if (error || !mediaSpec) {
-        // Default to text/plain (not JSON) if no media_spec is specified
         return NO;
     }
     return [mediaSpec isJSON];

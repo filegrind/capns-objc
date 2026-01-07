@@ -2,9 +2,11 @@
 //  schema_validation_example.m
 //  Example usage of JSON Schema validation with CapNs
 //
-//  Demonstrates comprehensive schema validation for both embedded schemas
-//  and external schema references, integration with cap validation system,
-//  and error handling.
+//  Demonstrates comprehensive schema validation with schemas stored in mediaSpecs,
+//  spec ID resolution, and integration with cap validation system.
+//
+//  NOTE: All ArgumentType/OutputType enums have been REMOVED.
+//  Schemas are now stored in the mediaSpecs table and resolved via spec IDs.
 //
 
 #import "CapNs.h"
@@ -27,8 +29,8 @@
 
 - (void)demonstrateEmbeddedSchemaValidation {
     NSLog(@"\n=== Embedded Schema Validation Example ===");
-    
-    // Create capability with embedded JSON schema
+
+    // Create capability with embedded JSON schema in mediaSpecs
     NSDictionary *userSchema = @{
         @"type": @"object",
         @"properties": @{
@@ -41,21 +43,13 @@
                     @"notifications": @{@"type": @"boolean"},
                     @"theme": @{@"type": @"string", @"enum": @[@"light", @"dark"]}
                 },
-                @"additionalProperties": false
+                @"additionalProperties": @NO
             }
         },
         @"required": @[@"name", @"email"],
-        @"additionalProperties": false
+        @"additionalProperties": @NO
     };
-    
-    // Create argument with embedded schema
-    CSCapArgument *userArg = [CSCapArgument argumentWithName:@"user_data"
-                                                     argType:CSArgumentTypeObject
-                                               argDescription:@"User data with validation"
-                                                     cliFlag:@"--user"
-                                                      schema:userSchema];
-    
-    // Create output with embedded schema
+
     NSDictionary *responseSchema = @{
         @"type": @"object",
         @"properties": @{
@@ -64,25 +58,52 @@
             @"message": @{@"type": @"string"}
         },
         @"required": @[@"success"],
-        @"additionalProperties": false
+        @"additionalProperties": @NO
     };
-    
-    CSCapOutput *output = [CSCapOutput outputWithType:CSOutputTypeObject
-                                                schema:responseSchema
-                                     outputDescription:@"Operation response"];
-    
+
+    // MediaSpecs table with schemas
+    NSDictionary *mediaSpecs = @{
+        @"my:user-data.v1": @{
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://example.com/schema/user-data",
+            @"schema": userSchema
+        },
+        @"my:create-user-response.v1": @{
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://example.com/schema/create-user-response",
+            @"schema": responseSchema
+        }
+    };
+
+    // Create argument with spec ID
+    CSCapArgument *userArg = [CSCapArgument argumentWithName:@"user_data"
+                                                   mediaSpec:@"my:user-data.v1"
+                                               argDescription:@"User data with validation"
+                                                     cliFlag:@"--user"
+                                                    position:nil
+                                                  validation:nil
+                                                defaultValue:nil];
+
+    // Create output with spec ID
+    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:create-user-response.v1"
+                                                validation:nil
+                                         outputDescription:@"Operation response"];
+
     // Create capability
-    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"action" value:@"create"] tag:@"target" value:@"user"] build:nil];
+    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"op" value:@"create"] tag:@"target" value:@"user"] build:nil];
     CSCapArguments *arguments = [CSCapArguments argumentsWithRequired:@[userArg] optional:@[]];
-    
+
     CSCap *cap = [CSCap capWithUrn:urn
+                             title:@"Create User"
                            command:@"create-user"
                        description:@"Create a new user with validation"
                           metadata:@{}
+                        mediaSpecs:mediaSpecs
                          arguments:arguments
                             output:output
-                      acceptsStdin:NO];
-    
+                      acceptsStdin:NO
+                      metadataJSON:nil];
+
     // Test with valid data
     NSDictionary *validUser = @{
         @"name": @"John Doe",
@@ -93,13 +114,13 @@
             @"theme": @"dark"
         }
     };
-    
+
     NSError *error = nil;
-    BOOL result = [self.validator validateArgument:userArg withValue:validUser error:&error];
-    
+    BOOL result = [self.validator validateArgument:userArg withValue:validUser mediaSpecs:mediaSpecs error:&error];
+
     if (result) {
         NSLog(@"OK Valid user data passed schema validation");
-        
+
         // Test integrated validation
         result = [CSInputValidator validateArguments:@[validUser] cap:cap error:&error];
         if (result) {
@@ -110,7 +131,7 @@
     } else {
         NSLog(@"ERR Valid user data failed schema validation: %@", error.localizedDescription);
     }
-    
+
     // Test with invalid data
     NSDictionary *invalidUser = @{
         @"name": @"",  // Empty name (violates minLength)
@@ -122,14 +143,14 @@
             @"extraField": @"not allowed" // Additional property not allowed
         }
     };
-    
+
     error = nil;
-    result = [self.validator validateArgument:userArg withValue:invalidUser error:&error];
-    
+    result = [self.validator validateArgument:userArg withValue:invalidUser mediaSpecs:mediaSpecs error:&error];
+
     if (!result) {
         NSLog(@"OK Invalid user data correctly failed validation");
         NSLog(@"   Error: %@", error.localizedDescription);
-        
+
         if ([error isKindOfClass:[CSSchemaValidationError class]]) {
             CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
             NSLog(@"   Validation errors: %@", [schemaError.validationErrors componentsJoinedByString:@", "]);
@@ -139,37 +160,74 @@
     }
 }
 
-- (void)demonstrateSchemaReferenceValidation {
-    NSLog(@"\n=== Schema Reference Validation Example ===");
-    
-    // Create argument with schema reference
-    CSCapArgument *configArg = [CSCapArgument argumentWithName:@"config"
-                                                        argType:CSArgumentTypeObject
-                                                  argDescription:@"Configuration object"
-                                                        cliFlag:@"--config"
-                                                      schemaRef:@"config_schema"];
-    
-    // Test validation (will fail without actual schema file)
-    NSDictionary *testConfig = @{@"setting1": @"value1", @"setting2": @42};
-    
+- (void)demonstrateBuiltinSpecIds {
+    NSLog(@"\n=== Built-in Spec ID Validation Example ===");
+
+    // Built-in spec IDs don't need to be declared in mediaSpecs
+
+    CSCapArgument *textArg = [CSCapArgument argumentWithName:@"text"
+                                                   mediaSpec:CSSpecIdStr
+                                               argDescription:@"Text input"
+                                                     cliFlag:@"--text"
+                                                    position:nil
+                                                  validation:nil
+                                                defaultValue:nil];
+
+    CSCapArgument *countArg = [CSCapArgument argumentWithName:@"count"
+                                                    mediaSpec:CSSpecIdInt
+                                                argDescription:@"Count value"
+                                                      cliFlag:@"--count"
+                                                     position:nil
+                                                   validation:nil
+                                                 defaultValue:nil];
+
+    CSCapArgument *dataArg = [CSCapArgument argumentWithName:@"data"
+                                                   mediaSpec:CSSpecIdObj
+                                               argDescription:@"JSON object"
+                                                     cliFlag:@"--data"
+                                                    position:nil
+                                                  validation:nil
+                                                defaultValue:nil];
+
     NSError *error = nil;
-    BOOL result = [self.validator validateArgument:configArg withValue:testConfig error:&error];
-    
-    if (!result) {
-        NSLog(@"OK Schema reference correctly failed (schema file not found)");
-        NSLog(@"   Error: %@", error.localizedDescription);
-        
-        if ([error isKindOfClass:[CSSchemaValidationError class]]) {
-            CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
-            NSLog(@"   Error type: %ld", (long)schemaError.schemaErrorType);
-        }
+
+    // String validation
+    BOOL result = [self.validator validateArgument:textArg withValue:@"hello world" mediaSpecs:@{} error:&error];
+    if (result) {
+        NSLog(@"OK Built-in str spec validated string");
     }
+
+    // Integer validation
+    result = [self.validator validateArgument:countArg withValue:@42 mediaSpecs:@{} error:&error];
+    if (result) {
+        NSLog(@"OK Built-in int spec validated integer");
+    }
+
+    // Object validation
+    result = [self.validator validateArgument:dataArg withValue:@{@"key": @"value"} mediaSpecs:@{} error:&error];
+    if (result) {
+        NSLog(@"OK Built-in obj spec validated object");
+    }
+
+    // Show all built-in spec IDs
+    NSLog(@"\nBuilt-in spec IDs available:");
+    NSLog(@"  - %@ (string)", CSSpecIdStr);
+    NSLog(@"  - %@ (integer)", CSSpecIdInt);
+    NSLog(@"  - %@ (number)", CSSpecIdNum);
+    NSLog(@"  - %@ (boolean)", CSSpecIdBool);
+    NSLog(@"  - %@ (object)", CSSpecIdObj);
+    NSLog(@"  - %@ (string array)", CSSpecIdStrArray);
+    NSLog(@"  - %@ (integer array)", CSSpecIdIntArray);
+    NSLog(@"  - %@ (number array)", CSSpecIdNumArray);
+    NSLog(@"  - %@ (boolean array)", CSSpecIdBoolArray);
+    NSLog(@"  - %@ (object array)", CSSpecIdObjArray);
+    NSLog(@"  - %@ (binary)", CSSpecIdBinary);
 }
 
 - (void)demonstrateOutputValidation {
     NSLog(@"\n=== Output Validation Example ===");
-    
-    // Create output with schema
+
+    // Create output with schema in mediaSpecs
     NSDictionary *resultsSchema = @{
         @"type": @"array",
         @"items": @{
@@ -179,44 +237,52 @@
                 @"score": @{@"type": @"number", @"minimum": @0, @"maximum": @1},
                 @"metadata": @{
                     @"type": @"object",
-                    @"additionalProperties": true
+                    @"additionalProperties": @YES
                 }
             },
             @"required": @[@"id", @"score"]
         },
         @"minItems": @0
     };
-    
-    CSCapOutput *output = [CSCapOutput outputWithType:CSOutputTypeArray
-                                                schema:resultsSchema
-                                     outputDescription:@"Search results"];
-    
+
+    NSDictionary *mediaSpecs = @{
+        @"my:search-results.v1": @{
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://example.com/schema/search-results",
+            @"schema": resultsSchema
+        }
+    };
+
+    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:search-results.v1"
+                                                validation:nil
+                                         outputDescription:@"Search results"];
+
     // Test with valid output
     NSArray *validResults = @[
         @{@"id": @"result1", @"score": @0.95, @"metadata": @{@"source": @"database"}},
         @{@"id": @"result2", @"score": @0.87},
         @{@"id": @"result3", @"score": @0.75, @"metadata": @{@"highlighted": @YES}}
     ];
-    
+
     NSError *error = nil;
-    BOOL result = [self.validator validateOutput:output withValue:validResults error:&error];
-    
+    BOOL result = [self.validator validateOutput:output withValue:validResults mediaSpecs:mediaSpecs error:&error];
+
     if (result) {
         NSLog(@"OK Valid output passed schema validation");
     } else {
         NSLog(@"ERR Valid output failed schema validation: %@", error.localizedDescription);
     }
-    
+
     // Test with invalid output
     NSArray *invalidResults = @[
         @{@"id": @"result1", @"score": @1.5}, // Score > 1 (violates maximum)
         @{@"score": @0.87}, // Missing required 'id' field
         @{@"id": @"result3", @"score": @"not-a-number"} // Wrong type for score
     ];
-    
+
     error = nil;
-    result = [self.validator validateOutput:output withValue:invalidResults error:&error];
-    
+    result = [self.validator validateOutput:output withValue:invalidResults mediaSpecs:mediaSpecs error:&error];
+
     if (!result) {
         NSLog(@"OK Invalid output correctly failed validation");
         NSLog(@"   Error: %@", error.localizedDescription);
@@ -227,7 +293,7 @@
 
 - (void)demonstrateComplexNestedValidation {
     NSLog(@"\n=== Complex Nested Schema Validation Example ===");
-    
+
     // Complex nested schema with multiple levels
     NSDictionary *documentSchema = @{
         @"type": @"object",
@@ -280,13 +346,23 @@
         },
         @"required": @[@"metadata", @"content"]
     };
-    
+
+    NSDictionary *mediaSpecs = @{
+        @"my:document.v1": @{
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://example.com/schema/document",
+            @"schema": documentSchema
+        }
+    };
+
     CSCapArgument *documentArg = [CSCapArgument argumentWithName:@"document"
-                                                         argType:CSArgumentTypeObject
+                                                       mediaSpec:@"my:document.v1"
                                                    argDescription:@"Complex document structure"
                                                          cliFlag:@"--document"
-                                                          schema:documentSchema];
-    
+                                                        position:nil
+                                                      validation:nil
+                                                    defaultValue:nil];
+
     // Valid complex document
     NSDictionary *validDocument = @{
         @"metadata": @{
@@ -318,10 +394,10 @@
             @"pageCount": @3
         }
     };
-    
+
     NSError *error = nil;
-    BOOL result = [self.validator validateArgument:documentArg withValue:validDocument error:&error];
-    
+    BOOL result = [self.validator validateArgument:documentArg withValue:validDocument mediaSpecs:mediaSpecs error:&error];
+
     if (result) {
         NSLog(@"OK Complex nested document passed schema validation");
     } else {
@@ -331,8 +407,8 @@
 
 - (void)demonstratePerformanceConsiderations {
     NSLog(@"\n=== Performance Considerations Example ===");
-    
-    // Schema caching demonstration
+
+    // Schema in mediaSpecs
     NSDictionary *simpleSchema = @{
         @"type": @"object",
         @"properties": @{
@@ -341,22 +417,32 @@
         },
         @"required": @[@"id", @"value"]
     };
-    
+
+    NSDictionary *mediaSpecs = @{
+        @"my:item.v1": @{
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://example.com/schema/item",
+            @"schema": simpleSchema
+        }
+    };
+
     CSCapArgument *arg = [CSCapArgument argumentWithName:@"item"
-                                                 argType:CSArgumentTypeObject
+                                               mediaSpec:@"my:item.v1"
                                            argDescription:@"Simple item"
                                                  cliFlag:@"--item"
-                                                  schema:simpleSchema];
-    
+                                                position:nil
+                                              validation:nil
+                                            defaultValue:nil];
+
     // Measure validation performance
     NSDate *startTime = [NSDate date];
-    
+
     for (NSInteger i = 0; i < 1000; i++) {
         NSDictionary *testData = @{@"id": [NSString stringWithFormat:@"item_%ld", (long)i], @"value": @(i * 1.5)};
         NSError *error = nil;
-        [self.validator validateArgument:arg withValue:testData error:&error];
+        [self.validator validateArgument:arg withValue:testData mediaSpecs:mediaSpecs error:&error];
     }
-    
+
     NSTimeInterval duration = [[NSDate date] timeIntervalSinceDate:startTime];
     NSLog(@"OK Validated 1000 objects in %.3f seconds (%.3f ms per validation)",
           duration, duration * 1000.0 / 1000.0);
@@ -364,13 +450,13 @@
 
 - (void)runAllExamples {
     NSLog(@" Starting JSON Schema Validation Examples\n");
-    
+
     [self demonstrateEmbeddedSchemaValidation];
-    [self demonstrateSchemaReferenceValidation];
+    [self demonstrateBuiltinSpecIds];
     [self demonstrateOutputValidation];
     [self demonstrateComplexNestedValidation];
     [self demonstratePerformanceConsiderations];
-    
+
     NSLog(@"\nOK All examples completed successfully!");
 }
 

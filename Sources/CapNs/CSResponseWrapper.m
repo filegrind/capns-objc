@@ -2,8 +2,11 @@
 //  CSResponseWrapper.m
 //  Response wrapper for unified plugin output handling with validation
 //
+//  NOTE: Validation now uses mediaSpec -> spec ID resolution.
+//
 
 #import "include/CSResponseWrapper.h"
+#import "include/CSMediaSpec.h"
 
 @interface CSResponseWrapper ()
 @property (nonatomic, strong) NSData *rawBytes;
@@ -15,7 +18,7 @@
 + (instancetype)responseWithData:(NSData *)data {
     // Try to detect content type from data
     CSResponseContentType type = CSResponseContentTypeText;
-    
+
     // Check if it's valid JSON
     NSError *jsonError = nil;
     [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
@@ -28,7 +31,7 @@
             type = CSResponseContentTypeBinary;
         }
     }
-    
+
     CSResponseWrapper *wrapper = [[CSResponseWrapper alloc] init];
     wrapper.rawBytes = [data copy];
     wrapper.contentType = type;
@@ -75,13 +78,33 @@
 }
 
 - (BOOL)validateAgainstCap:(CSCap *)cap error:(NSError * _Nullable * _Nullable)error {
+    CSCapOutput *output = [cap getOutput];
+    if (!output || !output.mediaSpec) {
+        // No output definition, validation passes
+        return YES;
+    }
+
+    // Resolve the mediaSpec to determine expected type
+    NSError *resolveError = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(output.mediaSpec, cap.mediaSpecs, &resolveError);
+    if (!mediaSpec) {
+        // FAIL HARD on unresolvable spec ID
+        if (error) {
+            NSString *message = [NSString stringWithFormat:@"Cannot resolve spec ID '%@' for output: %@",
+                               output.mediaSpec, resolveError.localizedDescription];
+            *error = [NSError errorWithDomain:@"CSResponseWrapper"
+                                         code:1004
+                                     userInfo:@{NSLocalizedDescriptionKey: message}];
+        }
+        return NO;
+    }
+
     // For binary outputs, check type compatibility
     if (self.contentType == CSResponseContentTypeBinary) {
-        CSCapOutput *output = [cap getOutput];
-        if (output && output.outputType != CSOutputTypeBinary) {
+        if (![mediaSpec isBinary]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Cap %@ expects %@ output but received binary data",
-                                   [cap urnString], [self outputTypeToString:output.outputType]];
+                                   [cap urnString], output.mediaSpec];
                 *error = [NSError errorWithDomain:@"CSResponseWrapper"
                                              code:1002
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -90,7 +113,7 @@
         }
         return YES;
     }
-    
+
     // For text/JSON outputs, validate the content
     NSError *stringError = nil;
     NSString *text = [self asStringWithError:&stringError];
@@ -98,7 +121,7 @@
         if (error) *error = stringError;
         return NO;
     }
-    
+
     if (self.contentType == CSResponseContentTypeJson) {
         // Parse as JSON and validate structure
         NSError *jsonError = nil;
@@ -113,14 +136,14 @@
             }
             return NO;
         }
-        
-        // TODO: Add JSON schema validation against cap output definition
-        // This would involve checking the JSON structure against cap.output
+
+        // If the media spec has a schema, validate against it
+        if (mediaSpec.schema) {
+            // Schema validation would go here
+            // For now, skip detailed schema validation
+        }
     }
-    
-    // TODO: Add comprehensive output validation
-    // This would validate the output against the capability's output definition
-    
+
     return YES;
 }
 
@@ -137,38 +160,26 @@
 
 - (BOOL)matchesOutputTypeForCap:(CSCap *)cap {
     CSCapOutput *outputDef = [cap getOutput];
-    if (!outputDef) {
+    if (!outputDef || !outputDef.mediaSpec) {
         return NO;
     }
-    
+
+    // Resolve the mediaSpec
+    NSError *error = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(outputDef.mediaSpec, cap.mediaSpecs, &error);
+    if (!mediaSpec) {
+        return NO;
+    }
+
     switch (self.contentType) {
         case CSResponseContentTypeJson:
-            return (outputDef.outputType == CSOutputTypeObject ||
-                   outputDef.outputType == CSOutputTypeArray ||
-                   outputDef.outputType == CSOutputTypeString ||
-                   outputDef.outputType == CSOutputTypeInteger ||
-                   outputDef.outputType == CSOutputTypeNumber ||
-                   outputDef.outputType == CSOutputTypeBoolean);
-            
+            return [mediaSpec isJSON];
+
         case CSResponseContentTypeText:
-            return outputDef.outputType == CSOutputTypeString;
-            
+            return [mediaSpec isText];
+
         case CSResponseContentTypeBinary:
-            return outputDef.outputType == CSOutputTypeBinary;
-    }
-}
-
-#pragma mark - Helper Methods
-
-- (NSString *)outputTypeToString:(CSOutputType)outputType {
-    switch (outputType) {
-        case CSOutputTypeString: return @"string";
-        case CSOutputTypeInteger: return @"integer";
-        case CSOutputTypeNumber: return @"number";
-        case CSOutputTypeBoolean: return @"boolean";
-        case CSOutputTypeArray: return @"array";
-        case CSOutputTypeObject: return @"object";
-        case CSOutputTypeBinary: return @"binary";
+            return [mediaSpec isBinary];
     }
 }
 

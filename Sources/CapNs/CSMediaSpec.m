@@ -8,63 +8,113 @@
 
 NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 
+// ============================================================================
+// BUILT-IN SPEC ID CONSTANTS
+// ============================================================================
+
+NSString * const CSSpecIdStr = @"capns:ms:str.v1";
+NSString * const CSSpecIdInt = @"capns:ms:int.v1";
+NSString * const CSSpecIdNum = @"capns:ms:num.v1";
+NSString * const CSSpecIdBool = @"capns:ms:bool.v1";
+NSString * const CSSpecIdObj = @"capns:ms:obj.v1";
+NSString * const CSSpecIdStrArray = @"capns:ms:str-array.v1";
+NSString * const CSSpecIdIntArray = @"capns:ms:int-array.v1";
+NSString * const CSSpecIdNumArray = @"capns:ms:num-array.v1";
+NSString * const CSSpecIdBoolArray = @"capns:ms:bool-array.v1";
+NSString * const CSSpecIdObjArray = @"capns:ms:obj-array.v1";
+NSString * const CSSpecIdBinary = @"capns:ms:binary.v1";
+
+// Built-in spec ID definitions - maps spec ID to canonical media spec string
+static NSDictionary<NSString *, NSString *> *_builtinSpecs = nil;
+
+static NSDictionary<NSString *, NSString *> *CSGetBuiltinSpecs(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _builtinSpecs = @{
+            CSSpecIdStr: @"text/plain; profile=https://capns.org/schema/str",
+            CSSpecIdInt: @"text/plain; profile=https://capns.org/schema/int",
+            CSSpecIdNum: @"text/plain; profile=https://capns.org/schema/num",
+            CSSpecIdBool: @"text/plain; profile=https://capns.org/schema/bool",
+            CSSpecIdObj: @"application/json; profile=https://capns.org/schema/obj",
+            CSSpecIdStrArray: @"application/json; profile=https://capns.org/schema/str-array",
+            CSSpecIdIntArray: @"application/json; profile=https://capns.org/schema/int-array",
+            CSSpecIdNumArray: @"application/json; profile=https://capns.org/schema/num-array",
+            CSSpecIdBoolArray: @"application/json; profile=https://capns.org/schema/bool-array",
+            CSSpecIdObjArray: @"application/json; profile=https://capns.org/schema/obj-array",
+            CSSpecIdBinary: @"application/octet-stream"
+        };
+    });
+    return _builtinSpecs;
+}
+
+BOOL CSIsBuiltinSpecId(NSString *specId) {
+    return CSGetBuiltinSpecs()[specId] != nil;
+}
+
+NSString * _Nullable CSGetBuiltinSpecDefinition(NSString *specId) {
+    return CSGetBuiltinSpecs()[specId];
+}
+
+// ============================================================================
+// MEDIA SPEC IMPLEMENTATION
+// ============================================================================
+
 @interface CSMediaSpec ()
 @property (nonatomic, readwrite) NSString *contentType;
 @property (nonatomic, readwrite, nullable) NSString *profile;
+@property (nonatomic, readwrite, nullable) NSDictionary *schema;
 @end
 
 @implementation CSMediaSpec
 
 + (nullable instancetype)parse:(NSString *)string error:(NSError * _Nullable * _Nullable)error {
     NSString *trimmed = [string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-
-    // Must start with "content-type:" (case-insensitive)
     NSString *lower = [trimmed lowercaseString];
-    if (![lower hasPrefix:@"content-type:"]) {
+
+    // FAIL HARD on legacy format - no backward compatibility
+    if ([lower hasPrefix:@"content-type:"]) {
         if (error) {
             *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
-                                         code:CSMediaSpecErrorMissingContentType
-                                     userInfo:@{NSLocalizedDescriptionKey: @"media_spec must start with 'content-type:'"}];
+                                         code:CSMediaSpecErrorLegacyFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Legacy 'content-type:' prefix is no longer supported. Use canonical format: '<media-type>; profile=<url>'"}];
         }
         return nil;
     }
 
-    // Get everything after "content-type:"
-    NSString *afterPrefix = [[trimmed substringFromIndex:13] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-
     // Split by semicolon to separate mime type from parameters
-    NSArray<NSString *> *parts = [afterPrefix componentsSeparatedByString:@";"];
+    NSRange semicolonRange = [trimmed rangeOfString:@";"];
+    NSString *contentType;
+    NSString *paramsStr = nil;
 
-    NSString *contentType = [[parts firstObject] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (semicolonRange.location == NSNotFound) {
+        contentType = [trimmed stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    } else {
+        contentType = [[trimmed substringToIndex:semicolonRange.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        paramsStr = [[trimmed substringFromIndex:semicolonRange.location + 1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    }
+
     if (contentType.length == 0) {
         if (error) {
             *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
                                          code:CSMediaSpecErrorEmptyContentType
-                                     userInfo:@{NSLocalizedDescriptionKey: @"content-type value cannot be empty"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"media_type cannot be empty"}];
         }
         return nil;
     }
 
     // Parse profile if present
     NSString *profile = nil;
-    if (parts.count > 1) {
-        NSMutableString *params = [NSMutableString string];
-        for (NSUInteger i = 1; i < parts.count; i++) {
-            if (i > 1) [params appendString:@";"];
-            [params appendString:parts[i]];
-        }
-
-        NSString *parsedProfile = [self parseProfile:[params stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]
-                                               error:error];
-        if (*error != nil) {
+    if (paramsStr) {
+        profile = [self parseProfile:paramsStr error:error];
+        if (error && *error != nil) {
             return nil;
         }
-        profile = parsedProfile;
     }
 
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
     spec.profile = profile;
+    spec.schema = nil;
     return spec;
 }
 
@@ -100,11 +150,18 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
     return [afterProfile stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
 }
 
-+ (instancetype)withContentType:(NSString *)contentType profile:(nullable NSString *)profile {
++ (instancetype)withContentType:(NSString *)contentType
+                        profile:(nullable NSString *)profile
+                         schema:(nullable NSDictionary *)schema {
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
     spec.profile = profile;
+    spec.schema = schema;
     return spec;
+}
+
++ (instancetype)withContentType:(NSString *)contentType profile:(nullable NSString *)profile {
+    return [self withContentType:contentType profile:profile schema:nil];
 }
 
 - (BOOL)isBinary {
@@ -145,10 +202,11 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 }
 
 - (NSString *)toString {
+    // Canonical format: <media-type>; profile="<url>" (no content-type: prefix)
     if (self.profile) {
-        return [NSString stringWithFormat:@"content-type: %@; profile=\"%@\"", self.contentType, self.profile];
+        return [NSString stringWithFormat:@"%@; profile=\"%@\"", self.contentType, self.profile];
     }
-    return [NSString stringWithFormat:@"content-type: %@", self.contentType];
+    return self.contentType;
 }
 
 - (NSString *)description {
@@ -157,21 +215,77 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 
 @end
 
+// ============================================================================
+// SPEC ID RESOLUTION
+// ============================================================================
+
+CSMediaSpec * _Nullable CSResolveSpecId(NSString *specId,
+                                        NSDictionary * _Nullable mediaSpecs,
+                                        NSError * _Nullable * _Nullable error) {
+    // First check local mediaSpecs table
+    if (mediaSpecs && mediaSpecs[specId]) {
+        id def = mediaSpecs[specId];
+
+        if ([def isKindOfClass:[NSString class]]) {
+            // String form: canonical media spec string
+            return [CSMediaSpec parse:(NSString *)def error:error];
+        } else if ([def isKindOfClass:[NSDictionary class]]) {
+            // Object form: { media_type, profile_uri, schema? }
+            NSDictionary *objDef = (NSDictionary *)def;
+            NSString *mediaType = objDef[@"media_type"] ?: objDef[@"mediaType"];
+            NSString *profileUri = objDef[@"profile_uri"] ?: objDef[@"profileUri"];
+            NSDictionary *schema = objDef[@"schema"];
+
+            if (!mediaType) {
+                if (error) {
+                    *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
+                                                 code:CSMediaSpecErrorUnresolvableSpecId
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Spec ID '%@' has invalid object definition: missing media_type", specId]}];
+                }
+                return nil;
+            }
+
+            return [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema];
+        }
+    }
+
+    // Check built-in specs
+    NSString *builtinDef = CSGetBuiltinSpecDefinition(specId);
+    if (builtinDef) {
+        return [CSMediaSpec parse:builtinDef error:error];
+    }
+
+    // FAIL HARD - no fallbacks, no guessing
+    if (error) {
+        *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
+                                     code:CSMediaSpecErrorUnresolvableSpecId
+                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Cannot resolve spec ID: '%@'. Not found in mediaSpecs table and not a known built-in.", specId]}];
+    }
+    return nil;
+}
+
+// ============================================================================
+// CAP URN EXTENSION
+// ============================================================================
+
 @implementation CSMediaSpec (CapUrn)
 
-+ (nullable instancetype)fromCapUrn:(CSCapUrn *)capUrn error:(NSError * _Nullable * _Nullable)error {
-    NSString *spec = [capUrn getTag:@"out"];
++ (nullable instancetype)fromCapUrn:(CSCapUrn *)capUrn
+                         mediaSpecs:(NSDictionary * _Nullable)mediaSpecs
+                              error:(NSError * _Nullable * _Nullable)error {
+    NSString *specId = [capUrn getTag:@"out"];
 
-    if (!spec) {
+    if (!specId) {
         if (error) {
             *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
-                                         code:CSMediaSpecErrorMissingContentType
+                                         code:CSMediaSpecErrorUnresolvableSpecId
                                      userInfo:@{NSLocalizedDescriptionKey: @"no 'out' tag found in cap URN"}];
         }
         return nil;
     }
 
-    return [CSMediaSpec parse:spec error:error];
+    // Resolve the spec ID to a MediaSpec
+    return CSResolveSpecId(specId, mediaSpecs, error);
 }
 
 @end

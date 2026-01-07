@@ -6,37 +6,16 @@
 //  the cap URN, versioning, and metadata. Caps are general-purpose
 //  and do not assume any specific domain like files or documents.
 //
+//  NOTE: ArgumentType and OutputType enums have been REMOVED.
+//  All type information is now conveyed via mediaSpec fields that
+//  contain spec IDs (e.g., "capns:ms:str.v1") which resolve to
+//  MediaSpec definitions via the mediaSpecs table.
+//
 
 #import <Foundation/Foundation.h>
 #import "CSCapUrn.h"
 
 NS_ASSUME_NONNULL_BEGIN
-
-/**
- * Argument type enumeration
- */
-typedef NS_ENUM(NSInteger, CSArgumentType) {
-    CSArgumentTypeString,
-    CSArgumentTypeInteger,
-    CSArgumentTypeNumber,
-    CSArgumentTypeBoolean,
-    CSArgumentTypeArray,
-    CSArgumentTypeObject,
-    CSArgumentTypeBinary
-};
-
-/**
- * Output type enumeration
- */
-typedef NS_ENUM(NSInteger, CSOutputType) {
-    CSOutputTypeString,
-    CSOutputTypeInteger,
-    CSOutputTypeNumber,
-    CSOutputTypeBoolean,
-    CSOutputTypeArray,
-    CSOutputTypeObject,
-    CSOutputTypeBinary
-};
 
 /**
  * Argument validation rules
@@ -68,57 +47,41 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Cap argument definition
+ *
+ * NOTE: argType enum has been replaced with mediaSpec string field.
+ * The mediaSpec contains a spec ID (e.g., "capns:ms:str.v1") that resolves
+ * to a MediaSpec definition. Schema is now stored in the cap's mediaSpecs table.
  */
 @interface CSCapArgument : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly) NSString *name;
-@property (nonatomic, readonly) CSArgumentType argType;
+@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "capns:ms:str.v1")
 @property (nonatomic, readonly) NSString *argDescription;
 @property (nonatomic, readonly) NSString *cliFlag;
 @property (nonatomic, readonly, nullable) NSNumber *position;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly, nullable) id defaultValue;
-@property (nonatomic, readonly, nullable) NSString *schemaRef;
-@property (nonatomic, readonly, nullable) NSDictionary *schema;
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
+/**
+ * Create an argument with spec ID
+ * @param name Argument name
+ * @param mediaSpec Spec ID (e.g., "capns:ms:str.v1")
+ * @param argDescription Argument description
+ * @param cliFlag CLI flag
+ * @param position Optional position for positional arguments
+ * @param validation Optional validation rules
+ * @param defaultValue Optional default value
+ * @return A new CSCapArgument instance
+ */
 + (instancetype)argumentWithName:(NSString * _Nonnull)name
-                         argType:(CSArgumentType)argType
+                       mediaSpec:(NSString * _Nonnull)mediaSpec
                    argDescription:(NSString * _Nonnull)argDescription
                          cliFlag:(NSString * _Nonnull)cliFlag
                         position:(nullable NSNumber *)position
                       validation:(nullable CSArgumentValidation *)validation
                     defaultValue:(nullable id)defaultValue;
 
-/**
- * Create an argument with schema validation
- * @param name Argument name
- * @param argType Argument type
- * @param argDescription Argument description
- * @param cliFlag CLI flag
- * @param schema JSON schema for validation (takes precedence over schemaRef)
- * @return A new CSCapArgument instance
- */
-+ (instancetype)argumentWithName:(NSString * _Nonnull)name
-                         argType:(CSArgumentType)argType
-                   argDescription:(NSString * _Nonnull)argDescription
-                         cliFlag:(NSString * _Nonnull)cliFlag
-                          schema:(NSDictionary * _Nonnull)schema;
-
-/**
- * Create an argument with schema reference
- * @param name Argument name
- * @param argType Argument type
- * @param argDescription Argument description
- * @param cliFlag CLI flag
- * @param schemaRef Reference to external schema
- * @return A new CSCapArgument instance
- */
-+ (instancetype)argumentWithName:(NSString * _Nonnull)name
-                         argType:(CSArgumentType)argType
-                   argDescription:(NSString * _Nonnull)argDescription
-                         cliFlag:(NSString * _Nonnull)cliFlag
-                       schemaRef:(NSString * _Nonnull)schemaRef;
 + (instancetype)argumentWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**
@@ -177,44 +140,29 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /**
  * Output definition
+ *
+ * NOTE: outputType enum has been replaced with mediaSpec string field.
+ * The mediaSpec contains a spec ID (e.g., "capns:ms:obj.v1") that resolves
+ * to a MediaSpec definition. Schema is now stored in the cap's mediaSpecs table.
  */
 @interface CSCapOutput : NSObject <NSCopying, NSCoding>
 
-@property (nonatomic, readonly) CSOutputType outputType;
-@property (nonatomic, readonly, nullable) NSString *schemaRef;
-@property (nonatomic, readonly, nullable) NSDictionary *schema;
-@property (nonatomic, readonly, nullable) NSString *contentType;
+@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "capns:ms:obj.v1")
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
-+ (instancetype)outputWithType:(CSOutputType)outputType
-                     schemaRef:(nullable NSString *)schemaRef
-                   contentType:(nullable NSString *)contentType
-                    validation:(nullable CSArgumentValidation *)validation
-           outputDescription:(NSString * _Nonnull)outputDescription;
-
 /**
- * Create an output with embedded schema
- * @param outputType The output type
- * @param schema JSON schema for validation (takes precedence over schemaRef)
+ * Create an output with spec ID
+ * @param mediaSpec Spec ID (e.g., "capns:ms:obj.v1")
+ * @param validation Optional validation rules
  * @param outputDescription Description of the output
  * @return A new CSCapOutput instance
  */
-+ (instancetype)outputWithType:(CSOutputType)outputType
-                        schema:(NSDictionary * _Nonnull)schema
-               outputDescription:(NSString * _Nonnull)outputDescription;
++ (instancetype)outputWithMediaSpec:(NSString * _Nonnull)mediaSpec
+                         validation:(nullable CSArgumentValidation *)validation
+                  outputDescription:(NSString * _Nonnull)outputDescription;
 
-/**
- * Create an output with schema reference
- * @param outputType The output type
- * @param schemaRef Reference to external schema
- * @param outputDescription Description of the output
- * @return A new CSCapOutput instance
- */
-+ (instancetype)outputWithType:(CSOutputType)outputType
-                     schemaRef:(NSString * _Nonnull)schemaRef
-               outputDescription:(NSString * _Nonnull)outputDescription;
 + (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
 /**
@@ -242,8 +190,13 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 @end
 
+@class CSMediaSpec;
+
 /**
  * Formal cap definition
+ *
+ * The mediaSpecs property is a resolution table that maps spec IDs to MediaSpec definitions.
+ * Arguments and output use spec IDs in their mediaSpec fields, which resolve via this table.
  */
 @interface CSCap : NSObject <NSCopying, NSCoding>
 
@@ -261,6 +214,11 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
 
 /// Command string for CLI execution
 @property (nonatomic, readonly) NSString *command;
+
+/// Media specs resolution table: maps spec ID -> string or object definition
+/// String form: "text/plain; profile=https://..." (canonical)
+/// Object form: { media_type, profile_uri, schema? }
+@property (nonatomic, readonly) NSDictionary<NSString *, id> *mediaSpecs;
 
 /// Cap arguments
 @property (nonatomic, readonly) CSCapArguments *arguments;
@@ -282,9 +240,11 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * @param command The command string
  * @param description The cap description
  * @param metadata The cap metadata
+ * @param mediaSpecs Media spec resolution table (spec ID -> definition)
  * @param arguments The cap arguments
  * @param output The output definition
  * @param acceptsStdin Whether this cap accepts stdin input
+ * @param metadataJSON Arbitrary metadata as JSON object
  * @return A new CSCap instance
  */
 + (instancetype)capWithUrn:(CSCapUrn * _Nonnull)capUrn
@@ -292,6 +252,7 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
                    command:(NSString * _Nonnull)command
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
+                mediaSpecs:(NSDictionary<NSString *, id> * _Nonnull)mediaSpecs
                  arguments:(CSCapArguments * _Nonnull)arguments
                     output:(nullable CSCapOutput *)output
               acceptsStdin:(BOOL)acceptsStdin
@@ -410,6 +371,14 @@ typedef NS_ENUM(NSInteger, CSOutputType) {
  * Clear the metadata JSON
  */
 - (void)clearMetadataJSON;
+
+/**
+ * Resolve a spec ID to a MediaSpec using this cap's mediaSpecs table
+ * @param specId The spec ID (e.g., "capns:ms:str.v1")
+ * @param error Error if spec ID cannot be resolved
+ * @return The resolved MediaSpec or nil on error
+ */
+- (nullable CSMediaSpec *)resolveSpecId:(NSString * _Nonnull)specId error:(NSError * _Nullable * _Nullable)error;
 
 @end
 

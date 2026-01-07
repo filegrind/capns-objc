@@ -5,8 +5,12 @@
 //  Provides comprehensive JSON Schema Draft-7 validation using native
 //  Foundation classes with proper error reporting and caching.
 //
+//  NOTE: Schema resolution now uses the mediaSpec -> spec ID -> MediaSpec flow.
+//  Schemas are stored in the resolved MediaSpec's schema property.
+//
 
-#import "CSSchemaValidator.h"
+#import "include/CSSchemaValidator.h"
+#import "include/CSMediaSpec.h"
 
 // Error domain
 NSErrorDomain const CSSchemaValidationErrorDomain = @"CSSchemaValidationErrorDomain";
@@ -42,10 +46,10 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     return self;
 }
 
-+ (instancetype)argumentValidationError:(NSString *)argumentName 
++ (instancetype)argumentValidationError:(NSString *)argumentName
                         validationErrors:(NSArray<NSString *> *)validationErrors
                                    value:(nullable id)value {
-    NSString *description = [NSString stringWithFormat:@"Schema validation failed for argument '%@': %@", 
+    NSString *description = [NSString stringWithFormat:@"Schema validation failed for argument '%@': %@",
                            argumentName, [validationErrors componentsJoinedByString:@"; "]];
     NSDictionary *userInfo = @{
         NSLocalizedDescriptionKey: description,
@@ -58,7 +62,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 + (instancetype)outputValidationError:(NSArray<NSString *> *)validationErrors
                                 value:(nullable id)value {
-    NSString *description = [NSString stringWithFormat:@"Schema validation failed for output: %@", 
+    NSString *description = [NSString stringWithFormat:@"Schema validation failed for output: %@",
                            [validationErrors componentsJoinedByString:@"; "]];
     NSDictionary *userInfo = @{
         NSLocalizedDescriptionKey: description,
@@ -71,7 +75,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 + (instancetype)schemaCompilationError:(NSString *)details
                                 schema:(nullable id)schema {
     NSString *description = [NSString stringWithFormat:@"Failed to compile schema: %@", details];
-    NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithObject:description 
+    NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithObject:description
                                                                        forKey:NSLocalizedDescriptionKey];
     if (schema) {
         userInfo[@"schema"] = schema;
@@ -81,7 +85,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 + (instancetype)schemaRefNotResolvedError:(NSString *)schemaRef
                                   context:(NSString *)context {
-    NSString *description = [NSString stringWithFormat:@"Schema reference '%@' could not be resolved in context: %@", 
+    NSString *description = [NSString stringWithFormat:@"Schema reference '%@' could not be resolved in context: %@",
                            schemaRef, context];
     NSDictionary *userInfo = @{
         NSLocalizedDescriptionKey: description,
@@ -130,56 +134,56 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 - (nullable NSDictionary *)resolveSchema:(NSString *)schemaRef error:(NSError **)error {
     NSString *fullPath;
-    
+
     // Handle relative and absolute paths
     if ([schemaRef hasPrefix:@"/"]) {
         fullPath = schemaRef;
     } else {
         fullPath = [self.basePath stringByAppendingPathComponent:schemaRef];
     }
-    
+
     // Add .json extension if not present
     if (![fullPath.pathExtension isEqualToString:@"json"]) {
         fullPath = [fullPath stringByAppendingPathExtension:@"json"];
     }
-    
+
     NSFileManager *fileManager = [NSFileManager defaultManager];
     if (![fileManager fileExistsAtPath:fullPath]) {
         if (error) {
-            *error = [CSSchemaValidationError schemaRefNotResolvedError:schemaRef 
+            *error = [CSSchemaValidationError schemaRefNotResolvedError:schemaRef
                                                                context:[NSString stringWithFormat:@"File not found at path: %@", fullPath]];
         }
         return nil;
     }
-    
+
     NSData *data = [NSData dataWithContentsOfFile:fullPath];
     if (!data) {
         if (error) {
-            *error = [CSSchemaValidationError schemaRefNotResolvedError:schemaRef 
+            *error = [CSSchemaValidationError schemaRefNotResolvedError:schemaRef
                                                                context:[NSString stringWithFormat:@"Could not read file at path: %@", fullPath]];
         }
         return nil;
     }
-    
+
     NSError *jsonError;
     id jsonObject = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
     if (!jsonObject) {
         if (error) {
-            *error = [CSSchemaValidationError invalidJsonError:[NSString stringWithFormat:@"Invalid JSON in schema file %@: %@", 
-                                                              fullPath, jsonError.localizedDescription] 
+            *error = [CSSchemaValidationError invalidJsonError:[NSString stringWithFormat:@"Invalid JSON in schema file %@: %@",
+                                                              fullPath, jsonError.localizedDescription]
                                                         value:nil];
         }
         return nil;
     }
-    
+
     if (![jsonObject isKindOfClass:[NSDictionary class]]) {
         if (error) {
-            *error = [CSSchemaValidationError schemaCompilationError:@"Schema file must contain a JSON object at root level" 
+            *error = [CSSchemaValidationError schemaCompilationError:@"Schema file must contain a JSON object at root level"
                                                              schema:jsonObject];
         }
         return nil;
     }
-    
+
     return (NSDictionary *)jsonObject;
 }
 
@@ -213,44 +217,38 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 - (BOOL)validateArgument:(CSCapArgument *)argument
                withValue:(id)value
+              mediaSpecs:(NSDictionary *)mediaSpecs
                    error:(NSError **)error {
-    // Only validate object and array types that have schemas defined
-    if (argument.argType != CSArgumentTypeObject && argument.argType != CSArgumentTypeArray) {
-        return YES;
-    }
-    
-    NSDictionary *schema = [self resolveArgumentSchema:argument error:error];
+    // Resolve the mediaSpec to get the schema
+    NSDictionary *schema = [self resolveArgumentSchema:argument mediaSpecs:mediaSpecs error:error];
     if (!schema) {
         // If there's an error, it's already set
-        // If no schema, validation passes
+        // If no schema, validation passes (no schema means no validation needed)
         return error == nil || *error == nil;
     }
-    
-    return [self validateValue:value 
-                againstSchema:schema 
-                      context:[NSString stringWithFormat:@"argument '%@'", argument.name]
-                        error:error];
+
+    return [self validateValue:value
+                 againstSchema:schema
+                       context:[NSString stringWithFormat:@"argument '%@'", argument.name]
+                         error:error];
 }
 
 - (BOOL)validateOutput:(CSCapOutput *)output
              withValue:(id)value
+            mediaSpecs:(NSDictionary *)mediaSpecs
                  error:(NSError **)error {
-    // Only validate object and array types that have schemas defined
-    if (output.outputType != CSOutputTypeObject && output.outputType != CSOutputTypeArray) {
-        return YES;
-    }
-    
-    NSDictionary *schema = [self resolveOutputSchema:output error:error];
+    // Resolve the mediaSpec to get the schema
+    NSDictionary *schema = [self resolveOutputSchema:output mediaSpecs:mediaSpecs error:error];
     if (!schema) {
         // If there's an error, it's already set
         // If no schema, validation passes
         return error == nil || *error == nil;
     }
-    
-    return [self validateValue:value 
-                againstSchema:schema 
-                      context:@"output"
-                        error:error];
+
+    return [self validateValue:value
+                 againstSchema:schema
+                       context:@"output"
+                         error:error];
 }
 
 - (BOOL)validateArguments:(CSCap *)cap
@@ -260,13 +258,13 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     if (!cap.arguments) {
         return YES;
     }
-    
+
     // Validate required arguments
     for (NSUInteger i = 0; i < cap.arguments.required.count; i++) {
         CSCapArgument *argDef = cap.arguments.required[i];
         id value = nil;
         BOOL found = NO;
-        
+
         // Check positional arguments
         if (argDef.position) {
             NSUInteger pos = argDef.position.unsignedIntegerValue;
@@ -278,31 +276,31 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
             value = positionalArgs[i];
             found = YES;
         }
-        
+
         // Check named arguments (takes precedence)
         if (namedArgs && namedArgs[argDef.name]) {
             value = namedArgs[argDef.name];
             found = YES;
         }
-        
+
         if (found) {
-            if (![self validateArgument:argDef withValue:value error:error]) {
+            if (![self validateArgument:argDef withValue:value mediaSpecs:cap.mediaSpecs error:error]) {
                 return NO;
             }
         }
     }
-    
+
     // Validate optional arguments if provided
     for (CSCapArgument *argDef in cap.arguments.optional) {
         id value = nil;
         BOOL found = NO;
-        
+
         // Check named arguments first for optional args
         if (namedArgs && namedArgs[argDef.name]) {
             value = namedArgs[argDef.name];
             found = YES;
         }
-        
+
         // Check positional if not found in named args
         if (!found && argDef.position) {
             NSUInteger pos = argDef.position.unsignedIntegerValue;
@@ -311,94 +309,78 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
                 found = YES;
             }
         }
-        
+
         if (found) {
-            if (![self validateArgument:argDef withValue:value error:error]) {
+            if (![self validateArgument:argDef withValue:value mediaSpecs:cap.mediaSpecs error:error]) {
                 return NO;
             }
         }
     }
-    
+
     return YES;
 }
 
 #pragma mark - Private Methods
 
-- (nullable NSDictionary *)resolveArgumentSchema:(CSCapArgument *)argument error:(NSError **)error {
-    // Prefer embedded schema over schema reference
-    if (argument.schema) {
-        return argument.schema;
+- (nullable NSDictionary *)resolveArgumentSchema:(CSCapArgument *)argument
+                                      mediaSpecs:(NSDictionary *)mediaSpecs
+                                           error:(NSError **)error {
+    // Get the spec ID from the argument
+    NSString *specId = argument.mediaSpec;
+    if (!specId) {
+        // No mediaSpec, no schema validation needed
+        return nil;
     }
-    
-    if (argument.schemaRef) {
-        if (!self.resolver) {
-            if (error) {
-                *error = [CSSchemaValidationError schemaRefNotResolvedError:argument.schemaRef 
-                                                                  context:[NSString stringWithFormat:@"argument '%@' - no resolver configured", argument.name]];
-            }
-            return nil;
+
+    // Resolve the spec ID to a MediaSpec
+    NSError *resolveError = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(specId, mediaSpecs, &resolveError);
+    if (!mediaSpec) {
+        // FAIL HARD on unresolvable spec ID
+        if (error && resolveError) {
+            *error = resolveError;
         }
-        
-        // Check cache first
-        NSDictionary *cached = self.schemaCache[argument.schemaRef];
-        if (cached) {
-            return cached;
-        }
-        
-        // Resolve and cache
-        NSDictionary *resolved = [self.resolver resolveSchema:argument.schemaRef error:error];
-        if (resolved) {
-            self.schemaCache[argument.schemaRef] = resolved;
-        }
-        return resolved;
+        return nil;
     }
-    
-    // No schema specified
-    return nil;
+
+    // Return the schema from the resolved MediaSpec
+    return mediaSpec.schema;
 }
 
-- (nullable NSDictionary *)resolveOutputSchema:(CSCapOutput *)output error:(NSError **)error {
-    // Prefer embedded schema over schema reference
-    if (output.schema) {
-        return output.schema;
+- (nullable NSDictionary *)resolveOutputSchema:(CSCapOutput *)output
+                                    mediaSpecs:(NSDictionary *)mediaSpecs
+                                         error:(NSError **)error {
+    // Get the spec ID from the output
+    NSString *specId = output.mediaSpec;
+    if (!specId) {
+        // No mediaSpec, no schema validation needed
+        return nil;
     }
-    
-    if (output.schemaRef) {
-        if (!self.resolver) {
-            if (error) {
-                *error = [CSSchemaValidationError schemaRefNotResolvedError:output.schemaRef 
-                                                                  context:@"output - no resolver configured"];
-            }
-            return nil;
+
+    // Resolve the spec ID to a MediaSpec
+    NSError *resolveError = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(specId, mediaSpecs, &resolveError);
+    if (!mediaSpec) {
+        // FAIL HARD on unresolvable spec ID
+        if (error && resolveError) {
+            *error = resolveError;
         }
-        
-        // Check cache first
-        NSDictionary *cached = self.schemaCache[output.schemaRef];
-        if (cached) {
-            return cached;
-        }
-        
-        // Resolve and cache
-        NSDictionary *resolved = [self.resolver resolveSchema:output.schemaRef error:error];
-        if (resolved) {
-            self.schemaCache[output.schemaRef] = resolved;
-        }
-        return resolved;
+        return nil;
     }
-    
-    // No schema specified
-    return nil;
+
+    // Return the schema from the resolved MediaSpec
+    return mediaSpec.schema;
 }
 
-- (BOOL)validateValue:(id)value 
-        againstSchema:(NSDictionary *)schema 
+- (BOOL)validateValue:(id)value
+        againstSchema:(NSDictionary *)schema
               context:(NSString *)context
                 error:(NSError **)error {
     // Basic JSON Schema Draft-7 validation implementation
     // This is a simplified implementation - for production use, consider a full JSON Schema library
-    
+
     NSMutableArray<NSString *> *errors = [NSMutableArray array];
-    
+
     // Validate type
     NSString *expectedType = schema[@"type"];
     if (expectedType) {
@@ -406,36 +388,36 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
             // Type validation failed, add to errors array
         }
     }
-    
+
     // Validate properties for objects
     if ([expectedType isEqualToString:@"object"] && [value isKindOfClass:[NSDictionary class]]) {
         [self validateObjectProperties:(NSDictionary *)value schema:schema errors:errors];
     }
-    
+
     // Validate items for arrays
     if ([expectedType isEqualToString:@"array"] && [value isKindOfClass:[NSArray class]]) {
         [self validateArrayItems:(NSArray *)value schema:schema errors:errors];
     }
-    
+
     // Validate string constraints
     if ([expectedType isEqualToString:@"string"] && [value isKindOfClass:[NSString class]]) {
         [self validateStringConstraints:(NSString *)value schema:schema errors:errors];
     }
-    
+
     // Validate number constraints
-    if (([expectedType isEqualToString:@"number"] || [expectedType isEqualToString:@"integer"]) && 
+    if (([expectedType isEqualToString:@"number"] || [expectedType isEqualToString:@"integer"]) &&
         [value isKindOfClass:[NSNumber class]]) {
         [self validateNumberConstraints:(NSNumber *)value schema:schema errors:errors];
     }
-    
+
     // Check for validation errors
     if (errors.count > 0) {
         if (error) {
             if ([context hasPrefix:@"argument"]) {
                 NSString *argumentName = [context stringByReplacingOccurrencesOfString:@"argument '" withString:@""];
                 argumentName = [argumentName stringByReplacingOccurrencesOfString:@"'" withString:@""];
-                *error = [CSSchemaValidationError argumentValidationError:argumentName 
-                                                         validationErrors:errors 
+                *error = [CSSchemaValidationError argumentValidationError:argumentName
+                                                         validationErrors:errors
                                                                     value:value];
             } else {
                 *error = [CSSchemaValidationError outputValidationError:errors value:value];
@@ -443,7 +425,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
         }
         return NO;
     }
-    
+
     return YES;
 }
 
@@ -485,7 +467,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 - (void)validateObjectProperties:(NSDictionary *)object schema:(NSDictionary *)schema errors:(NSMutableArray<NSString *> *)errors {
     NSDictionary *properties = schema[@"properties"];
     NSArray *required = schema[@"required"];
-    
+
     // Check required properties
     if (required) {
         for (NSString *requiredProp in required) {
@@ -494,7 +476,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
             }
         }
     }
-    
+
     // Validate property types and constraints
     if (properties) {
         for (NSString *propName in object) {
@@ -502,8 +484,8 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
             if (propSchema) {
                 // Recursively validate property
                 NSMutableArray *propErrors = [NSMutableArray array];
-                if (![self validateValue:object[propName] 
-                          againstSchema:propSchema 
+                if (![self validateValue:object[propName]
+                          againstSchema:propSchema
                                 context:[NSString stringWithFormat:@"property '%@'", propName]
                                   error:nil]) {
                     [errors addObject:[NSString stringWithFormat:@"Property '%@' validation failed", propName]];
@@ -517,24 +499,24 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     NSDictionary *items = schema[@"items"];
     NSNumber *minItems = schema[@"minItems"];
     NSNumber *maxItems = schema[@"maxItems"];
-    
+
     // Check array length constraints
     if (minItems && array.count < minItems.unsignedIntegerValue) {
-        [errors addObject:[NSString stringWithFormat:@"Array must have at least %@ items but has %lu", 
+        [errors addObject:[NSString stringWithFormat:@"Array must have at least %@ items but has %lu",
                          minItems, (unsigned long)array.count]];
     }
-    
+
     if (maxItems && array.count > maxItems.unsignedIntegerValue) {
-        [errors addObject:[NSString stringWithFormat:@"Array must have at most %@ items but has %lu", 
+        [errors addObject:[NSString stringWithFormat:@"Array must have at most %@ items but has %lu",
                          maxItems, (unsigned long)array.count]];
     }
-    
+
     // Validate each item
     if (items) {
         for (NSUInteger i = 0; i < array.count; i++) {
             NSMutableArray *itemErrors = [NSMutableArray array];
-            if (![self validateValue:array[i] 
-                      againstSchema:items 
+            if (![self validateValue:array[i]
+                      againstSchema:items
                             context:[NSString stringWithFormat:@"array item %lu", (unsigned long)i]
                               error:nil]) {
                 [errors addObject:[NSString stringWithFormat:@"Array item %lu validation failed", (unsigned long)i]];
@@ -547,25 +529,25 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     NSNumber *minLength = schema[@"minLength"];
     NSNumber *maxLength = schema[@"maxLength"];
     NSString *pattern = schema[@"pattern"];
-    
+
     if (minLength && string.length < minLength.unsignedIntegerValue) {
-        [errors addObject:[NSString stringWithFormat:@"String must be at least %@ characters but is %lu", 
+        [errors addObject:[NSString stringWithFormat:@"String must be at least %@ characters but is %lu",
                          minLength, (unsigned long)string.length]];
     }
-    
+
     if (maxLength && string.length > maxLength.unsignedIntegerValue) {
-        [errors addObject:[NSString stringWithFormat:@"String must be at most %@ characters but is %lu", 
+        [errors addObject:[NSString stringWithFormat:@"String must be at most %@ characters but is %lu",
                          maxLength, (unsigned long)string.length]];
     }
-    
+
     if (pattern) {
         NSError *regexError;
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern 
-                                                                               options:0 
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern
+                                                                               options:0
                                                                                  error:&regexError];
         if (regex) {
-            NSUInteger matches = [regex numberOfMatchesInString:string 
-                                                        options:0 
+            NSUInteger matches = [regex numberOfMatchesInString:string
+                                                        options:0
                                                           range:NSMakeRange(0, string.length)];
             if (matches == 0) {
                 [errors addObject:[NSString stringWithFormat:@"String does not match pattern '%@'", pattern]];
@@ -580,15 +562,15 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     NSNumber *minimum = schema[@"minimum"];
     NSNumber *maximum = schema[@"maximum"];
     NSNumber *multipleOf = schema[@"multipleOf"];
-    
+
     if (minimum && [number compare:minimum] == NSOrderedAscending) {
         [errors addObject:[NSString stringWithFormat:@"Number must be >= %@ but is %@", minimum, number]];
     }
-    
+
     if (maximum && [number compare:maximum] == NSOrderedDescending) {
         [errors addObject:[NSString stringWithFormat:@"Number must be <= %@ but is %@", maximum, number]];
     }
-    
+
     if (multipleOf) {
         double quotient = number.doubleValue / multipleOf.doubleValue;
         if (fmod(quotient, 1.0) != 0.0) {

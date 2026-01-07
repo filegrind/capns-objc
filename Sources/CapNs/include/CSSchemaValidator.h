@@ -106,24 +106,30 @@ typedef NS_ENUM(NSInteger, CSSchemaValidationErrorType) {
 
 /**
  * Validate an argument value against its schema
- * @param argument The argument definition with schema
+ * Schema is obtained by resolving the argument's mediaSpec to a MediaSpec with schema
+ * @param argument The argument definition with mediaSpec
  * @param value The value to validate
+ * @param mediaSpecs The mediaSpecs lookup table for spec ID resolution
  * @param error Pointer to NSError for error reporting
  * @return YES if validation succeeds, NO if it fails
  */
 - (BOOL)validateArgument:(CSCapArgument *)argument
                withValue:(id)value
+              mediaSpecs:(NSDictionary *)mediaSpecs
                    error:(NSError **)error;
 
 /**
  * Validate an output value against its schema
- * @param output The output definition with schema
+ * Schema is obtained by resolving the output's mediaSpec to a MediaSpec with schema
+ * @param output The output definition with mediaSpec
  * @param value The value to validate
+ * @param mediaSpecs The mediaSpecs lookup table for spec ID resolution
  * @param error Pointer to NSError for error reporting
  * @return YES if validation succeeds, NO if it fails
  */
 - (BOOL)validateOutput:(CSCapOutput *)output
              withValue:(id)value
+            mediaSpecs:(NSDictionary *)mediaSpecs
                  error:(NSError **)error;
 
 /**

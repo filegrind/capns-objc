@@ -43,18 +43,18 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 + (instancetype)unknownCapError:(NSString *)capUrn;
 + (instancetype)missingRequiredArgumentError:(NSString *)capUrn argumentName:(NSString *)argumentName;
 + (instancetype)unknownArgumentError:(NSString *)capUrn argumentName:(NSString *)argumentName;
-+ (instancetype)invalidArgumentTypeError:(NSString *)capUrn 
-                            argumentName:(NSString *)argumentName 
-                            expectedType:(CSArgumentType)expectedType 
-                              actualType:(NSString *)actualType 
++ (instancetype)invalidArgumentTypeError:(NSString *)capUrn
+                            argumentName:(NSString *)argumentName
+                            expectedType:(NSString *)expectedType
+                              actualType:(NSString *)actualType
                              actualValue:(id)actualValue;
-+ (instancetype)argumentValidationFailedError:(NSString *)capUrn 
-                                 argumentName:(NSString *)argumentName 
-                               validationRule:(NSString *)validationRule 
++ (instancetype)argumentValidationFailedError:(NSString *)capUrn
+                                 argumentName:(NSString *)argumentName
+                               validationRule:(NSString *)validationRule
                                   actualValue:(id)actualValue;
-+ (instancetype)invalidOutputTypeError:(NSString *)capUrn 
-                          expectedType:(CSOutputType)expectedType 
-                            actualType:(NSString *)actualType 
++ (instancetype)invalidOutputTypeError:(NSString *)capUrn
+                          expectedType:(NSString *)expectedType
+                            actualType:(NSString *)actualType
                            actualValue:(id)actualValue;
 + (instancetype)outputValidationFailedError:(NSString *)capUrn 
                              validationRule:(NSString *)validationRule 
