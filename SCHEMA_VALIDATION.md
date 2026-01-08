@@ -145,22 +145,22 @@ BOOL outputValid = [CSOutputValidator validateOutput:resultData cap:cap error:&e
 
 ## Plugin SDK Integration
 
-The FGRND Plugin SDK provides convenience methods for common document processing schemas:
+The FGND Plugin SDK provides convenience methods for common document processing schemas:
 
 ```objc
 // Standard document metadata schema
 CSCapArgument *metadataArg = [CSCapArgument documentMetadataArgumentWithName:@"metadata"
                                                                   description:@"Document metadata"
                                                                       cliFlag:@"--metadata"
-                                                                       schema:[FGRNDSchemaValidationHelper standardDocumentMetadataSchema]];
+                                                                       schema:[FGNDSchemaValidationHelper standardDocumentMetadataSchema]];
 
 // Standard document pages schema
-CSCapOutput *pagesOutput = [CSCapOutput documentPagesOutputWithSchema:[FGRNDSchemaValidationHelper standardDocumentPagesSchema]
+CSCapOutput *pagesOutput = [CSCapOutput documentPagesOutputWithSchema:[FGNDSchemaValidationHelper standardDocumentPagesSchema]
                                                           description:@"Extracted document pages"];
 
 // Validate plugin manifest schemas
 NSError *error = nil;
-BOOL manifestValid = [FGRNDSchemaValidationHelper validatePluginManifest:manifest error:&error];
+BOOL manifestValid = [FGNDSchemaValidationHelper validatePluginManifest:manifest error:&error];
 ```
 
 ## Error Handling
