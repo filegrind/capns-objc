@@ -260,21 +260,55 @@
            strcmp([number objCType], @encode(long long)) == 0;
 }
 
-- (BOOL)isBinaryCap {
+/// Resolves the output spec from the cap URN's 'out' tag.
+/// Fails hard if the cap URN has no 'out' tag or the spec ID cannot be resolved.
+- (nullable CSMediaSpec *)resolveOutputSpecWithError:(NSError **)error {
     CSCapUrn *capUrn = self.capDefinition.capUrn;
-    NSError *error = nil;
-    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn mediaSpecs:self.capDefinition.mediaSpecs error:&error];
-    if (error || !mediaSpec) {
+
+    // Get the 'out' tag which contains the spec ID
+    NSString *specId = [capUrn getTag:@"out"];
+    if (!specId) {
+        if (error) {
+            NSString *message = [NSString stringWithFormat:@"Cap URN '%@' is missing required 'out' tag - caps must declare their output type", self.cap];
+            *error = [NSError errorWithDomain:@"CSCapCaller"
+                                         code:1011
+                                     userInfo:@{NSLocalizedDescriptionKey: message}];
+        }
+        return nil;
+    }
+
+    // Resolve the spec ID - fail hard if resolution fails
+    NSError *resolveError = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(specId, self.capDefinition.mediaSpecs, &resolveError);
+    if (!mediaSpec) {
+        if (error) {
+            NSString *message = [NSString stringWithFormat:@"Failed to resolve output spec ID '%@' for cap '%@': %@ - check that media_specs contains this spec ID or it is a built-in",
+                               specId, self.cap, resolveError.localizedDescription];
+            *error = [NSError errorWithDomain:@"CSCapCaller"
+                                         code:1012
+                                     userInfo:@{NSLocalizedDescriptionKey: message}];
+        }
+        return nil;
+    }
+
+    return mediaSpec;
+}
+
+/// Checks if this cap produces binary output based on media_spec.
+/// Returns error if the spec ID cannot be resolved - no fallbacks.
+- (BOOL)isBinaryCapWithError:(NSError **)error {
+    CSMediaSpec *mediaSpec = [self resolveOutputSpecWithError:error];
+    if (!mediaSpec) {
         return NO;
     }
     return [mediaSpec isBinary];
 }
 
-- (BOOL)isJsonCap {
-    CSCapUrn *capUrn = self.capDefinition.capUrn;
-    NSError *error = nil;
-    CSMediaSpec *mediaSpec = [CSMediaSpec fromCapUrn:capUrn mediaSpecs:self.capDefinition.mediaSpecs error:&error];
-    if (error || !mediaSpec) {
+/// Checks if this cap produces JSON output based on media_spec.
+/// Returns error if the spec ID cannot be resolved - no fallbacks.
+- (BOOL)isJsonCapWithError:(NSError **)error {
+    CSMediaSpec *mediaSpec = [self resolveOutputSpecWithError:error];
+    if (!mediaSpec) {
         return NO;
     }
     return [mediaSpec isJSON];

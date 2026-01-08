@@ -893,12 +893,24 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         return YES;
     }
 
-    // Resolve mediaSpec to check if it's binary
+    // Resolve mediaSpec to check if it's binary - fail hard if resolution fails
     if (output.mediaSpec) {
         NSError *resolveError = nil;
         CSMediaSpec *mediaSpec = CSResolveSpecId(output.mediaSpec, cap.mediaSpecs, &resolveError);
 
-        if (mediaSpec && ![mediaSpec isBinary]) {
+        if (!mediaSpec) {
+            // FAIL HARD on unresolvable spec ID
+            if (error) {
+                NSString *message = [NSString stringWithFormat:@"Cannot resolve output spec ID '%@' for cap '%@': %@",
+                                   output.mediaSpec, capUrn, resolveError.localizedDescription];
+                *error = [NSError errorWithDomain:@"CSCapValidator"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: message}];
+            }
+            return NO;
+        }
+
+        if (![mediaSpec isBinary]) {
             if (error) {
                 *error = [CSValidationError invalidOutputTypeError:capUrn
                                                       expectedType:output.mediaSpec

@@ -88,11 +88,13 @@ typedef NS_ENUM(NSInteger, CSResponseContentType) {
 - (NSString *)getContentTypeString;
 
 /**
- * Check if response matches expected output type
+ * Check if response matches expected output type.
+ * Returns error if the output spec cannot be resolved - no fallbacks.
  * @param cap The capability definition
- * @return YES if types match, NO otherwise
+ * @param error Pointer to error for resolution/validation errors
+ * @return YES if types match, NO otherwise (with error set if resolution fails)
  */
-- (BOOL)matchesOutputTypeForCap:(CSCap *)cap;
+- (BOOL)matchesOutputTypeForCap:(CSCap *)cap error:(NSError * _Nullable * _Nullable)error;
 
 @end
 

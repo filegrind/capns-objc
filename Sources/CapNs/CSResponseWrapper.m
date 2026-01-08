@@ -158,16 +158,31 @@
     }
 }
 
-- (BOOL)matchesOutputTypeForCap:(CSCap *)cap {
+/// Checks if the response matches the expected output type based on the cap's output spec.
+/// Returns error if the output spec cannot be resolved - no fallbacks.
+- (BOOL)matchesOutputTypeForCap:(CSCap *)cap error:(NSError **)error {
     CSCapOutput *outputDef = [cap getOutput];
     if (!outputDef || !outputDef.mediaSpec) {
+        if (error) {
+            NSString *message = [NSString stringWithFormat:@"Cap '%@' has no output definition", [cap urnString]];
+            *error = [NSError errorWithDomain:@"CSResponseWrapper"
+                                         code:1005
+                                     userInfo:@{NSLocalizedDescriptionKey: message}];
+        }
         return NO;
     }
 
-    // Resolve the mediaSpec
-    NSError *error = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(outputDef.mediaSpec, cap.mediaSpecs, &error);
+    // Resolve the mediaSpec - fail hard if resolution fails
+    NSError *resolveError = nil;
+    CSMediaSpec *mediaSpec = CSResolveSpecId(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
+        if (error) {
+            NSString *message = [NSString stringWithFormat:@"Failed to resolve output spec ID '%@' for cap '%@': %@",
+                               outputDef.mediaSpec, [cap urnString], resolveError.localizedDescription];
+            *error = [NSError errorWithDomain:@"CSResponseWrapper"
+                                         code:1006
+                                     userInfo:@{NSLocalizedDescriptionKey: message}];
+        }
         return NO;
     }
 
