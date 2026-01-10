@@ -154,9 +154,9 @@ CSCapArgument *metadataArg = [CSCapArgument documentMetadataArgumentWithName:@"m
                                                                       cliFlag:@"--metadata"
                                                                        schema:[FGNDSchemaValidationHelper standardDocumentMetadataSchema]];
 
-// Standard document pages schema
-CSCapOutput *pagesOutput = [CSCapOutput documentPagesOutputWithSchema:[FGNDSchemaValidationHelper standardDocumentPagesSchema]
-                                                          description:@"Extracted document pages"];
+// Standard file chips schema
+CSCapOutput *pagesOutput = [CSCapOutput fileChipsOutputWithSchema:[FGNDSchemaValidationHelper standardGroundChipsSchema]
+                                                          description:@"Extracted file chips"];
 
 // Validate plugin manifest schemas
 NSError *error = nil;
