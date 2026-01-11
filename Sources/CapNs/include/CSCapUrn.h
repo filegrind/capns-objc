@@ -15,9 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
  * A cap URN using flat, ordered tags
  *
  * Examples:
- * - cap:action=generate;ext=pdf;output=binary;target=thumbnail
- * - cap:action=extract;target=metadata
- * - cap:action=analysis;format=en;type=constrained
+ * - cap:op=generate;ext=pdf;output=binary;target=thumbnail
+ * - cap:op=extract;target=metadata
+ * - cap:op=analysis;format=en;type=constrained
  */
 @interface CSCapUrn : NSObject <NSCopying, NSSecureCoding>
 
@@ -26,7 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Create a cap URN from a string
- * @param string The cap URN string (e.g., "cap:action=generate")
+ * @param string The cap URN string (e.g., "cap:op=generate")
  * @param error Error if the string format is invalid
  * @return A new CSCapUrn instance or nil if invalid
  */
