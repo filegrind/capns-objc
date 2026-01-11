@@ -190,6 +190,43 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+/**
+ * Registration attribution - who registered a capability and when
+ */
+@interface CSRegisteredBy : NSObject <NSCopying, NSCoding>
+
+/// Username of the user who registered this capability
+@property (nonatomic, readonly) NSString *username;
+
+/// ISO 8601 timestamp of when the capability was registered
+@property (nonatomic, readonly) NSString *registeredAt;
+
+/**
+ * Create a new registration attribution
+ * @param username The username of the user who registered this capability
+ * @param registeredAt ISO 8601 timestamp of when the capability was registered
+ * @return A new CSRegisteredBy instance
+ */
++ (instancetype)registeredByWithUsername:(NSString *)username
+                            registeredAt:(NSString *)registeredAt;
+
+/**
+ * Create from a dictionary representation
+ * @param dictionary The dictionary containing registration data
+ * @param error Error pointer for validation errors
+ * @return A new CSRegisteredBy instance or nil on error
+ */
++ (nullable instancetype)registeredByWithDictionary:(NSDictionary *)dictionary
+                                              error:(NSError * _Nullable * _Nullable)error;
+
+/**
+ * Convert to dictionary representation
+ * @return Dictionary representation of the registration attribution
+ */
+- (NSDictionary *)toDictionary;
+
+@end
+
 @class CSMediaSpec;
 
 /**
@@ -231,6 +268,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Arbitrary metadata as JSON object
 @property (nonatomic, readonly, nullable) NSDictionary *metadataJSON;
+
+/// Registration attribution - who registered this capability and when
+@property (nonatomic, readonly, nullable) CSRegisteredBy *registeredBy;
 
 
 /**
