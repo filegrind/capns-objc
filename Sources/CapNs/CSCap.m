@@ -309,13 +309,17 @@
 
     if (![self.name isEqualToString:other.name]) return NO;
     if (![self.mediaSpec isEqualToString:other.mediaSpec]) return NO;
-    if (self.isRequired != other.isRequired) return NO;
+    if (![self.argDescription isEqualToString:other.argDescription]) return NO;
+    if (![self.cliFlag isEqualToString:other.cliFlag]) return NO;
 
-    if ((self.argumentDescription == nil) != (other.argumentDescription == nil)) return NO;
-    if (self.argumentDescription && ![self.argumentDescription isEqualToString:other.argumentDescription]) return NO;
+    if ((self.position == nil) != (other.position == nil)) return NO;
+    if (self.position && ![self.position isEqualToNumber:other.position]) return NO;
 
     if ((self.validation == nil) != (other.validation == nil)) return NO;
     if (self.validation && ![self.validation isEqual:other.validation]) return NO;
+
+    if ((self.defaultValue == nil) != (other.defaultValue == nil)) return NO;
+    if (self.defaultValue && ![self.defaultValue isEqual:other.defaultValue]) return NO;
 
     if ((self.metadata == nil) != (other.metadata == nil)) return NO;
     if (self.metadata && ![self.metadata isEqualToDictionary:other.metadata]) return NO;
@@ -324,8 +328,9 @@
 }
 
 - (NSUInteger)hash {
-    return [self.name hash] ^ [self.mediaSpec hash] ^ (self.isRequired ? 1 : 0) ^
-           [self.argumentDescription hash] ^ [self.validation hash] ^ [self.metadata hash];
+    return [self.name hash] ^ [self.mediaSpec hash] ^ [self.argDescription hash] ^
+           [self.cliFlag hash] ^ [self.position hash] ^ [self.validation hash] ^
+           [self.defaultValue hash] ^ [self.metadata hash];
 }
 
 @end
