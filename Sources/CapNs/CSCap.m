@@ -95,6 +95,38 @@
     return YES;
 }
 
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[CSArgumentValidation class]]) return NO;
+
+    CSArgumentValidation *other = (CSArgumentValidation *)object;
+
+    if ((self.min == nil) != (other.min == nil)) return NO;
+    if (self.min && ![self.min isEqualToNumber:other.min]) return NO;
+
+    if ((self.max == nil) != (other.max == nil)) return NO;
+    if (self.max && ![self.max isEqualToNumber:other.max]) return NO;
+
+    if ((self.minLength == nil) != (other.minLength == nil)) return NO;
+    if (self.minLength && ![self.minLength isEqualToNumber:other.minLength]) return NO;
+
+    if ((self.maxLength == nil) != (other.maxLength == nil)) return NO;
+    if (self.maxLength && ![self.maxLength isEqualToNumber:other.maxLength]) return NO;
+
+    if ((self.pattern == nil) != (other.pattern == nil)) return NO;
+    if (self.pattern && ![self.pattern isEqualToString:other.pattern]) return NO;
+
+    if ((self.allowedValues == nil) != (other.allowedValues == nil)) return NO;
+    if (self.allowedValues && ![self.allowedValues isEqualToArray:other.allowedValues]) return NO;
+
+    return YES;
+}
+
+- (NSUInteger)hash {
+    return [self.min hash] ^ [self.max hash] ^ [self.minLength hash] ^
+           [self.maxLength hash] ^ [self.pattern hash] ^ [self.allowedValues hash];
+}
+
 @end
 
 #pragma mark - CSCapArgument Implementation
@@ -269,6 +301,33 @@
     return YES;
 }
 
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[CSCapArgument class]]) return NO;
+
+    CSCapArgument *other = (CSCapArgument *)object;
+
+    if (![self.name isEqualToString:other.name]) return NO;
+    if (![self.mediaSpec isEqualToString:other.mediaSpec]) return NO;
+    if (self.isRequired != other.isRequired) return NO;
+
+    if ((self.argumentDescription == nil) != (other.argumentDescription == nil)) return NO;
+    if (self.argumentDescription && ![self.argumentDescription isEqualToString:other.argumentDescription]) return NO;
+
+    if ((self.validation == nil) != (other.validation == nil)) return NO;
+    if (self.validation && ![self.validation isEqual:other.validation]) return NO;
+
+    if ((self.metadata == nil) != (other.metadata == nil)) return NO;
+    if (self.metadata && ![self.metadata isEqualToDictionary:other.metadata]) return NO;
+
+    return YES;
+}
+
+- (NSUInteger)hash {
+    return [self.name hash] ^ [self.mediaSpec hash] ^ (self.isRequired ? 1 : 0) ^
+           [self.argumentDescription hash] ^ [self.validation hash] ^ [self.metadata hash];
+}
+
 @end
 
 #pragma mark - CSCapArguments Implementation
@@ -438,6 +497,19 @@
     return YES;
 }
 
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[CSCapArguments class]]) return NO;
+
+    CSCapArguments *other = (CSCapArguments *)object;
+    return [self.required isEqualToArray:other.required] &&
+           [self.optional isEqualToArray:other.optional];
+}
+
+- (NSUInteger)hash {
+    return [self.required hash] ^ [self.optional hash];
+}
+
 @end
 
 #pragma mark - CSCapOutput Implementation
@@ -561,6 +633,111 @@
     return YES;
 }
 
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[CSCapOutput class]]) return NO;
+
+    CSCapOutput *other = (CSCapOutput *)object;
+
+    if (![self.mediaSpec isEqualToString:other.mediaSpec]) return NO;
+
+    if ((self.validation == nil) != (other.validation == nil)) return NO;
+    if (self.validation && ![self.validation isEqual:other.validation]) return NO;
+
+    if (![self.outputDescription isEqualToString:other.outputDescription]) return NO;
+
+    if ((self.metadata == nil) != (other.metadata == nil)) return NO;
+    if (self.metadata && ![self.metadata isEqualToDictionary:other.metadata]) return NO;
+
+    return YES;
+}
+
+- (NSUInteger)hash {
+    return [self.mediaSpec hash] ^ [self.validation hash] ^ [self.outputDescription hash] ^ [self.metadata hash];
+}
+
+@end
+
+#pragma mark - CSRegisteredBy Implementation
+
+@implementation CSRegisteredBy
+
++ (instancetype)registeredByWithUsername:(NSString *)username
+                            registeredAt:(NSString *)registeredAt {
+    CSRegisteredBy *registeredBy = [[CSRegisteredBy alloc] init];
+    registeredBy->_username = [username copy];
+    registeredBy->_registeredAt = [registeredAt copy];
+    return registeredBy;
+}
+
++ (nullable instancetype)registeredByWithDictionary:(NSDictionary *)dictionary
+                                              error:(NSError * _Nullable * _Nullable)error {
+    NSString *username = dictionary[@"username"];
+    NSString *registeredAt = dictionary[@"registered_at"];
+
+    if (!username || ![username isKindOfClass:[NSString class]]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSRegisteredByError"
+                                         code:1001
+                                     userInfo:@{NSLocalizedDescriptionKey: @"username is required and must be a string"}];
+        }
+        return nil;
+    }
+
+    if (!registeredAt || ![registeredAt isKindOfClass:[NSString class]]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSRegisteredByError"
+                                         code:1002
+                                     userInfo:@{NSLocalizedDescriptionKey: @"registered_at is required and must be a string"}];
+        }
+        return nil;
+    }
+
+    return [self registeredByWithUsername:username registeredAt:registeredAt];
+}
+
+- (NSDictionary *)toDictionary {
+    return @{
+        @"username": self.username,
+        @"registered_at": self.registeredAt
+    };
+}
+
+- (id)copyWithZone:(NSZone *)zone {
+    return [CSRegisteredBy registeredByWithUsername:self.username registeredAt:self.registeredAt];
+}
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeObject:self.username forKey:@"username"];
+    [coder encodeObject:self.registeredAt forKey:@"registeredAt"];
+}
+
+- (nullable instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super init];
+    if (self) {
+        _username = [coder decodeObjectOfClass:[NSString class] forKey:@"username"];
+        _registeredAt = [coder decodeObjectOfClass:[NSString class] forKey:@"registeredAt"];
+    }
+    return self;
+}
+
++ (BOOL)supportsSecureCoding {
+    return YES;
+}
+
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[CSRegisteredBy class]]) return NO;
+
+    CSRegisteredBy *other = (CSRegisteredBy *)object;
+    return [self.username isEqualToString:other.username] &&
+           [self.registeredAt isEqualToString:other.registeredAt];
+}
+
+- (NSUInteger)hash {
+    return [self.username hash] ^ [self.registeredAt hash];
+}
+
 @end
 
 #pragma mark - CSCap Implementation
@@ -671,16 +848,28 @@
         }
     }
 
-    return [self capWithUrn:capUrn
-                      title:title
-                    command:command
-                description:capDescription
-                   metadata:metadata
-                 mediaSpecs:mediaSpecs
-                  arguments:arguments
-                     output:output
-               acceptsStdin:acceptsStdin
-               metadataJSON:metadataJSON];
+    // Parse registered_by
+    CSRegisteredBy *registeredBy = nil;
+    NSDictionary *registeredByDict = dictionary[@"registered_by"];
+    if (registeredByDict) {
+        registeredBy = [CSRegisteredBy registeredByWithDictionary:registeredByDict error:error];
+        if (!registeredBy && error && *error) {
+            return nil;
+        }
+    }
+
+    CSCap *cap = [self capWithUrn:capUrn
+                            title:title
+                          command:command
+                      description:capDescription
+                         metadata:metadata
+                       mediaSpecs:mediaSpecs
+                        arguments:arguments
+                           output:output
+                     acceptsStdin:acceptsStdin
+                     metadataJSON:metadataJSON];
+    cap->_registeredBy = registeredBy;
+    return cap;
 }
 
 - (NSDictionary *)toDictionary {
@@ -712,6 +901,10 @@
 
     if (self.metadataJSON) {
         dict[@"metadata_json"] = self.metadataJSON;
+    }
+
+    if (self.registeredBy) {
+        dict[@"registered_by"] = [self.registeredBy toDictionary];
     }
 
     return [dict copy];
@@ -765,21 +958,63 @@
     return desc;
 }
 
+// Compares all fields to match Rust reference implementation
 - (BOOL)isEqual:(id)object {
     if (self == object) return YES;
     if (![object isKindOfClass:[CSCap class]]) return NO;
 
     CSCap *other = (CSCap *)object;
-    return [self.capUrn isEqual:other.capUrn] &&
-           [self.title isEqualToString:other.title] &&
-           [self.command isEqualToString:other.command] &&
-           ((self.capDescription == nil && other.capDescription == nil) ||
-            [self.capDescription isEqualToString:other.capDescription]) &&
-           [self.metadata isEqualToDictionary:other.metadata];
+
+    // Required fields
+    if (![self.capUrn isEqual:other.capUrn]) return NO;
+    if (![self.title isEqualToString:other.title]) return NO;
+    if (![self.command isEqualToString:other.command]) return NO;
+
+    // Optional string field
+    if ((self.capDescription == nil) != (other.capDescription == nil)) return NO;
+    if (self.capDescription && ![self.capDescription isEqualToString:other.capDescription]) return NO;
+
+    // Metadata dictionary
+    if (![self.metadata isEqualToDictionary:other.metadata]) return NO;
+
+    // MediaSpecs dictionary
+    if ((self.mediaSpecs == nil) != (other.mediaSpecs == nil)) return NO;
+    if (self.mediaSpecs && ![self.mediaSpecs isEqualToDictionary:other.mediaSpecs]) return NO;
+
+    // Arguments
+    if ((self.arguments == nil) != (other.arguments == nil)) return NO;
+    if (self.arguments && ![self.arguments isEqual:other.arguments]) return NO;
+
+    // Output
+    if ((self.output == nil) != (other.output == nil)) return NO;
+    if (self.output && ![self.output isEqual:other.output]) return NO;
+
+    // AcceptsStdin
+    if (self.acceptsStdin != other.acceptsStdin) return NO;
+
+    // MetadataJSON
+    if ((self.metadataJSON == nil) != (other.metadataJSON == nil)) return NO;
+    if (self.metadataJSON && ![self.metadataJSON isEqualToDictionary:other.metadataJSON]) return NO;
+
+    // RegisteredBy
+    if ((self.registeredBy == nil) != (other.registeredBy == nil)) return NO;
+    if (self.registeredBy && ![self.registeredBy isEqual:other.registeredBy]) return NO;
+
+    return YES;
 }
 
 - (NSUInteger)hash {
-    return [self.capUrn hash] ^ [self.title hash] ^ [self.command hash] ^ [self.metadata hash];
+    NSUInteger hash = [self.capUrn hash];
+    hash ^= [self.title hash];
+    hash ^= [self.command hash];
+    hash ^= [self.metadata hash];
+    hash ^= [self.mediaSpecs hash];
+    hash ^= [self.arguments hash];
+    hash ^= [self.output hash];
+    hash ^= self.acceptsStdin ? 1 : 0;
+    hash ^= [self.metadataJSON hash];
+    hash ^= [self.registeredBy hash];
+    return hash;
 }
 
 - (id)copyWithZone:(NSZone *)zone {
@@ -787,16 +1022,18 @@
     if (!self.command || !self.title) {
         return nil;
     }
-    return [CSCap capWithUrn:self.capUrn
-                       title:self.title
-                     command:self.command
-                 description:self.capDescription
-                    metadata:self.metadata
-                  mediaSpecs:self.mediaSpecs
-                   arguments:self.arguments
-                      output:self.output
-                acceptsStdin:self.acceptsStdin
-                metadataJSON:self.metadataJSON];
+    CSCap *copy = [CSCap capWithUrn:self.capUrn
+                             title:self.title
+                           command:self.command
+                       description:self.capDescription
+                          metadata:self.metadata
+                        mediaSpecs:self.mediaSpecs
+                         arguments:self.arguments
+                            output:self.output
+                      acceptsStdin:self.acceptsStdin
+                      metadataJSON:self.metadataJSON];
+    copy->_registeredBy = [self.registeredBy copy];
+    return copy;
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
@@ -810,6 +1047,7 @@
     [coder encodeObject:self.output forKey:@"output"];
     [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
     [coder encodeObject:self.metadataJSON forKey:@"metadataJSON"];
+    [coder encodeObject:self.registeredBy forKey:@"registeredBy"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
@@ -823,22 +1061,25 @@
     CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
     NSDictionary *metadataJSON = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadataJSON"];
+    CSRegisteredBy *registeredBy = [coder decodeObjectOfClass:[CSRegisteredBy class] forKey:@"registeredBy"];
 
     // FAIL HARD if required fields are missing
     if (!capUrn || !title || !command || !metadata) {
         return nil;
     }
 
-    return [CSCap capWithUrn:capUrn
-                       title:title
-                     command:command
-                 description:description
-                    metadata:metadata
-                  mediaSpecs:mediaSpecs ?: @{}
-                   arguments:arguments ?: [CSCapArguments arguments]
-                      output:output
-                acceptsStdin:acceptsStdin
-                metadataJSON:metadataJSON];
+    CSCap *cap = [CSCap capWithUrn:capUrn
+                            title:title
+                          command:command
+                      description:description
+                         metadata:metadata
+                       mediaSpecs:mediaSpecs ?: @{}
+                        arguments:arguments ?: [CSCapArguments arguments]
+                           output:output
+                     acceptsStdin:acceptsStdin
+                     metadataJSON:metadataJSON];
+    cap->_registeredBy = registeredBy;
+    return cap;
 }
 
 + (instancetype)capWithUrn:(CSCapUrn *)capUrn

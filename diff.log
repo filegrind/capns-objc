@@ -1,0 +1,261 @@
+diff --git a/Sources/CapNs/CSCap.m b/Sources/CapNs/CSCap.m
+index 36fe2f4..8c3ac50 100644
+--- a/Sources/CapNs/CSCap.m
++++ b/Sources/CapNs/CSCap.m
+@@ -563,6 +563,75 @@
+ 
+ @end
+ 
++#pragma mark - CSRegisteredBy Implementation
++
++@implementation CSRegisteredBy
++
+++ (instancetype)registeredByWithUsername:(NSString *)username
++                            registeredAt:(NSString *)registeredAt {
++    CSRegisteredBy *registeredBy = [[CSRegisteredBy alloc] init];
++    registeredBy->_username = [username copy];
++    registeredBy->_registeredAt = [registeredAt copy];
++    return registeredBy;
++}
++
+++ (nullable instancetype)registeredByWithDictionary:(NSDictionary *)dictionary
++                                              error:(NSError * _Nullable * _Nullable)error {
++    NSString *username = dictionary[@"username"];
++    NSString *registeredAt = dictionary[@"registered_at"];
++
++    if (!username || ![username isKindOfClass:[NSString class]]) {
++        if (error) {
++            *error = [NSError errorWithDomain:@"CSRegisteredByError"
++                                         code:1001
++                                     userInfo:@{NSLocalizedDescriptionKey: @"username is required and must be a string"}];
++        }
++        return nil;
++    }
++
++    if (!registeredAt || ![registeredAt isKindOfClass:[NSString class]]) {
++        if (error) {
++            *error = [NSError errorWithDomain:@"CSRegisteredByError"
++                                         code:1002
++                                     userInfo:@{NSLocalizedDescriptionKey: @"registered_at is required and must be a string"}];
++        }
++        return nil;
++    }
++
++    return [self registeredByWithUsername:username registeredAt:registeredAt];
++}
++
++- (NSDictionary *)toDictionary {
++    return @{
++        @"username": self.username,
++        @"registered_at": self.registeredAt
++    };
++}
++
++- (id)copyWithZone:(NSZone *)zone {
++    return [CSRegisteredBy registeredByWithUsername:self.username registeredAt:self.registeredAt];
++}
++
++- (void)encodeWithCoder:(NSCoder *)coder {
++    [coder encodeObject:self.username forKey:@"username"];
++    [coder encodeObject:self.registeredAt forKey:@"registeredAt"];
++}
++
++- (nullable instancetype)initWithCoder:(NSCoder *)coder {
++    self = [super init];
++    if (self) {
++        _username = [coder decodeObjectOfClass:[NSString class] forKey:@"username"];
++        _registeredAt = [coder decodeObjectOfClass:[NSString class] forKey:@"registeredAt"];
++    }
++    return self;
++}
++
+++ (BOOL)supportsSecureCoding {
++    return YES;
++}
++
++@end
++
+ #pragma mark - CSCap Implementation
+ 
+ @implementation CSCap
+@@ -671,16 +740,28 @@
+         }
+     }
+ 
+-    return [self capWithUrn:capUrn
+-                      title:title
+-                    command:command
+-                description:capDescription
+-                   metadata:metadata
+-                 mediaSpecs:mediaSpecs
+-                  arguments:arguments
+-                     output:output
+-               acceptsStdin:acceptsStdin
+-               metadataJSON:metadataJSON];
++    // Parse registered_by
++    CSRegisteredBy *registeredBy = nil;
++    NSDictionary *registeredByDict = dictionary[@"registered_by"];
++    if (registeredByDict) {
++        registeredBy = [CSRegisteredBy registeredByWithDictionary:registeredByDict error:error];
++        if (!registeredBy && error && *error) {
++            return nil;
++        }
++    }
++
++    CSCap *cap = [self capWithUrn:capUrn
++                            title:title
++                          command:command
++                      description:capDescription
++                         metadata:metadata
++                       mediaSpecs:mediaSpecs
++                        arguments:arguments
++                           output:output
++                     acceptsStdin:acceptsStdin
++                     metadataJSON:metadataJSON];
++    cap->_registeredBy = registeredBy;
++    return cap;
+ }
+ 
+ - (NSDictionary *)toDictionary {
+@@ -714,6 +795,10 @@
+         dict[@"metadata_json"] = self.metadataJSON;
+     }
+ 
++    if (self.registeredBy) {
++        dict[@"registered_by"] = [self.registeredBy toDictionary];
++    }
++
+     return [dict copy];
+ }
+ 
+@@ -787,16 +872,18 @@
+     if (!self.command || !self.title) {
+         return nil;
+     }
+-    return [CSCap capWithUrn:self.capUrn
+-                       title:self.title
+-                     command:self.command
+-                 description:self.capDescription
+-                    metadata:self.metadata
+-                  mediaSpecs:self.mediaSpecs
+-                   arguments:self.arguments
+-                      output:self.output
+-                acceptsStdin:self.acceptsStdin
+-                metadataJSON:self.metadataJSON];
++    CSCap *copy = [CSCap capWithUrn:self.capUrn
++                             title:self.title
++                           command:self.command
++                       description:self.capDescription
++                          metadata:self.metadata
++                        mediaSpecs:self.mediaSpecs
++                         arguments:self.arguments
++                            output:self.output
++                      acceptsStdin:self.acceptsStdin
++                      metadataJSON:self.metadataJSON];
++    copy->_registeredBy = [self.registeredBy copy];
++    return copy;
+ }
+ 
+ - (void)encodeWithCoder:(NSCoder *)coder {
+@@ -810,6 +897,7 @@
+     [coder encodeObject:self.output forKey:@"output"];
+     [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
+     [coder encodeObject:self.metadataJSON forKey:@"metadataJSON"];
++    [coder encodeObject:self.registeredBy forKey:@"registeredBy"];
+ }
+ 
+ - (nullable instancetype)initWithCoder:(NSCoder *)coder {
+@@ -823,22 +911,25 @@
+     CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
+     BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
+     NSDictionary *metadataJSON = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadataJSON"];
++    CSRegisteredBy *registeredBy = [coder decodeObjectOfClass:[CSRegisteredBy class] forKey:@"registeredBy"];
+ 
+     // FAIL HARD if required fields are missing
+     if (!capUrn || !title || !command || !metadata) {
+         return nil;
+     }
+ 
+-    return [CSCap capWithUrn:capUrn
+-                       title:title
+-                     command:command
+-                 description:description
+-                    metadata:metadata
+-                  mediaSpecs:mediaSpecs ?: @{}
+-                   arguments:arguments ?: [CSCapArguments arguments]
+-                      output:output
+-                acceptsStdin:acceptsStdin
+-                metadataJSON:metadataJSON];
++    CSCap *cap = [CSCap capWithUrn:capUrn
++                            title:title
++                          command:command
++                      description:description
++                         metadata:metadata
++                       mediaSpecs:mediaSpecs ?: @{}
++                        arguments:arguments ?: [CSCapArguments arguments]
++                           output:output
++                     acceptsStdin:acceptsStdin
++                     metadataJSON:metadataJSON];
++    cap->_registeredBy = registeredBy;
++    return cap;
+ }
+ 
+ + (instancetype)capWithUrn:(CSCapUrn *)capUrn
+diff --git a/Sources/CapNs/include/CSCap.h b/Sources/CapNs/include/CSCap.h
+index 6525b88..5aef69c 100644
+--- a/Sources/CapNs/include/CSCap.h
++++ b/Sources/CapNs/include/CSCap.h
+@@ -190,6 +190,43 @@ NS_ASSUME_NONNULL_BEGIN
+ 
+ @end
+ 
++/**
++ * Registration attribution - who registered a capability and when
++ */
++@interface CSRegisteredBy : NSObject <NSCopying, NSCoding>
++
++/// Username of the user who registered this capability
++@property (nonatomic, readonly) NSString *username;
++
++/// ISO 8601 timestamp of when the capability was registered
++@property (nonatomic, readonly) NSString *registeredAt;
++
++/**
++ * Create a new registration attribution
++ * @param username The username of the user who registered this capability
++ * @param registeredAt ISO 8601 timestamp of when the capability was registered
++ * @return A new CSRegisteredBy instance
++ */
+++ (instancetype)registeredByWithUsername:(NSString *)username
++                            registeredAt:(NSString *)registeredAt;
++
++/**
++ * Create from a dictionary representation
++ * @param dictionary The dictionary containing registration data
++ * @param error Error pointer for validation errors
++ * @return A new CSRegisteredBy instance or nil on error
++ */
+++ (nullable instancetype)registeredByWithDictionary:(NSDictionary *)dictionary
++                                              error:(NSError * _Nullable * _Nullable)error;
++
++/**
++ * Convert to dictionary representation
++ * @return Dictionary representation of the registration attribution
++ */
++- (NSDictionary *)toDictionary;
++
++@end
++
+ @class CSMediaSpec;
+ 
+ /**
+@@ -232,6 +269,9 @@ NS_ASSUME_NONNULL_BEGIN
+ /// Arbitrary metadata as JSON object
+ @property (nonatomic, readonly, nullable) NSDictionary *metadataJSON;
+ 
++/// Registration attribution - who registered this capability and when
++@property (nonatomic, readonly, nullable) CSRegisteredBy *registeredBy;
++
+ 
+ /**
+  * Create a fully specified cap
