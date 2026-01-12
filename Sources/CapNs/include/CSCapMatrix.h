@@ -1,6 +1,6 @@
 //
-//  CSCapHostRegistry.h
-//  CapHost registry for unified capability host discovery
+//  CSCapMatrix.h
+//  CapSet registry for unified capability host discovery
 //
 //  Provides unified interface for finding capability hosts (both providers and plugins)
 //  that can satisfy capability requests using subset matching.
@@ -15,16 +15,16 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Error types for capability host registry operations
  */
-typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
-    CSCapHostRegistryErrorTypeNoHostsFound,
-    CSCapHostRegistryErrorTypeInvalidUrn,
-    CSCapHostRegistryErrorTypeRegistryError
+typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
+    CSCapMatrixErrorTypeNoHostsFound,
+    CSCapMatrixErrorTypeInvalidUrn,
+    CSCapMatrixErrorTypeRegistryError
 };
 
 /**
  * Error class for capability host registry operations
  */
-@interface CSCapHostRegistryError : NSError
+@interface CSCapMatrixError : NSError
 
 + (instancetype)noHostsFoundErrorForCapability:(NSString *)capability;
 + (instancetype)invalidUrnError:(NSString *)urn reason:(NSString *)reason;
@@ -35,7 +35,7 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
 /**
  * Unified registry for capability hosts (providers and plugins)
  */
-@interface CSCapHostRegistry : NSObject
+@interface CSCapMatrix : NSObject
 
 /**
  * Create a new empty capability host registry
@@ -49,8 +49,8 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
  * @param capabilities Array of capabilities this host supports
  * @return YES if registration succeeded, NO otherwise
  */
-- (BOOL)registerCapHost:(NSString *)name
-                   host:(id<CSCapHost>)host
+- (BOOL)registerCapSet:(NSString *)name
+                   host:(id<CSCapSet>)host
            capabilities:(NSArray<CSCap *> *)capabilities;
 
 /**
@@ -61,8 +61,8 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
  * @param error Error pointer for any registration failures
  * @return YES if registration succeeded, NO otherwise
  */
-- (BOOL)registerCapHost:(NSString *)name
-                   host:(id<CSCapHost>)host
+- (BOOL)registerCapSet:(NSString *)name
+                   host:(id<CSCapSet>)host
            capabilities:(NSArray<CSCap *> *)capabilities
                   error:(NSError * _Nullable * _Nullable)error;
 
@@ -73,7 +73,7 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
  * @param error Error pointer for any lookup failures
  * @return Array of capability hosts that can handle the request, or nil on error
  */
-- (nullable NSArray<id<CSCapHost>> *)findCapHosts:(NSString *)requestUrn
+- (nullable NSArray<id<CSCapSet>> *)findCapSets:(NSString *)requestUrn
                                             error:(NSError * _Nullable * _Nullable)error;
 
 /**
@@ -83,7 +83,7 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
  * @param capDefinition Output parameter for the matching cap definition
  * @return The best capability host, or nil if none found or error occurred
  */
-- (nullable id<CSCapHost>)findBestCapHost:(NSString *)requestUrn
+- (nullable id<CSCapSet>)findBestCapSet:(NSString *)requestUrn
                                     error:(NSError * _Nullable * _Nullable)error
                             capDefinition:(CSCap * _Nullable * _Nullable)capDefinition;
 
@@ -111,7 +111,7 @@ typedef NS_ENUM(NSInteger, CSCapHostRegistryErrorType) {
  * @param name The name of the host to unregister
  * @return YES if the host was found and removed, NO if not found
  */
-- (BOOL)unregisterCapHost:(NSString *)name;
+- (BOOL)unregisterCapSet:(NSString *)name;
 
 /**
  * Clear all registered hosts

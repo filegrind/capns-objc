@@ -1,34 +1,34 @@
 //
-//  CSCapHostRegistry.m
-//  CapHost registry implementation
+//  CSCapMatrix.m
+//  CapSet registry implementation
 //
 
-#import "include/CSCapHostRegistry.h"
+#import "include/CSCapMatrix.h"
 #import "include/CSCapUrn.h"
 
 // Error domain for capability host registry
-static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError";
+static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
 
 /**
  * Internal capability host entry
  */
-@interface CSCapHostEntry : NSObject
+@interface CSCapSetEntry : NSObject
 @property (nonatomic, strong) NSString *name;
-@property (nonatomic, strong) id<CSCapHost> host;
+@property (nonatomic, strong) id<CSCapSet> host;
 @property (nonatomic, strong) NSArray<CSCap *> *capabilities;
 @end
 
-@implementation CSCapHostEntry
+@implementation CSCapSetEntry
 @end
 
 /**
- * CSCapHostRegistry implementation
+ * CSCapMatrix implementation
  */
-@interface CSCapHostRegistry ()
-@property (nonatomic, strong) NSMutableDictionary<NSString *, CSCapHostEntry *> *hosts;
+@interface CSCapMatrix ()
+@property (nonatomic, strong) NSMutableDictionary<NSString *, CSCapSetEntry *> *hosts;
 @end
 
-@implementation CSCapHostRegistry
+@implementation CSCapMatrix
 
 + (instancetype)registry {
     return [[self alloc] init];
@@ -42,35 +42,35 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     return self;
 }
 
-- (BOOL)registerCapHost:(NSString *)name
-                   host:(id<CSCapHost>)host
+- (BOOL)registerCapSet:(NSString *)name
+                   host:(id<CSCapSet>)host
            capabilities:(NSArray<CSCap *> *)capabilities {
-    return [self registerCapHost:name host:host capabilities:capabilities error:nil];
+    return [self registerCapSet:name host:host capabilities:capabilities error:nil];
 }
 
-- (BOOL)registerCapHost:(NSString *)name
-                   host:(id<CSCapHost>)host
+- (BOOL)registerCapSet:(NSString *)name
+                   host:(id<CSCapSet>)host
            capabilities:(NSArray<CSCap *> *)capabilities
                   error:(NSError * _Nullable * _Nullable)error {
     
     // Validate inputs
     if (!name || name.length == 0) {
         if (error) {
-            *error = [CSCapHostRegistryError registryError:@"Host name cannot be nil or empty"];
+            *error = [CSCapMatrixError registryError:@"Host name cannot be nil or empty"];
         }
         return NO;
     }
     
     if (!host) {
         if (error) {
-            *error = [CSCapHostRegistryError registryError:@"CapHost cannot be nil"];
+            *error = [CSCapMatrixError registryError:@"CapSet cannot be nil"];
         }
         return NO;
     }
     
     if (!capabilities) {
         if (error) {
-            *error = [CSCapHostRegistryError registryError:@"Capabilities array cannot be nil"];
+            *error = [CSCapMatrixError registryError:@"Capabilities array cannot be nil"];
         }
         return NO;
     }
@@ -78,12 +78,12 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     // Check if host already exists
     if (self.hosts[name]) {
         if (error) {
-            *error = [CSCapHostRegistryError registryError:[NSString stringWithFormat:@"Host with name '%@' is already registered", name]];
+            *error = [CSCapMatrixError registryError:[NSString stringWithFormat:@"Host with name '%@' is already registered", name]];
         }
         return NO;
     }
     
-    CSCapHostEntry *entry = [[CSCapHostEntry alloc] init];
+    CSCapSetEntry *entry = [[CSCapSetEntry alloc] init];
     entry.name = name;
     entry.host = host;
     entry.capabilities = capabilities;
@@ -92,22 +92,22 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     return YES;
 }
 
-- (nullable NSArray<id<CSCapHost>> *)findCapHosts:(NSString *)requestUrn
+- (nullable NSArray<id<CSCapSet>> *)findCapSets:(NSString *)requestUrn
                                             error:(NSError * _Nullable * _Nullable)error {
     
     NSError *parseError = nil;
     CSCapUrn *request = [CSCapUrn fromString:requestUrn error:&parseError];
     if (!request) {
         if (error) {
-            *error = [CSCapHostRegistryError invalidUrnError:requestUrn 
+            *error = [CSCapMatrixError invalidUrnError:requestUrn 
                                                       reason:parseError.localizedDescription];
         }
         return nil;
     }
     
-    NSMutableArray<id<CSCapHost>> *matchingHosts = [[NSMutableArray alloc] init];
+    NSMutableArray<id<CSCapSet>> *matchingHosts = [[NSMutableArray alloc] init];
     
-    for (CSCapHostEntry *entry in [self.hosts allValues]) {
+    for (CSCapSetEntry *entry in [self.hosts allValues]) {
         for (CSCap *cap in entry.capabilities) {
             if ([cap.capUrn matches:request]) {
                 [matchingHosts addObject:entry.host];
@@ -118,7 +118,7 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     
     if (matchingHosts.count == 0) {
         if (error) {
-            *error = [CSCapHostRegistryError noHostsFoundErrorForCapability:requestUrn];
+            *error = [CSCapMatrixError noHostsFoundErrorForCapability:requestUrn];
         }
         return nil;
     }
@@ -126,7 +126,7 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     return [matchingHosts copy];
 }
 
-- (nullable id<CSCapHost>)findBestCapHost:(NSString *)requestUrn
+- (nullable id<CSCapSet>)findBestCapSet:(NSString *)requestUrn
                                     error:(NSError * _Nullable * _Nullable)error
                             capDefinition:(CSCap * _Nullable * _Nullable)capDefinition {
     
@@ -134,17 +134,17 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     CSCapUrn *request = [CSCapUrn fromString:requestUrn error:&parseError];
     if (!request) {
         if (error) {
-            *error = [CSCapHostRegistryError invalidUrnError:requestUrn 
+            *error = [CSCapMatrixError invalidUrnError:requestUrn 
                                                       reason:parseError.localizedDescription];
         }
         return nil;
     }
     
-    id<CSCapHost> bestHost = nil;
+    id<CSCapSet> bestHost = nil;
     CSCap *bestCap = nil;
     NSInteger bestSpecificity = -1;
     
-    for (CSCapHostEntry *entry in [self.hosts allValues]) {
+    for (CSCapSetEntry *entry in [self.hosts allValues]) {
         for (CSCap *cap in entry.capabilities) {
             if ([cap.capUrn matches:request]) {
                 NSInteger specificity = [cap.capUrn specificity];
@@ -160,7 +160,7 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
     
     if (!bestHost) {
         if (error) {
-            *error = [CSCapHostRegistryError noHostsFoundErrorForCapability:requestUrn];
+            *error = [CSCapMatrixError noHostsFoundErrorForCapability:requestUrn];
         }
         return nil;
     }
@@ -178,18 +178,18 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
 
 - (NSArray<CSCap *> *)getAllCapabilities {
     NSMutableArray<CSCap *> *allCapabilities = [[NSMutableArray alloc] init];
-    for (CSCapHostEntry *entry in [self.hosts allValues]) {
+    for (CSCapSetEntry *entry in [self.hosts allValues]) {
         [allCapabilities addObjectsFromArray:entry.capabilities];
     }
     return [allCapabilities copy];
 }
 
 - (BOOL)canHandle:(NSString *)requestUrn {
-    NSArray<id<CSCapHost>> *hosts = [self findCapHosts:requestUrn error:nil];
+    NSArray<id<CSCapSet>> *hosts = [self findCapSets:requestUrn error:nil];
     return hosts != nil && hosts.count > 0;
 }
 
-- (BOOL)unregisterCapHost:(NSString *)name {
+- (BOOL)unregisterCapSet:(NSString *)name {
     if (self.hosts[name]) {
         [self.hosts removeObjectForKey:name];
         return YES;
@@ -204,28 +204,28 @@ static NSString * const CSCapHostRegistryErrorDomain = @"CSCapHostRegistryError"
 @end
 
 /**
- * CSCapHostRegistryError implementation
+ * CSCapMatrixError implementation
  */
-@implementation CSCapHostRegistryError
+@implementation CSCapMatrixError
 
 + (instancetype)noHostsFoundErrorForCapability:(NSString *)capability {
     NSString *message = [NSString stringWithFormat:@"No capability hosts found for capability: %@", capability];
-    return [self errorWithDomain:CSCapHostRegistryErrorDomain
-                            code:CSCapHostRegistryErrorTypeNoHostsFound
+    return [self errorWithDomain:CSCapMatrixErrorDomain
+                            code:CSCapMatrixErrorTypeNoHostsFound
                         userInfo:@{NSLocalizedDescriptionKey: message}];
 }
 
 + (instancetype)invalidUrnError:(NSString *)urn reason:(NSString *)reason {
     NSString *message = [NSString stringWithFormat:@"Invalid capability URN: %@: %@", urn, reason];
-    return [self errorWithDomain:CSCapHostRegistryErrorDomain
-                            code:CSCapHostRegistryErrorTypeInvalidUrn
+    return [self errorWithDomain:CSCapMatrixErrorDomain
+                            code:CSCapMatrixErrorTypeInvalidUrn
                         userInfo:@{NSLocalizedDescriptionKey: message}];
 }
 
 + (instancetype)registryError:(NSString *)message {
     NSString *fullMessage = [NSString stringWithFormat:@"Registry error: %@", message];
-    return [self errorWithDomain:CSCapHostRegistryErrorDomain
-                            code:CSCapHostRegistryErrorTypeRegistryError
+    return [self errorWithDomain:CSCapMatrixErrorDomain
+                            code:CSCapMatrixErrorTypeRegistryError
                         userInfo:@{NSLocalizedDescriptionKey: fullMessage}];
 }
 
