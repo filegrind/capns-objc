@@ -589,4 +589,146 @@
     XCTAssertEqualObjects([quoted toString], @"cap:key=simple");
 }
 
+#pragma mark - Matching Semantics Specification Tests
+
+// ============================================================================
+// These 9 tests verify the exact matching semantics from RULES.md Sections 12-17
+// All implementations (Rust, Go, JS, ObjC) must pass these identically
+// ============================================================================
+
+- (void)testMatchingSemantics_Test1_ExactMatch {
+    // Test 1: Exact match
+    // Cap:     cap:op=generate;ext=pdf
+    // Request: cap:op=generate;ext=pdf
+    // Result:  MATCH
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 1: Exact match should succeed");
+}
+
+- (void)testMatchingSemantics_Test2_CapMissingTag {
+    // Test 2: Cap missing tag (implicit wildcard)
+    // Cap:     cap:op=generate
+    // Request: cap:op=generate;ext=pdf
+    // Result:  MATCH (cap can handle any ext)
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 2: Cap missing tag should match (implicit wildcard)");
+}
+
+- (void)testMatchingSemantics_Test3_CapHasExtraTag {
+    // Test 3: Cap has extra tag
+    // Cap:     cap:op=generate;ext=pdf;version=2
+    // Request: cap:op=generate;ext=pdf
+    // Result:  MATCH (request doesn't constrain version)
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate;ext=pdf;version=2" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 3: Cap with extra tag should match");
+}
+
+- (void)testMatchingSemantics_Test4_RequestHasWildcard {
+    // Test 4: Request has wildcard
+    // Cap:     cap:op=generate;ext=pdf
+    // Request: cap:op=generate;ext=*
+    // Result:  MATCH (request accepts any ext)
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=*" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 4: Request wildcard should match");
+}
+
+- (void)testMatchingSemantics_Test5_CapHasWildcard {
+    // Test 5: Cap has wildcard
+    // Cap:     cap:op=generate;ext=*
+    // Request: cap:op=generate;ext=pdf
+    // Result:  MATCH (cap handles any ext)
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate;ext=*" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 5: Cap wildcard should match");
+}
+
+- (void)testMatchingSemantics_Test6_ValueMismatch {
+    // Test 6: Value mismatch
+    // Cap:     cap:op=generate;ext=pdf
+    // Request: cap:op=generate;ext=docx
+    // Result:  NO MATCH
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=docx" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertFalse([cap matches:request], @"Test 6: Value mismatch should not match");
+}
+
+- (void)testMatchingSemantics_Test7_FallbackPattern {
+    // Test 7: Fallback pattern
+    // Cap:     cap:op=generate_thumbnail;out=std:binary.v1
+    // Request: cap:op=generate_thumbnail;out=std:binary.v1;ext=wav
+    // Result:  MATCH (cap has implicit ext=*)
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate_thumbnail;out=std:binary.v1" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate_thumbnail;out=std:binary.v1;ext=wav" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 7: Fallback pattern should match (cap missing ext = implicit wildcard)");
+}
+
+- (void)testMatchingSemantics_Test8_EmptyCapMatchesAnything {
+    // Test 8: Empty cap matches anything
+    // Cap:     cap:
+    // Request: cap:op=generate;ext=pdf
+    // Result:  MATCH
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:op=generate;ext=pdf" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 8: Empty cap should match anything");
+}
+
+- (void)testMatchingSemantics_Test9_CrossDimensionIndependence {
+    // Test 9: Cross-dimension independence
+    // Cap:     cap:op=generate
+    // Request: cap:ext=pdf
+    // Result:  MATCH (both have implicit wildcards for missing tags)
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:op=generate" error:&error];
+    XCTAssertNotNil(cap);
+
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:ext=pdf" error:&error];
+    XCTAssertNotNil(request);
+
+    XCTAssertTrue([cap matches:request], @"Test 9: Cross-dimension independence should match");
+}
+
 @end
