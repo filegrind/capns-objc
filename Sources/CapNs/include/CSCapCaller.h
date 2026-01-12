@@ -11,7 +11,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@protocol CSCapHost <NSObject>
+@protocol CSCapSet <NSObject>
 
 /**
  * Execute a capability with arguments and optional stdin data
@@ -35,18 +35,18 @@ NS_ASSUME_NONNULL_BEGIN
 @interface CSCapCaller : NSObject
 
 @property (nonatomic, readonly) NSString *cap;
-@property (nonatomic, readonly) id<CSCapHost> capHost;
+@property (nonatomic, readonly) id<CSCapSet> capSet;
 @property (nonatomic, readonly) CSCap *capDefinition;
 
 /**
  * Create a new cap caller with validation
  * @param cap The capability URN string
- * @param capHost The cap host for execution
+ * @param capSet The cap host for execution
  * @param capDefinition The capability definition for validation
  * @return A new CSCapCaller instance
  */
 + (instancetype)callerWithCap:(NSString *)cap
-                      capHost:(id<CSCapHost>)capHost
+                      capSet:(id<CSCapSet>)capSet
                 capDefinition:(CSCap *)capDefinition;
 
 /**

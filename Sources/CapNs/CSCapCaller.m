@@ -10,18 +10,18 @@
 
 @interface CSCapCaller ()
 @property (nonatomic, strong) NSString *cap;
-@property (nonatomic, strong) id<CSCapHost> capHost;
+@property (nonatomic, strong) id<CSCapSet> capSet;
 @property (nonatomic, strong) CSCap *capDefinition;
 @end
 
 @implementation CSCapCaller
 
 + (instancetype)callerWithCap:(NSString *)cap
-                      capHost:(id<CSCapHost>)capHost
+                      capSet:(id<CSCapSet>)capSet
                 capDefinition:(CSCap *)capDefinition {
     CSCapCaller *caller = [[CSCapCaller alloc] init];
     caller.cap = cap;
-    caller.capHost = capHost;
+    caller.capSet = capSet;
     caller.capDefinition = capDefinition;
     return caller;
 }
@@ -41,7 +41,7 @@
     }
 
     // Execute via cap host
-    [self.capHost executeCap:self.cap
+    [self.capSet executeCap:self.cap
               positionalArgs:positionalArgs
                    namedArgs:namedArgs
                    stdinData:stdinData

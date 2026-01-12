@@ -1,17 +1,17 @@
 //
-//  CSCapHostRegistryTests.m
-//  Tests for CSCapHostRegistry
+//  CSCapMatrixTests.m
+//  Tests for CSCapMatrix
 //
 
 #import <XCTest/XCTest.h>
 #import "CapNs.h"
 
-// Mock CapHost for testing
-@interface MockCapHost : NSObject <CSCapHost>
+// Mock CapSet for testing
+@interface MockCapSet : NSObject <CSCapSet>
 @property (nonatomic, strong) NSString *name;
 @end
 
-@implementation MockCapHost
+@implementation MockCapSet
 
 - (instancetype)initWithName:(NSString *)name {
     self = [super init];
@@ -34,15 +34,15 @@
 
 @end
 
-@interface CSCapHostRegistryTests : XCTestCase
-@property (nonatomic, strong) CSCapHostRegistry *registry;
+@interface CSCapMatrixTests : XCTestCase
+@property (nonatomic, strong) CSCapMatrix *registry;
 @end
 
-@implementation CSCapHostRegistryTests
+@implementation CSCapMatrixTests
 
 - (void)setUp {
     [super setUp];
-    self.registry = [CSCapHostRegistry registry];
+    self.registry = [CSCapMatrix registry];
 }
 
 - (void)tearDown {
@@ -50,8 +50,8 @@
     [super tearDown];
 }
 
-- (void)testRegisterAndFindCapHost {
-    MockCapHost *host = [[MockCapHost alloc] initWithName:@"test-host"];
+- (void)testRegisterAndFindCapSet {
+    MockCapSet *host = [[MockCapSet alloc] initWithName:@"test-host"];
 
     NSError *error = nil;
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:op=test;type=basic" error:&error];
@@ -70,7 +70,7 @@
                       metadataJSON:nil];
 
     NSError *registerError = nil;
-    BOOL success = [self.registry registerCapHost:@"test-host"
+    BOOL success = [self.registry registerCapSet:@"test-host"
                                              host:host
                                      capabilities:@[cap]
                                             error:&registerError];
@@ -80,27 +80,27 @@
 
     // Test exact match
     NSError *findError = nil;
-    NSArray<id<CSCapHost>> *hosts = [self.registry findCapHosts:@"cap:op=test;type=basic" error:&findError];
+    NSArray<id<CSCapSet>> *hosts = [self.registry findCapSets:@"cap:op=test;type=basic" error:&findError];
     XCTAssertNotNil(hosts, @"Should find hosts for exact match");
     XCTAssertNil(findError, @"Should not have error for exact match");
     XCTAssertEqual(hosts.count, 1, @"Should find exactly one host");
 
     // Test subset match (request has more specific requirements)
-    hosts = [self.registry findCapHosts:@"cap:op=test;type=basic;model=gpt-4" error:&findError];
+    hosts = [self.registry findCapSets:@"cap:op=test;type=basic;model=gpt-4" error:&findError];
     XCTAssertNotNil(hosts, @"Should find hosts for subset match");
     XCTAssertNil(findError, @"Should not have error for subset match");
     XCTAssertEqual(hosts.count, 1, @"Should find exactly one host for subset match");
 
     // Test no match
-    hosts = [self.registry findCapHosts:@"cap:op=different" error:&findError];
+    hosts = [self.registry findCapSets:@"cap:op=different" error:&findError];
     XCTAssertNil(hosts, @"Should not find hosts for non-matching capability");
     XCTAssertNotNil(findError, @"Should have error for non-matching capability");
-    XCTAssertEqual(findError.code, CSCapHostRegistryErrorTypeNoHostsFound, @"Should be NoHostsFound error");
+    XCTAssertEqual(findError.code, CSCapMatrixErrorTypeNoHostsFound, @"Should be NoHostsFound error");
 }
 
-- (void)testBestCapHostSelection {
+- (void)testBestCapSetSelection {
     // Register general host
-    MockCapHost *generalHost = [[MockCapHost alloc] initWithName:@"general"];
+    MockCapSet *generalHost = [[MockCapSet alloc] initWithName:@"general"];
     CSCapUrn *generalCapUrn = [CSCapUrn fromString:@"cap:op=generate" error:nil];
     CSCap *generalCap = [CSCap capWithUrn:generalCapUrn
                                    title:@"Generate"
@@ -114,7 +114,7 @@
                             metadataJSON:nil];
 
     // Register specific host
-    MockCapHost *specificHost = [[MockCapHost alloc] initWithName:@"specific"];
+    MockCapSet *specificHost = [[MockCapSet alloc] initWithName:@"specific"];
     CSCapUrn *specificCapUrn = [CSCapUrn fromString:@"cap:op=generate;type=text;model=gpt-4" error:nil];
     CSCap *specificCap = [CSCap capWithUrn:specificCapUrn
                                     title:@"Generate"
@@ -127,30 +127,30 @@
                              acceptsStdin:NO
                              metadataJSON:nil];
 
-    [self.registry registerCapHost:@"general" host:generalHost capabilities:@[generalCap] error:nil];
-    [self.registry registerCapHost:@"specific" host:specificHost capabilities:@[specificCap] error:nil];
+    [self.registry registerCapSet:@"general" host:generalHost capabilities:@[generalCap] error:nil];
+    [self.registry registerCapSet:@"specific" host:specificHost capabilities:@[specificCap] error:nil];
 
     // Request should match the more specific host (using valid URN characters)
     NSError *error = nil;
     CSCap *capDefinition = nil;
-    id<CSCapHost> bestHost = [self.registry findBestCapHost:@"cap:op=generate;type=text;model=gpt-4;temperature=low" error:&error capDefinition:&capDefinition];
+    id<CSCapSet> bestHost = [self.registry findBestCapSet:@"cap:op=generate;type=text;model=gpt-4;temperature=low" error:&error capDefinition:&capDefinition];
     XCTAssertNotNil(bestHost, @"Should find a best host");
     XCTAssertNil(error, @"Should not have error finding best host");
     XCTAssertNotNil(capDefinition, @"Should return cap definition");
 
     // Both hosts should match
-    NSArray<id<CSCapHost>> *allHosts = [self.registry findCapHosts:@"cap:op=generate;type=text;model=gpt-4;temperature=low" error:&error];
+    NSArray<id<CSCapSet>> *allHosts = [self.registry findCapSets:@"cap:op=generate;type=text;model=gpt-4;temperature=low" error:&error];
     XCTAssertNotNil(allHosts, @"Should find all matching hosts");
     XCTAssertEqual(allHosts.count, 2, @"Should find both hosts");
 }
 
 - (void)testInvalidUrnHandling {
     NSError *error = nil;
-    NSArray<id<CSCapHost>> *hosts = [self.registry findCapHosts:@"invalid-urn" error:&error];
+    NSArray<id<CSCapSet>> *hosts = [self.registry findCapSets:@"invalid-urn" error:&error];
 
     XCTAssertNil(hosts, @"Should not find hosts for invalid URN");
     XCTAssertNotNil(error, @"Should have error for invalid URN");
-    XCTAssertEqual(error.code, CSCapHostRegistryErrorTypeInvalidUrn, @"Should be InvalidUrn error");
+    XCTAssertEqual(error.code, CSCapMatrixErrorTypeInvalidUrn, @"Should be InvalidUrn error");
 }
 
 - (void)testCanHandle {
@@ -159,7 +159,7 @@
     XCTAssertFalse(canHandle, @"Empty registry should not handle any capability");
 
     // After registration
-    MockCapHost *host = [[MockCapHost alloc] initWithName:@"test"];
+    MockCapSet *host = [[MockCapSet alloc] initWithName:@"test"];
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:op=test" error:nil];
     CSCap *cap = [CSCap capWithUrn:capUrn
                              title:@"Test"
@@ -172,7 +172,7 @@
                       acceptsStdin:NO
                       metadataJSON:nil];
 
-    [self.registry registerCapHost:@"test" host:host capabilities:@[cap] error:nil];
+    [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
 
     canHandle = [self.registry canHandle:@"cap:op=test"];
     XCTAssertTrue(canHandle, @"Registry should handle registered capability");
@@ -184,8 +184,8 @@
     XCTAssertFalse(canHandle, @"Registry should not handle unregistered capability");
 }
 
-- (void)testUnregisterCapHost {
-    MockCapHost *host = [[MockCapHost alloc] initWithName:@"test"];
+- (void)testUnregisterCapSet {
+    MockCapSet *host = [[MockCapSet alloc] initWithName:@"test"];
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:op=test" error:nil];
     CSCap *cap = [CSCap capWithUrn:capUrn
                              title:@"Test"
@@ -198,25 +198,25 @@
                       acceptsStdin:NO
                       metadataJSON:nil];
 
-    [self.registry registerCapHost:@"test" host:host capabilities:@[cap] error:nil];
+    [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
 
     // Verify it's registered
     XCTAssertTrue([self.registry canHandle:@"cap:op=test"], @"Should handle capability before unregistering");
 
     // Unregister
-    BOOL success = [self.registry unregisterCapHost:@"test"];
+    BOOL success = [self.registry unregisterCapSet:@"test"];
     XCTAssertTrue(success, @"Should successfully unregister existing host");
 
     // Verify it's gone
     XCTAssertFalse([self.registry canHandle:@"cap:op=test"], @"Should not handle capability after unregistering");
 
     // Try to unregister non-existent host
-    success = [self.registry unregisterCapHost:@"nonexistent"];
+    success = [self.registry unregisterCapSet:@"nonexistent"];
     XCTAssertFalse(success, @"Should return false when unregistering non-existent host");
 }
 
 - (void)testClear {
-    MockCapHost *host = [[MockCapHost alloc] initWithName:@"test"];
+    MockCapSet *host = [[MockCapSet alloc] initWithName:@"test"];
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:op=test" error:nil];
     CSCap *cap = [CSCap capWithUrn:capUrn
                              title:@"Test"
@@ -229,7 +229,7 @@
                       acceptsStdin:NO
                       metadataJSON:nil];
 
-    [self.registry registerCapHost:@"test" host:host capabilities:@[cap] error:nil];
+    [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
 
     // Verify it's registered
     XCTAssertTrue([self.registry canHandle:@"cap:op=test"], @"Should handle capability before clearing");
