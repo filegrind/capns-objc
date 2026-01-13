@@ -25,7 +25,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
  * CSCapMatrix implementation
  */
 @interface CSCapMatrix ()
-@property (nonatomic, strong) NSMutableDictionary<NSString *, CSCapSetEntry *> *hosts;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, CSCapSetEntry *> *sets;
 @end
 
 @implementation CSCapMatrix
@@ -37,7 +37,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _hosts = [[NSMutableDictionary alloc] init];
+        _sets = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -76,7 +76,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     }
     
     // Check if host already exists
-    if (self.hosts[name]) {
+    if (self.sets[name]) {
         if (error) {
             *error = [CSCapMatrixError registryError:[NSString stringWithFormat:@"Host with name '%@' is already registered", name]];
         }
@@ -88,7 +88,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     entry.host = host;
     entry.capabilities = capabilities;
     
-    self.hosts[name] = entry;
+    self.sets[name] = entry;
     return YES;
 }
 
@@ -107,7 +107,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     
     NSMutableArray<id<CSCapSet>> *matchingHosts = [[NSMutableArray alloc] init];
     
-    for (CSCapSetEntry *entry in [self.hosts allValues]) {
+    for (CSCapSetEntry *entry in [self.sets allValues]) {
         for (CSCap *cap in entry.capabilities) {
             if ([cap.capUrn matches:request]) {
                 [matchingHosts addObject:entry.host];
@@ -144,7 +144,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     CSCap *bestCap = nil;
     NSInteger bestSpecificity = -1;
     
-    for (CSCapSetEntry *entry in [self.hosts allValues]) {
+    for (CSCapSetEntry *entry in [self.sets allValues]) {
         for (CSCap *cap in entry.capabilities) {
             if ([cap.capUrn matches:request]) {
                 NSInteger specificity = [cap.capUrn specificity];
@@ -173,32 +173,32 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
 }
 
 - (NSArray<NSString *> *)getHostNames {
-    return [self.hosts allKeys];
+    return [self.sets allKeys];
 }
 
 - (NSArray<CSCap *> *)getAllCapabilities {
     NSMutableArray<CSCap *> *allCapabilities = [[NSMutableArray alloc] init];
-    for (CSCapSetEntry *entry in [self.hosts allValues]) {
+    for (CSCapSetEntry *entry in [self.sets allValues]) {
         [allCapabilities addObjectsFromArray:entry.capabilities];
     }
     return [allCapabilities copy];
 }
 
 - (BOOL)canHandle:(NSString *)requestUrn {
-    NSArray<id<CSCapSet>> *hosts = [self findCapSets:requestUrn error:nil];
-    return hosts != nil && hosts.count > 0;
+    NSArray<id<CSCapSet>> *sets = [self findCapSets:requestUrn error:nil];
+    return sets != nil && sets.count > 0;
 }
 
 - (BOOL)unregisterCapSet:(NSString *)name {
-    if (self.hosts[name]) {
-        [self.hosts removeObjectForKey:name];
+    if (self.sets[name]) {
+        [self.sets removeObjectForKey:name];
         return YES;
     }
     return NO;
 }
 
 - (void)clear {
-    [self.hosts removeAllObjects];
+    [self.sets removeAllObjects];
 }
 
 @end
@@ -209,9 +209,9 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
 @implementation CSCapMatrixError
 
 + (instancetype)noHostsFoundErrorForCapability:(NSString *)capability {
-    NSString *message = [NSString stringWithFormat:@"No capability hosts found for capability: %@", capability];
+    NSString *message = [NSString stringWithFormat:@"No cap sets found for capability: %@", capability];
     return [self errorWithDomain:CSCapMatrixErrorDomain
-                            code:CSCapMatrixErrorTypeNoHostsFound
+                            code:CSCapMatrixErrorTypeNoSetsFound
                         userInfo:@{NSLocalizedDescriptionKey: message}];
 }
 
