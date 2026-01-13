@@ -21,7 +21,7 @@
 
 - (void)testCapCreation {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=transform;format=json;type=data_processing" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=transform;out=std:obj.v1;format=json;type=data_processing" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -38,14 +38,14 @@
 
     XCTAssertNotNil(cap);
     // URN tags are sorted alphabetically: format, op, type
-    XCTAssertEqualObjects([cap urnString], @"cap:format=json;op=transform;type=data_processing");
+    XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing");
     XCTAssertEqualObjects(cap.command, @"test-command");
     XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
 }
 
 - (void)testCapWithDescription {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=parse;format=json;type=data" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=parse;out=std:obj.v1;format=json;type=data" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -67,7 +67,7 @@
 
 - (void)testCapAcceptsStdin {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=generate;target=embeddings" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=generate;out=std:obj.v1;target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     // Test with acceptsStdin = NO (default)
@@ -103,7 +103,7 @@
 
 - (void)testCapMatching {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=transform;format=json;type=data_processing" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=transform;out=std:obj.v1;format=json;type=data_processing" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -119,15 +119,15 @@
                       metadataJSON:nil];
 
     // URN tags are sorted alphabetically
-    XCTAssertTrue([cap matchesRequest:@"cap:format=json;op=transform;type=data_processing"]);
-    XCTAssertTrue([cap matchesRequest:@"cap:format=*;op=transform;type=data_processing"]); // Request wants any format, cap handles json specifically
-    XCTAssertTrue([cap matchesRequest:@"cap:type=data_processing"]);
-    XCTAssertFalse([cap matchesRequest:@"cap:type=compute"]);
+    XCTAssertTrue([cap matchesRequest:@"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing"]);
+    XCTAssertTrue([cap matchesRequest:@"cap:format=*;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing"]); // Request wants any format, cap handles json specifically
+    XCTAssertTrue([cap matchesRequest:@"cap:in=std:void.v1;out=std:obj.v1;type=data_processing"]);
+    XCTAssertFalse([cap matchesRequest:@"cap:in=std:void.v1;out=std:obj.v1;type=compute"]);
 }
 
 - (void)testCapStdinSerialization {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=generate;target=embeddings" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=generate;out=std:obj.v1;target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     // Test copying preserves acceptsStdin
@@ -151,7 +151,7 @@
 - (void)testCanonicalDictionaryDeserialization {
     // Test CSCap.capWithDictionary with new format
     NSDictionary *capDict = @{
-        @"urn": @"cap:op=extract;target=metadata",
+        @"urn": @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata",
         @"title": @"Extract Metadata",
         @"command": @"extract-metadata",
         @"cap_description": @"Extract metadata from documents",
@@ -164,7 +164,7 @@
 
     XCTAssertNil(error, @"Dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(cap, @"Cap should be created from dictionary");
-    XCTAssertEqualObjects([cap urnString], @"cap:op=extract;target=metadata");
+    XCTAssertEqualObjects([cap urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
     XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when specified in dictionary");
@@ -259,7 +259,7 @@
 - (void)testCompleteCapDeserialization {
     // Test a complete cap with all nested structures using new format
     NSDictionary *completeCapDict = @{
-        @"urn": @"cap:op=transform;format=json;type=data",
+        @"urn": @"cap:in=std:void.v1;op=transform;out=std:obj.v1;format=json;type=data",
         @"title": @"Transform Data",
         @"command": @"transform-data",
         @"cap_description": @"Transform JSON data with validation",
@@ -311,7 +311,7 @@
     XCTAssertNotNil(cap, @"Complete cap should be created");
 
     // Verify basic properties - URN tags are sorted alphabetically
-    XCTAssertEqualObjects([cap urnString], @"cap:format=json;op=transform;type=data");
+    XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data");
     XCTAssertEqualObjects(cap.command, @"transform-data");
     XCTAssertTrue(cap.acceptsStdin);
 
@@ -345,7 +345,7 @@
 - (void)testMediaSpecsResolution {
     // Test that spec IDs can be resolved from the mediaSpecs table
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=test" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=test;out=std:obj.v1" error:&error];
     XCTAssertNotNil(key);
 
     NSDictionary *mediaSpecs = @{
@@ -419,7 +419,7 @@
 
 - (void)testCapManifestCreation {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=extract;target=metadata" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -448,7 +448,7 @@
 
 - (void)testCapManifestWithAuthor {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=extract;target=metadata" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -480,7 +480,7 @@
         @"author": @"Test Author",
         @"caps": @[
             @{
-                @"urn": @"cap:op=extract;target=metadata",
+                @"urn": @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata",
                 @"title": @"Extract Metadata",
                 @"command": @"extract-metadata",
                 @"accepts_stdin": @YES,
@@ -504,7 +504,7 @@
     XCTAssertEqual(manifest.caps.count, 1);
 
     CSCap *cap = manifest.caps.firstObject;
-    XCTAssertEqualObjects([cap urnString], @"cap:op=extract;target=metadata");
+    XCTAssertEqualObjects([cap urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata");
     XCTAssertTrue(cap.acceptsStdin);
 }
 
@@ -523,10 +523,10 @@
 
 - (void)testCapManifestWithMultipleCaps {
     NSError *error;
-    CSCapUrn *key1 = [CSCapUrn fromString:@"cap:op=extract;target=metadata" error:&error];
+    CSCapUrn *key1 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata" error:&error];
     XCTAssertNotNil(key1, @"Failed to create cap URN: %@", error);
 
-    CSCapUrn *key2 = [CSCapUrn fromString:@"cap:op=extract;target=outline" error:&error];
+    CSCapUrn *key2 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=outline" error:&error];
     XCTAssertNotNil(key2, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -559,8 +559,8 @@
                                                                 caps:@[cap1, cap2]];
 
     XCTAssertEqual(manifest.caps.count, 2);
-    XCTAssertEqualObjects([manifest.caps[0] urnString], @"cap:op=extract;target=metadata");
-    XCTAssertEqualObjects([manifest.caps[1] urnString], @"cap:op=extract;target=outline");
+    XCTAssertEqualObjects([manifest.caps[0] urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata");
+    XCTAssertEqualObjects([manifest.caps[1] urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=outline");
     XCTAssertEqualObjects(cap2.metadata[@"supports_outline"], @"true");
 }
 
@@ -590,7 +590,7 @@
 
 - (void)testCapManifestOptionalAuthorField {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=validate;type=file" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=validate;out=std:obj.v1;type=file" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -617,7 +617,7 @@
         @"description": @"File validation component",
         @"caps": @[
             @{
-                @"urn": @"cap:op=validate;type=file",
+                @"urn": @"cap:in=std:void.v1;op=validate;out=std:obj.v1;type=file",
                 @"title": @"Validate",
                 @"command": @"validate",
                 @"arguments": @{
@@ -638,7 +638,7 @@
 - (void)testCapManifestCompatibility {
     // Test that manifest format is compatible between different component types
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:op=process" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=process;out=std:obj.v1" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];

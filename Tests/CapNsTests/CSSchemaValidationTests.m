@@ -255,7 +255,7 @@
 
 - (void)testIntegrationWithInputValidation {
     // Create cap with schema-enabled arguments
-    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"op" value:@"process"] tag:@"target" value:@"user"] build:nil];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"] tag:@"op" value:@"process"] tag:@"target" value:@"user"] build:nil];
 
     NSDictionary *userSchema = @{
         @"type": @"object",
@@ -327,7 +327,7 @@
 
 - (void)testIntegrationWithOutputValidation {
     // Create cap with schema-enabled output
-    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"op" value:@"query"] tag:@"target" value:@"data"] build:nil];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"] tag:@"op" value:@"query"] tag:@"target" value:@"data"] build:nil];
 
     NSDictionary *resultSchema = @{
         @"type": @"array",
@@ -662,7 +662,7 @@
 - (void)testFullCapValidationWithMediaSpecs {
     // Test complete cap validation flow with mediaSpecs resolution
     NSError *error = nil;
-    CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"op" value:@"transform"] tag:@"format" value:@"json"] build:&error];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"] tag:@"format" value:@"json"] tag:@"op" value:@"transform"] build:&error];
     XCTAssertNotNil(urn);
 
     NSDictionary *inputSchema = @{

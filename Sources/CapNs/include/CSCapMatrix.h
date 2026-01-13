@@ -2,7 +2,7 @@
 //  CSCapMatrix.h
 //  CapSet registry for unified capability host discovery
 //
-//  Provides unified interface for finding capability hosts (both providers and plugins)
+//  Provides unified interface for finding cap sets (both providers and plugins)
 //  that can satisfy capability requests using subset matching.
 //
 
@@ -16,7 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Error types for capability host registry operations
  */
 typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
-    CSCapMatrixErrorTypeNoHostsFound,
+    CSCapMatrixErrorTypeNoSetsFound,
     CSCapMatrixErrorTypeInvalidUrn,
     CSCapMatrixErrorTypeRegistryError
 };
@@ -33,7 +33,7 @@ typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
 @end
 
 /**
- * Unified registry for capability hosts (providers and plugins)
+ * Unified registry for cap sets (providers and plugins)
  */
 @interface CSCapMatrix : NSObject
 
@@ -67,11 +67,11 @@ typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
                   error:(NSError * _Nullable * _Nullable)error;
 
 /**
- * Find capability hosts that can handle the requested capability
+ * Find cap sets that can handle the requested capability
  * Uses subset matching: host capabilities must be a subset of or match the request
- * @param requestUrn The capability URN to find hosts for
+ * @param requestUrn The capability URN to find sets for
  * @param error Error pointer for any lookup failures
- * @return Array of capability hosts that can handle the request, or nil on error
+ * @return Array of cap sets that can handle the request, or nil on error
  */
 - (nullable NSArray<id<CSCapSet>> *)findCapSets:(NSString *)requestUrn
                                             error:(NSError * _Nullable * _Nullable)error;
@@ -94,7 +94,7 @@ typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
 - (NSArray<NSString *> *)getHostNames;
 
 /**
- * Get all capabilities from all registered hosts
+ * Get all capabilities from all registered sets
  * @return Array of all capabilities
  */
 - (NSArray<CSCap *> *)getAllCapabilities;
@@ -114,7 +114,7 @@ typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
 - (BOOL)unregisterCapSet:(NSString *)name;
 
 /**
- * Clear all registered hosts
+ * Clear all registered sets
  */
 - (void)clear;
 

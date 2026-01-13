@@ -794,14 +794,8 @@
         NSDictionary *tags = urnDict[@"tags"];
 
         if ([tags isKindOfClass:[NSDictionary class]]) {
-            CSCapUrnBuilder *builder = [CSCapUrnBuilder new];
-            for (NSString *key in tags) {
-                NSString *value = tags[key];
-                if ([value isKindOfClass:[NSString class]]) {
-                    builder = [builder tag:key value:value];
-                }
-            }
-            capUrn = [builder build:&keyError];
+            // Use fromTags: which properly extracts 'in' and 'out' from the tags dictionary
+            capUrn = [CSCapUrn fromTags:tags error:&keyError];
         } else {
             if (error) {
                 *error = [NSError errorWithDomain:@"CSCapError"

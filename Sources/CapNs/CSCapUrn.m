@@ -1,6 +1,6 @@
 //
 //  CSCapUrn.m
-//  Flat Tag-Based Cap Identifier Implementation
+//  Flat Tag-Based Cap Identifier Implementation with Required Direction
 //
 
 #import "CSCapUrn.h"
@@ -19,6 +19,8 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 };
 
 @interface CSCapUrn ()
+@property (nonatomic, strong) NSString *inSpec;
+@property (nonatomic, strong) NSString *outSpec;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *mutableTags;
 @end
 
@@ -97,11 +99,16 @@ typedef NS_ENUM(NSInteger, CSParseState) {
     }
 
     NSString *tagsPart = [string substringFromIndex:4];
-    NSMutableDictionary<NSString *, NSString *> *tags = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSString *, NSString *> *allTags = [NSMutableDictionary dictionary];
 
-    // Handle empty cap URN (cap: with no tags or just semicolon)
+    // Handle empty cap URN - this now FAILS because in/out are required
     if (tagsPart.length == 0 || [tagsPart isEqualToString:@";"]) {
-        return [self fromTagsInternal:tags error:error];
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingInSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input spec"}];
+        }
+        return nil;
     }
 
     CSParseState state = CSParseStateExpectingKey;
@@ -179,7 +186,7 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 
             case CSParseStateInUnquotedValue:
                 if (c == ';') {
-                    if (![self finishTag:tags key:currentKey value:currentValue error:error]) {
+                    if (![self finishTag:allTags key:currentKey value:currentValue error:error]) {
                         return nil;
                     }
                     [currentKey setString:@""];
@@ -224,7 +231,7 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 
             case CSParseStateExpectingSemiOrEnd:
                 if (c == ';') {
-                    if (![self finishTag:tags key:currentKey value:currentValue error:error]) {
+                    if (![self finishTag:allTags key:currentKey value:currentValue error:error]) {
                         return nil;
                     }
                     [currentKey setString:@""];
@@ -248,7 +255,7 @@ typedef NS_ENUM(NSInteger, CSParseState) {
     switch (state) {
         case CSParseStateInUnquotedValue:
         case CSParseStateExpectingSemiOrEnd:
-            if (![self finishTag:tags key:currentKey value:currentValue error:error]) {
+            if (![self finishTag:allTags key:currentKey value:currentValue error:error]) {
                 return nil;
             }
             break;
@@ -279,7 +286,36 @@ typedef NS_ENUM(NSInteger, CSParseState) {
             return nil;
     }
 
-    return [self fromTagsInternal:tags error:error];
+    // Extract required 'in' and 'out' tags
+    NSString *inSpecValue = allTags[@"in"];
+    NSString *outSpecValue = allTags[@"out"];
+
+    if (!inSpecValue) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingInSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input spec"}];
+        }
+        return nil;
+    }
+    if (!outSpecValue) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingOutSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output spec"}];
+        }
+        return nil;
+    }
+
+    // Build remaining tags (excluding in/out)
+    NSMutableDictionary<NSString *, NSString *> *remainingTags = [NSMutableDictionary dictionary];
+    for (NSString *key in allTags) {
+        if (![key isEqualToString:@"in"] && ![key isEqualToString:@"out"]) {
+            remainingTags[key] = allTags[key];
+        }
+    }
+
+    return [self fromInSpec:inSpecValue outSpec:outSpecValue tags:remainingTags error:error];
 }
 
 + (BOOL)finishTag:(NSMutableDictionary *)tags key:(NSString *)key value:(NSString *)value error:(NSError **)error {
@@ -337,11 +373,45 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         normalizedTags[[key lowercaseString]] = value;
     }
 
-    return [self fromTagsInternal:normalizedTags error:error];
+    // Extract required 'in' and 'out' tags
+    NSString *inSpecValue = normalizedTags[@"in"];
+    NSString *outSpecValue = normalizedTags[@"out"];
+
+    if (!inSpecValue) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingInSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input spec"}];
+        }
+        return nil;
+    }
+    if (!outSpecValue) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingOutSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output spec"}];
+        }
+        return nil;
+    }
+
+    // Build remaining tags (excluding in/out)
+    NSMutableDictionary<NSString *, NSString *> *remainingTags = [NSMutableDictionary dictionary];
+    for (NSString *key in normalizedTags) {
+        if (![key isEqualToString:@"in"] && ![key isEqualToString:@"out"]) {
+            remainingTags[key] = normalizedTags[key];
+        }
+    }
+
+    return [self fromInSpec:inSpecValue outSpec:outSpecValue tags:remainingTags error:error];
 }
 
-+ (nullable instancetype)fromTagsInternal:(NSDictionary<NSString *, NSString *> *)tags error:(NSError **)error {
++ (nullable instancetype)fromInSpec:(NSString *)inSpec
+                            outSpec:(NSString *)outSpec
+                               tags:(NSDictionary<NSString *, NSString *> *)tags
+                              error:(NSError **)error {
     CSCapUrn *instance = [[CSCapUrn alloc] init];
+    instance.inSpec = inSpec;
+    instance.outSpec = outSpec;
     instance.mutableTags = [tags mutableCopy];
     return instance;
 }
@@ -353,32 +423,89 @@ typedef NS_ENUM(NSInteger, CSParseState) {
     return self;
 }
 
+- (NSString *)getInSpec {
+    return self.inSpec;
+}
+
+- (NSString *)getOutSpec {
+    return self.outSpec;
+}
+
 - (nullable NSString *)getTag:(NSString *)key {
-    return self.mutableTags[[key lowercaseString]];
+    NSString *keyLower = [key lowercaseString];
+    if ([keyLower isEqualToString:@"in"]) {
+        return self.inSpec;
+    }
+    if ([keyLower isEqualToString:@"out"]) {
+        return self.outSpec;
+    }
+    return self.mutableTags[keyLower];
 }
 
 - (BOOL)hasTag:(NSString *)key withValue:(NSString *)value {
-    NSString *tagValue = self.mutableTags[[key lowercaseString]];
+    NSString *keyLower = [key lowercaseString];
+    NSString *tagValue;
+    if ([keyLower isEqualToString:@"in"]) {
+        tagValue = self.inSpec;
+    } else if ([keyLower isEqualToString:@"out"]) {
+        tagValue = self.outSpec;
+    } else {
+        tagValue = self.mutableTags[keyLower];
+    }
     // Case-sensitive value comparison
     return tagValue && [tagValue isEqualToString:value];
 }
 
 - (CSCapUrn *)withTag:(NSString *)key value:(NSString *)value {
+    NSString *keyLower = [key lowercaseString];
+    // Silently ignore attempts to set in/out via withTag - use withInSpec/withOutSpec instead
+    if ([keyLower isEqualToString:@"in"] || [keyLower isEqualToString:@"out"]) {
+        return self;
+    }
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     // Key lowercase, value preserved
-    newTags[[key lowercaseString]] = value;
-    return [CSCapUrn fromTagsInternal:newTags error:nil];
+    newTags[keyLower] = value;
+    return [CSCapUrn fromInSpec:self.inSpec outSpec:self.outSpec tags:newTags error:nil];
+}
+
+- (CSCapUrn *)withInSpec:(NSString *)inSpec {
+    NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
+    return [CSCapUrn fromInSpec:inSpec outSpec:self.outSpec tags:newTags error:nil];
+}
+
+- (CSCapUrn *)withOutSpec:(NSString *)outSpec {
+    NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
+    return [CSCapUrn fromInSpec:self.inSpec outSpec:outSpec tags:newTags error:nil];
 }
 
 - (CSCapUrn *)withoutTag:(NSString *)key {
+    NSString *keyLower = [key lowercaseString];
+    // Silently ignore attempts to remove in/out
+    if ([keyLower isEqualToString:@"in"] || [keyLower isEqualToString:@"out"]) {
+        return self;
+    }
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
-    [newTags removeObjectForKey:[key lowercaseString]];
-    return [CSCapUrn fromTagsInternal:newTags error:nil];
+    [newTags removeObjectForKey:keyLower];
+    return [CSCapUrn fromInSpec:self.inSpec outSpec:self.outSpec tags:newTags error:nil];
 }
 
 - (BOOL)matches:(CSCapUrn *)request {
     if (!request) {
         return YES;
+    }
+
+    // Check direction (inSpec) FIRST
+    if (![self.inSpec isEqualToString:@"*"] &&
+        ![request.inSpec isEqualToString:@"*"] &&
+        ![self.inSpec isEqualToString:request.inSpec]) {
+        return NO;
+    }
+
+    // Check direction (outSpec)
+    if (![self.outSpec isEqualToString:@"*"] &&
+        ![request.outSpec isEqualToString:@"*"] &&
+        ![self.outSpec isEqualToString:request.outSpec]) {
+        return NO;
     }
 
     // Check all tags that the request specifies
@@ -418,6 +545,16 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 
 - (NSUInteger)specificity {
     NSUInteger count = 0;
+
+    // Count non-wildcard direction specs
+    if (![self.inSpec isEqualToString:@"*"]) {
+        count++;
+    }
+    if (![self.outSpec isEqualToString:@"*"]) {
+        count++;
+    }
+
+    // Count non-wildcard tags
     for (NSString *value in self.mutableTags.allValues) {
         if (![value isEqualToString:@"*"]) {
             count++;
@@ -444,6 +581,20 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         return YES;
     }
 
+    // Check direction compatibility (inSpec)
+    if (![self.inSpec isEqualToString:@"*"] &&
+        ![other.inSpec isEqualToString:@"*"] &&
+        ![self.inSpec isEqualToString:other.inSpec]) {
+        return NO;
+    }
+
+    // Check direction compatibility (outSpec)
+    if (![self.outSpec isEqualToString:@"*"] &&
+        ![other.outSpec isEqualToString:@"*"] &&
+        ![self.outSpec isEqualToString:other.outSpec]) {
+        return NO;
+    }
+
     // Get all unique tag keys from both caps
     NSMutableSet<NSString *> *allKeys = [NSMutableSet setWithArray:self.mutableTags.allKeys];
     [allKeys addObjectsFromArray:other.mutableTags.allKeys];
@@ -465,43 +616,61 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 }
 
 - (CSCapUrn *)withWildcardTag:(NSString *)key {
-    if (self.mutableTags[[key lowercaseString]]) {
+    NSString *keyLower = [key lowercaseString];
+
+    // Handle direction keys specially
+    if ([keyLower isEqualToString:@"in"]) {
+        return [self withInSpec:@"*"];
+    }
+    if ([keyLower isEqualToString:@"out"]) {
+        return [self withOutSpec:@"*"];
+    }
+
+    // For regular tags, only set wildcard if tag already exists
+    if (self.mutableTags[keyLower]) {
         return [self withTag:key value:@"*"];
     }
     return self;
 }
 
 - (CSCapUrn *)subset:(NSArray<NSString *> *)keys {
+    // Always preserve direction specs, subset only applies to other tags
     NSMutableDictionary *newTags = [NSMutableDictionary dictionary];
     for (NSString *key in keys) {
         NSString *normalizedKey = [key lowercaseString];
+        // Skip in/out keys - direction is always preserved
+        if ([normalizedKey isEqualToString:@"in"] || [normalizedKey isEqualToString:@"out"]) {
+            continue;
+        }
         NSString *value = self.mutableTags[normalizedKey];
         if (value) {
             newTags[normalizedKey] = value;
         }
     }
-    return [CSCapUrn fromTagsInternal:newTags error:nil];
+    return [CSCapUrn fromInSpec:self.inSpec outSpec:self.outSpec tags:newTags error:nil];
 }
 
 - (CSCapUrn *)merge:(CSCapUrn *)other {
+    // Direction comes from other (other takes precedence)
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     for (NSString *key in other.mutableTags) {
         newTags[key] = other.mutableTags[key];
     }
-    return [CSCapUrn fromTagsInternal:newTags error:nil];
+    return [CSCapUrn fromInSpec:other.inSpec outSpec:other.outSpec tags:newTags error:nil];
 }
 
 - (NSString *)toString {
-    if (self.mutableTags.count == 0) {
-        return @"cap:";
-    }
+    // Build complete tags map including in and out
+    NSMutableDictionary *allTags = [self.mutableTags mutableCopy];
+    allTags[@"in"] = self.inSpec;
+    allTags[@"out"] = self.outSpec;
 
-    // Sort keys for canonical representation
-    NSArray<NSString *> *sortedKeys = [self.mutableTags.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    // Sort keys for canonical representation (alphabetical order including in/out)
+    NSArray<NSString *> *sortedKeys = [allTags.allKeys sortedArrayUsingSelector:@selector(compare:)];
 
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
     for (NSString *key in sortedKeys) {
-        NSString *value = self.mutableTags[key];
+        NSString *value = allTags[key];
         if ([CSCapUrn needsQuoting:value]) {
             [parts addObject:[NSString stringWithFormat:@"%@=%@", key, [CSCapUrn quoteValue:value]]];
         } else {
@@ -523,17 +692,26 @@ typedef NS_ENUM(NSInteger, CSParseState) {
     }
 
     CSCapUrn *other = (CSCapUrn *)object;
+    // Compare direction specs first
+    if (![self.inSpec isEqualToString:other.inSpec]) {
+        return NO;
+    }
+    if (![self.outSpec isEqualToString:other.outSpec]) {
+        return NO;
+    }
+    // Then compare tags
     return [self.mutableTags isEqualToDictionary:other.mutableTags];
 }
 
 - (NSUInteger)hash {
-    return self.mutableTags.hash;
+    // Include direction specs in hash
+    return self.inSpec.hash ^ self.outSpec.hash ^ self.mutableTags.hash;
 }
 
 #pragma mark - NSCopying
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSCapUrn fromTagsInternal:self.tags error:nil];
+    return [CSCapUrn fromInSpec:self.inSpec outSpec:self.outSpec tags:self.tags error:nil];
 }
 
 #pragma mark - NSSecureCoding
@@ -543,11 +721,15 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeObject:self.inSpec forKey:@"inSpec"];
+    [coder encodeObject:self.outSpec forKey:@"outSpec"];
     [coder encodeObject:self.mutableTags forKey:@"tags"];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
     if (self = [super init]) {
+        _inSpec = [coder decodeObjectOfClass:[NSString class] forKey:@"inSpec"];
+        _outSpec = [coder decodeObjectOfClass:[NSString class] forKey:@"outSpec"];
         _mutableTags = [[coder decodeObjectOfClass:[NSMutableDictionary class] forKey:@"tags"] mutableCopy];
         if (!_mutableTags) {
             _mutableTags = [NSMutableDictionary dictionary];
@@ -561,6 +743,8 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 #pragma mark - CSCapUrnBuilder
 
 @interface CSCapUrnBuilder ()
+@property (nonatomic, strong) NSString *builderInSpec;
+@property (nonatomic, strong) NSString *builderOutSpec;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *tags;
 @end
 
@@ -573,27 +757,55 @@ typedef NS_ENUM(NSInteger, CSParseState) {
 - (instancetype)init {
     if (self = [super init]) {
         _tags = [NSMutableDictionary dictionary];
+        _builderInSpec = nil;
+        _builderOutSpec = nil;
     }
+    return self;
+}
+
+- (CSCapUrnBuilder *)inSpec:(NSString *)spec {
+    self.builderInSpec = spec;
+    return self;
+}
+
+- (CSCapUrnBuilder *)outSpec:(NSString *)spec {
+    self.builderOutSpec = spec;
     return self;
 }
 
 - (CSCapUrnBuilder *)tag:(NSString *)key value:(NSString *)value {
+    NSString *keyLower = [key lowercaseString];
+    // Silently ignore in/out keys - use inSpec:/outSpec: instead
+    if ([keyLower isEqualToString:@"in"] || [keyLower isEqualToString:@"out"]) {
+        return self;
+    }
     // Key lowercase, value preserved
-    self.tags[[key lowercaseString]] = value;
+    self.tags[keyLower] = value;
     return self;
 }
 
 - (nullable CSCapUrn *)build:(NSError **)error {
-    if (self.tags.count == 0) {
+    // Require inSpec
+    if (!self.builderInSpec) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorInvalidFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap identifier cannot be empty"}];
+                                         code:CSCapUrnErrorMissingInSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' spec - use inSpec: method"}];
         }
         return nil;
     }
 
-    return [CSCapUrn fromTagsInternal:self.tags error:error];
+    // Require outSpec
+    if (!self.builderOutSpec) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingOutSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' spec - use outSpec: method"}];
+        }
+        return nil;
+    }
+
+    return [CSCapUrn fromInSpec:self.builderInSpec outSpec:self.builderOutSpec tags:self.tags error:error];
 }
 
 

@@ -273,13 +273,16 @@ CSMediaSpec * _Nullable CSResolveSpecId(NSString *specId,
 + (nullable instancetype)fromCapUrn:(CSCapUrn *)capUrn
                          mediaSpecs:(NSDictionary * _Nullable)mediaSpecs
                               error:(NSError * _Nullable * _Nullable)error {
-    NSString *specId = [capUrn getTag:@"out"];
+    // Use getOutSpec directly - outSpec is now a required first-class field
+    NSString *specId = [capUrn getOutSpec];
 
+    // Note: Since outSpec is now required, this should never be nil for a valid capUrn
+    // But we keep the check for safety
     if (!specId) {
         if (error) {
             *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
                                          code:CSMediaSpecErrorUnresolvableSpecId
-                                     userInfo:@{NSLocalizedDescriptionKey: @"no 'out' tag found in cap URN"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"no 'out' spec found in cap URN"}];
         }
         return nil;
     }
