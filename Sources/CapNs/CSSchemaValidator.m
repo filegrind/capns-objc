@@ -334,7 +334,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
     // Resolve the spec ID to a MediaSpec
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(specId, mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(specId, mediaSpecs, &resolveError);
     if (!mediaSpec) {
         // FAIL HARD on unresolvable spec ID
         if (error && resolveError) {
@@ -359,7 +359,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
     // Resolve the spec ID to a MediaSpec
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(specId, mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(specId, mediaSpecs, &resolveError);
     if (!mediaSpec) {
         // FAIL HARD on unresolvable spec ID
         if (error && resolveError) {

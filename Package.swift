@@ -12,10 +12,15 @@ let package = Package(
             name: "CapNs",
             targets: ["CapNs"]),
     ],
+    dependencies: [
+        .package(path: "../tagged-urn-objc"),
+    ],
     targets: [
         .target(
             name: "CapNs",
-            dependencies: [],
+            dependencies: [
+                .product(name: "TaggedUrn", package: "tagged-urn-objc"),
+            ],
             path: "Sources/CapNs",
             publicHeadersPath: "include",
             linkerSettings: [

@@ -4,7 +4,7 @@
 //
 //  NOTE: All ArgumentType/OutputType enums have been removed.
 //  Arguments and outputs now use mediaSpec fields containing spec IDs
-//  (e.g., "std:str.v1") that resolve via the mediaSpecs table.
+//  (e.g., "media:type=string;v=1") that resolve via the mediaSpecs table.
 //
 
 #import <XCTest/XCTest.h>
@@ -21,7 +21,7 @@
 
 - (void)testCapCreation {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=transform;out=std:obj.v1;format=json;type=data_processing" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";format=json;type=data_processing" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -38,14 +38,14 @@
 
     XCTAssertNotNil(cap);
     // URN tags are sorted alphabetically: format, op, type
-    XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing");
+    XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data_processing");
     XCTAssertEqualObjects(cap.command, @"test-command");
     XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
 }
 
 - (void)testCapWithDescription {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=parse;out=std:obj.v1;format=json;type=data" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=parse;out=\"media:type=object;v=1\";format=json;type=data" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -67,7 +67,7 @@
 
 - (void)testCapAcceptsStdin {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=generate;out=std:obj.v1;target=embeddings" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\";target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     // Test with acceptsStdin = NO (default)
@@ -103,7 +103,7 @@
 
 - (void)testCapMatching {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=transform;out=std:obj.v1;format=json;type=data_processing" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";format=json;type=data_processing" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -119,15 +119,15 @@
                       metadataJSON:nil];
 
     // URN tags are sorted alphabetically
-    XCTAssertTrue([cap matchesRequest:@"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing"]);
-    XCTAssertTrue([cap matchesRequest:@"cap:format=*;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing"]); // Request wants any format, cap handles json specifically
-    XCTAssertTrue([cap matchesRequest:@"cap:in=std:void.v1;out=std:obj.v1;type=data_processing"]);
-    XCTAssertFalse([cap matchesRequest:@"cap:in=std:void.v1;out=std:obj.v1;type=compute"]);
+    XCTAssertTrue([cap matchesRequest:@"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data_processing"]);
+    XCTAssertTrue([cap matchesRequest:@"cap:format=*;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data_processing"]); // Request wants any format, cap handles json specifically
+    XCTAssertTrue([cap matchesRequest:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\";type=data_processing"]);
+    XCTAssertFalse([cap matchesRequest:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\";type=compute"]);
 }
 
 - (void)testCapStdinSerialization {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=generate;out=std:obj.v1;target=embeddings" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\";target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     // Test copying preserves acceptsStdin
@@ -151,7 +151,7 @@
 - (void)testCanonicalDictionaryDeserialization {
     // Test CSCap.capWithDictionary with new format
     NSDictionary *capDict = @{
-        @"urn": @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata",
+        @"urn": @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata",
         @"title": @"Extract Metadata",
         @"command": @"extract-metadata",
         @"cap_description": @"Extract metadata from documents",
@@ -164,7 +164,7 @@
 
     XCTAssertNil(error, @"Dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(cap, @"Cap should be created from dictionary");
-    XCTAssertEqualObjects([cap urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata");
+    XCTAssertEqualObjects([cap urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
     XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when specified in dictionary");
@@ -189,7 +189,7 @@
         @"required": @[
             @{
                 @"name": @"file_path",
-                @"media_spec": CSSpecIdStr,  // Use spec ID instead of arg_type
+                @"media_spec": CSMediaString,  // Use spec ID instead of arg_type
                 @"arg_description": @"Path to file",
                 @"cli_flag": @"--file_path",
                 @"position": @0
@@ -198,7 +198,7 @@
         @"optional": @[
             @{
                 @"name": @"output_format",
-                @"media_spec": CSSpecIdStr,
+                @"media_spec": CSMediaString,
                 @"arg_description": @"Output format",
                 @"cli_flag": @"--ext",
                 @"default_value": @"json"
@@ -216,14 +216,14 @@
 
     CSCapArgument *requiredArg = arguments.required.firstObject;
     XCTAssertEqualObjects(requiredArg.name, @"file_path");
-    XCTAssertEqualObjects(requiredArg.mediaSpec, CSSpecIdStr);  // Verify spec ID
+    XCTAssertEqualObjects(requiredArg.mediaSpec, CSMediaString);  // Verify spec ID
     XCTAssertEqualObjects(requiredArg.position, @0);
 }
 
 - (void)testCanonicalOutputDeserialization {
     // Test CSCapOutput.outputWithDictionary with new media_spec format
     NSDictionary *outputDict = @{
-        @"media_spec": CSSpecIdObj,  // Use spec ID instead of output_type
+        @"media_spec": CSMediaObject,  // Use spec ID instead of output_type
         @"output_description": @"JSON metadata object"
     };
 
@@ -232,7 +232,7 @@
 
     XCTAssertNil(error, @"Output dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(output, @"Output should be created from dictionary");
-    XCTAssertEqualObjects(output.mediaSpec, CSSpecIdObj);  // Verify spec ID
+    XCTAssertEqualObjects(output.mediaSpec, CSMediaObject);  // Verify spec ID
     XCTAssertEqualObjects(output.outputDescription, @"JSON metadata object");
 }
 
@@ -259,7 +259,7 @@
 - (void)testCompleteCapDeserialization {
     // Test a complete cap with all nested structures using new format
     NSDictionary *completeCapDict = @{
-        @"urn": @"cap:in=std:void.v1;op=transform;out=std:obj.v1;format=json;type=data",
+        @"urn": @"cap:in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";format=json;type=data",
         @"title": @"Transform Data",
         @"command": @"transform-data",
         @"cap_description": @"Transform JSON data with validation",
@@ -275,7 +275,7 @@
             @"required": @[
                 @{
                     @"name": @"transformation",
-                    @"media_spec": CSSpecIdStr,
+                    @"media_spec": CSMediaString,
                     @"arg_description": @"JQ transformation expression",
                     @"cli_flag": @"--transform",
                     @"position": @0,
@@ -288,7 +288,7 @@
             @"optional": @[
                 @{
                     @"name": @"output_format",
-                    @"media_spec": CSSpecIdStr,
+                    @"media_spec": CSMediaString,
                     @"arg_description": @"Output format",
                     @"cli_flag": @"--ext",
                     @"default_value": @"json",
@@ -311,7 +311,7 @@
     XCTAssertNotNil(cap, @"Complete cap should be created");
 
     // Verify basic properties - URN tags are sorted alphabetically
-    XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data");
+    XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data");
     XCTAssertEqualObjects(cap.command, @"transform-data");
     XCTAssertTrue(cap.acceptsStdin);
 
@@ -328,13 +328,13 @@
 
     CSCapArgument *requiredArg = cap.arguments.required.firstObject;
     XCTAssertEqualObjects(requiredArg.name, @"transformation");
-    XCTAssertEqualObjects(requiredArg.mediaSpec, CSSpecIdStr);
+    XCTAssertEqualObjects(requiredArg.mediaSpec, CSMediaString);
     XCTAssertEqualObjects(requiredArg.validation.minLength, @1);
     XCTAssertEqualObjects(requiredArg.validation.maxLength, @1000);
 
     CSCapArgument *optionalArg = cap.arguments.optional.firstObject;
     XCTAssertEqualObjects(optionalArg.name, @"output_format");
-    XCTAssertEqualObjects(optionalArg.mediaSpec, CSSpecIdStr);
+    XCTAssertEqualObjects(optionalArg.mediaSpec, CSMediaString);
     XCTAssertTrue([optionalArg.validation.allowedValues containsObject:@"json"]);
 
     // Verify output
@@ -345,7 +345,7 @@
 - (void)testMediaSpecsResolution {
     // Test that spec IDs can be resolved from the mediaSpecs table
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=test;out=std:obj.v1" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=test;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(key);
 
     NSDictionary *mediaSpecs = @{
@@ -386,7 +386,7 @@
     XCTAssertEqualObjects(resolvedString.contentType, @"text/plain");
 
     // Resolve built-in spec ID
-    CSMediaSpec *resolvedBuiltin = [cap resolveSpecId:CSSpecIdStr error:&error];
+    CSMediaSpec *resolvedBuiltin = [cap resolveSpecId:CSMediaString error:&error];
     XCTAssertNotNil(resolvedBuiltin, @"Should resolve built-in spec ID: %@", error);
     XCTAssertEqualObjects(resolvedBuiltin.contentType, @"text/plain");
 
@@ -398,28 +398,28 @@
 
 - (void)testBuiltinSpecIds {
     // Test all built-in spec IDs are recognized
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdStr));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdInt));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdNum));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdBool));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdObj));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdStrArray));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdIntArray));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdNumArray));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdBoolArray));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdObjArray));
-    XCTAssertTrue(CSIsBuiltinSpecId(CSSpecIdBinary));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaString));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaInteger));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaNumber));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaBoolean));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaObject));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaStringArray));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaIntegerArray));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaNumberArray));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaBooleanArray));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaObjectArray));
+    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaBinary));
 
     // Test non-builtin returns false
-    XCTAssertFalse(CSIsBuiltinSpecId(@"custom:spec.v1"));
-    XCTAssertFalse(CSIsBuiltinSpecId(@"my:output.v1"));
+    XCTAssertFalse(CSIsBuiltinMediaUrn(@"custom:spec.v1"));
+    XCTAssertFalse(CSIsBuiltinMediaUrn(@"my:output.v1"));
 }
 
 // MARK: - Cap Manifest Tests
 
 - (void)testCapManifestCreation {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -448,7 +448,7 @@
 
 - (void)testCapManifestWithAuthor {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -480,7 +480,7 @@
         @"author": @"Test Author",
         @"caps": @[
             @{
-                @"urn": @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata",
+                @"urn": @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata",
                 @"title": @"Extract Metadata",
                 @"command": @"extract-metadata",
                 @"accepts_stdin": @YES,
@@ -504,7 +504,7 @@
     XCTAssertEqual(manifest.caps.count, 1);
 
     CSCap *cap = manifest.caps.firstObject;
-    XCTAssertEqualObjects([cap urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata");
+    XCTAssertEqualObjects([cap urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
     XCTAssertTrue(cap.acceptsStdin);
 }
 
@@ -523,10 +523,10 @@
 
 - (void)testCapManifestWithMultipleCaps {
     NSError *error;
-    CSCapUrn *key1 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata" error:&error];
+    CSCapUrn *key1 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata" error:&error];
     XCTAssertNotNil(key1, @"Failed to create cap URN: %@", error);
 
-    CSCapUrn *key2 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=outline" error:&error];
+    CSCapUrn *key2 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=outline" error:&error];
     XCTAssertNotNil(key2, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -559,8 +559,8 @@
                                                                 caps:@[cap1, cap2]];
 
     XCTAssertEqual(manifest.caps.count, 2);
-    XCTAssertEqualObjects([manifest.caps[0] urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=metadata");
-    XCTAssertEqualObjects([manifest.caps[1] urnString], @"cap:in=std:void.v1;op=extract;out=std:obj.v1;target=outline");
+    XCTAssertEqualObjects([manifest.caps[0] urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
+    XCTAssertEqualObjects([manifest.caps[1] urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=outline");
     XCTAssertEqualObjects(cap2.metadata[@"supports_outline"], @"true");
 }
 
@@ -590,7 +590,7 @@
 
 - (void)testCapManifestOptionalAuthorField {
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=validate;out=std:obj.v1;type=file" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=validate;out=\"media:type=object;v=1\";type=file" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -617,7 +617,7 @@
         @"description": @"File validation component",
         @"caps": @[
             @{
-                @"urn": @"cap:in=std:void.v1;op=validate;out=std:obj.v1;type=file",
+                @"urn": @"cap:in=\"media:type=void;v=1\";op=validate;out=\"media:type=object;v=1\";type=file",
                 @"title": @"Validate",
                 @"command": @"validate",
                 @"arguments": @{
@@ -638,7 +638,7 @@
 - (void)testCapManifestCompatibility {
     // Test that manifest format is compatible between different component types
     NSError *error;
-    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=std:void.v1;op=process;out=std:obj.v1" error:&error];
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=process;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
     CSCapArguments *arguments = [CSCapArguments arguments];
@@ -685,7 +685,7 @@
 - (void)testArgumentCreationWithNewAPI {
     // Test creating arguments with the new mediaSpec API
     CSCapArgument *stringArg = [CSCapArgument argumentWithName:@"input"
-                                                     mediaSpec:CSSpecIdStr
+                                                     mediaSpec:CSMediaString
                                                  argDescription:@"Input text"
                                                        cliFlag:@"--input"
                                                       position:@0
@@ -694,13 +694,13 @@
 
     XCTAssertNotNil(stringArg);
     XCTAssertEqualObjects(stringArg.name, @"input");
-    XCTAssertEqualObjects(stringArg.mediaSpec, CSSpecIdStr);
+    XCTAssertEqualObjects(stringArg.mediaSpec, CSMediaString);
     XCTAssertEqualObjects(stringArg.cliFlag, @"--input");
     XCTAssertEqualObjects(stringArg.position, @0);
 
     // Test with integer spec
     CSCapArgument *intArg = [CSCapArgument argumentWithName:@"count"
-                                                  mediaSpec:CSSpecIdInt
+                                                  mediaSpec:CSMediaInteger
                                               argDescription:@"Count value"
                                                     cliFlag:@"--count"
                                                    position:nil
@@ -708,12 +708,12 @@
                                                defaultValue:@10];
 
     XCTAssertNotNil(intArg);
-    XCTAssertEqualObjects(intArg.mediaSpec, CSSpecIdInt);
+    XCTAssertEqualObjects(intArg.mediaSpec, CSMediaInteger);
     XCTAssertEqualObjects(intArg.defaultValue, @10);
 
     // Test with object spec
     CSCapArgument *objArg = [CSCapArgument argumentWithName:@"data"
-                                                  mediaSpec:CSSpecIdObj
+                                                  mediaSpec:CSMediaObject
                                               argDescription:@"JSON data"
                                                     cliFlag:@"--data"
                                                    position:nil
@@ -721,17 +721,17 @@
                                                defaultValue:nil];
 
     XCTAssertNotNil(objArg);
-    XCTAssertEqualObjects(objArg.mediaSpec, CSSpecIdObj);
+    XCTAssertEqualObjects(objArg.mediaSpec, CSMediaObject);
 }
 
 - (void)testOutputCreationWithNewAPI {
     // Test creating output with the new mediaSpec API
-    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:CSSpecIdObj
+    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:CSMediaObject
                                                 validation:nil
                                          outputDescription:@"JSON output"];
 
     XCTAssertNotNil(output);
-    XCTAssertEqualObjects(output.mediaSpec, CSSpecIdObj);
+    XCTAssertEqualObjects(output.mediaSpec, CSMediaObject);
     XCTAssertEqualObjects(output.outputDescription, @"JSON output");
 
     // Test with custom spec ID

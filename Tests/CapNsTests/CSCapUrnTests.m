@@ -16,12 +16,13 @@
 #pragma mark - Helper Functions
 
 // Helper function to create test URNs with default direction
-// Use std:void.v1 for in (no input) and std:obj.v1 for out by default
+// Use media:type=void;v=1 for in (no input) and media:type=object;v=1 for out by default
+// Media URNs must be quoted because they contain semicolons
 static NSString* testUrn(NSString *tags) {
     if (tags == nil || tags.length == 0) {
-        return @"cap:in=std:void.v1;out=std:obj.v1";
+        return @"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\"";
     }
-    return [NSString stringWithFormat:@"cap:in=std:void.v1;out=std:obj.v1;%@", tags];
+    return [NSString stringWithFormat:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\";%@", tags];
 }
 
 #pragma mark - Basic Creation Tests
@@ -37,10 +38,10 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([capUrn getTag:@"op"], @"transform");
     XCTAssertEqualObjects([capUrn getTag:@"format"], @"json");
     // Direction should be accessible
-    XCTAssertEqualObjects([capUrn getTag:@"in"], @"std:void.v1");
-    XCTAssertEqualObjects([capUrn getTag:@"out"], @"std:obj.v1");
-    XCTAssertEqualObjects([capUrn getInSpec], @"std:void.v1");
-    XCTAssertEqualObjects([capUrn getOutSpec], @"std:obj.v1");
+    XCTAssertEqualObjects([capUrn getTag:@"in"], @"media:type=void;v=1");
+    XCTAssertEqualObjects([capUrn getTag:@"out"], @"media:type=object;v=1");
+    XCTAssertEqualObjects([capUrn getInSpec], @"media:type=void;v=1");
+    XCTAssertEqualObjects([capUrn getOutSpec], @"media:type=object;v=1");
 }
 
 - (void)testCanonicalStringFormat {
@@ -51,13 +52,13 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNil(error);
 
     // Should be sorted alphabetically: ext, in, op, out, target
-    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=std:void.v1;op=generate;out=std:obj.v1;target=thumbnail");
+    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\";target=thumbnail");
 }
 
 - (void)testCapPrefixRequired {
     NSError *error;
     // Missing cap: prefix should fail
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"in=std:void.v1;op=generate;out=std:obj.v1" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingCapPrefix);
@@ -105,7 +106,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testInvalidTagFormat {
     NSError *error;
     // A tag without an '=' causes CSCapUrnErrorInvalidCharacter when the semicolon is encountered
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=std:void.v1;invalid_tag;out=std:obj.v1" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";invalid_tag;out=\"media:type=object;v=1\"" error:&error];
 
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
@@ -114,7 +115,7 @@ static NSString* testUrn(NSString *tags) {
 
     // Test CSCapUrnErrorInvalidTagFormat - incomplete tag at end of input
     error = nil;
-    capUrn = [CSCapUrn fromString:@"cap:in=std:void.v1;key" error:&error];
+    capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidTagFormat);
@@ -122,7 +123,7 @@ static NSString* testUrn(NSString *tags) {
 
 - (void)testInvalidCharacters {
     NSError *error;
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=std:void.v1;type@invalid=value;out=std:obj.v1" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";type@invalid=value;out=\"media:type=object;v=1\"" error:&error];
 
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
@@ -134,7 +135,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMissingInSpecFails {
     NSError *error = nil;
     // Missing 'in' should fail
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=std:obj.v1;op=generate" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=\"media:type=object;v=1\";op=generate" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
@@ -143,7 +144,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMissingOutSpecFails {
     NSError *error = nil;
     // Missing 'out' should fail
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=std:void.v1;op=generate" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingOutSpec);
@@ -161,27 +162,27 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMinimalValidCapUrn {
     NSError *error = nil;
     // Minimal valid cap URN has just in and out
-    CSCapUrn *minimal = [CSCapUrn fromString:@"cap:in=std:void.v1;out=std:obj.v1" error:&error];
+    CSCapUrn *minimal = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(minimal);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([minimal getInSpec], @"std:void.v1");
-    XCTAssertEqualObjects([minimal getOutSpec], @"std:obj.v1");
+    XCTAssertEqualObjects([minimal getInSpec], @"media:type=void;v=1");
+    XCTAssertEqualObjects([minimal getOutSpec], @"media:type=object;v=1");
     XCTAssertEqual(minimal.tags.count, 0); // No extra tags
 }
 
 - (void)testDirectionMismatchNoMatch {
     NSError *error = nil;
     // Different inSpec should not match
-    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=std:str.v1;op=test;out=std:obj.v1" error:&error];
+    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=\"media:type=string;v=1\";op=test;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap1);
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=std:binary.v1;op=test;out=std:obj.v1" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=\"media:type=binary;v=1\";op=test;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertFalse([cap1 matches:cap2]);
 
     // Different outSpec should not match
-    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=test;out=std:obj.v1" error:&error];
+    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=test;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap3);
-    CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=test;out=std:binary.v1" error:&error];
+    CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=test;out=\"media:type=binary;v=1\"" error:&error];
     XCTAssertNotNil(cap4);
     XCTAssertFalse([cap3 matches:cap4]);
 }
@@ -189,16 +190,16 @@ static NSString* testUrn(NSString *tags) {
 - (void)testDirectionWildcardMatches {
     NSError *error = nil;
     // Wildcard inSpec matches any
-    CSCapUrn *wildcardIn = [CSCapUrn fromString:@"cap:in=*;op=test;out=std:obj.v1" error:&error];
+    CSCapUrn *wildcardIn = [CSCapUrn fromString:@"cap:in=*;op=test;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(wildcardIn);
-    CSCapUrn *specificIn = [CSCapUrn fromString:@"cap:in=std:str.v1;op=test;out=std:obj.v1" error:&error];
+    CSCapUrn *specificIn = [CSCapUrn fromString:@"cap:in=\"media:type=string;v=1\";op=test;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(specificIn);
     XCTAssertTrue([wildcardIn matches:specificIn]);
 
     // Wildcard outSpec matches any
-    CSCapUrn *wildcardOut = [CSCapUrn fromString:@"cap:in=std:void.v1;op=test;out=*" error:&error];
+    CSCapUrn *wildcardOut = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=test;out=*" error:&error];
     XCTAssertNotNil(wildcardOut);
-    CSCapUrn *specificOut = [CSCapUrn fromString:@"cap:in=std:void.v1;op=test;out=std:binary.v1" error:&error];
+    CSCapUrn *specificOut = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=test;out=\"media:type=binary;v=1\"" error:&error];
     XCTAssertNotNil(specificOut);
     XCTAssertTrue([wildcardOut matches:specificOut]);
 }
@@ -253,7 +254,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(cap3);
 
     XCTAssertEqual([cap1 specificity], 0); // all wildcards
-    XCTAssertEqual([cap2 specificity], 3); // in=std:void.v1 + out=std:obj.v1 + op=generate
+    XCTAssertEqual([cap2 specificity], 3); // in=\"media:type=void;v=1" + out=\"media:type=object;v=1" + op=generate
     XCTAssertEqual([cap3 specificity], 1); // only ext=pdf counts
 
     XCTAssertTrue([cap2 isMoreSpecificThan:cap1]);
@@ -275,7 +276,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap4 isCompatibleWith:cap1]);
 
     // Different direction is incompatible
-    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=std:str.v1;op=generate;out=std:obj.v1" error:&error];
+    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=\"media:type=string;v=1\";op=generate;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertFalse([cap1 isCompatibleWith:cap5]); // different inSpec
 }
 
@@ -290,8 +291,8 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getTag:@"ext"], @"pdf");
     XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
     // Direction via getTag
-    XCTAssertEqualObjects([cap getTag:@"in"], @"std:void.v1");
-    XCTAssertEqualObjects([cap getTag:@"out"], @"std:obj.v1");
+    XCTAssertEqualObjects([cap getTag:@"in"], @"media:type=void;v=1");
+    XCTAssertEqualObjects([cap getTag:@"out"], @"media:type=object;v=1");
 }
 
 - (void)testWithTag {
@@ -300,10 +301,10 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *modified = [original withTag:@"ext" value:@"pdf"];
 
     // Direction preserved, new tag added in alphabetical order
-    XCTAssertEqualObjects([modified toString], @"cap:ext=pdf;in=std:void.v1;op=generate;out=std:obj.v1");
+    XCTAssertEqualObjects([modified toString], @"cap:ext=pdf;in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"");
 
     // Original should be unchanged
-    XCTAssertEqualObjects([original toString], @"cap:in=std:void.v1;op=generate;out=std:obj.v1");
+    XCTAssertEqualObjects([original toString], @"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"");
 }
 
 - (void)testWithTagIgnoresInOut {
@@ -321,19 +322,19 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWithInSpec {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    CSCapUrn *modified = [original withInSpec:@"std:str.v1"];
+    CSCapUrn *modified = [original withInSpec:@"media:type=string;v=1"];
 
-    XCTAssertEqualObjects([modified getInSpec], @"std:str.v1");
-    XCTAssertEqualObjects([original getInSpec], @"std:void.v1"); // Original unchanged
+    XCTAssertEqualObjects([modified getInSpec], @"media:type=string;v=1");
+    XCTAssertEqualObjects([original getInSpec], @"media:type=void;v=1"); // Original unchanged
 }
 
 - (void)testWithOutSpec {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    CSCapUrn *modified = [original withOutSpec:@"std:binary.v1"];
+    CSCapUrn *modified = [original withOutSpec:@"media:type=binary;v=1"];
 
-    XCTAssertEqualObjects([modified getOutSpec], @"std:binary.v1");
-    XCTAssertEqualObjects([original getOutSpec], @"std:obj.v1"); // Original unchanged
+    XCTAssertEqualObjects([modified getOutSpec], @"media:type=binary;v=1");
+    XCTAssertEqualObjects([original getOutSpec], @"media:type=object;v=1"); // Original unchanged
 }
 
 - (void)testWithoutTag {
@@ -341,10 +342,10 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     CSCapUrn *modified = [original withoutTag:@"ext"];
 
-    XCTAssertEqualObjects([modified toString], @"cap:in=std:void.v1;op=generate;out=std:obj.v1");
+    XCTAssertEqualObjects([modified toString], @"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"");
 
     // Original should be unchanged
-    XCTAssertEqualObjects([original toString], @"cap:ext=pdf;in=std:void.v1;op=generate;out=std:obj.v1");
+    XCTAssertEqualObjects([original toString], @"cap:ext=pdf;in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"");
 }
 
 - (void)testWithoutTagIgnoresInOut {
@@ -391,18 +392,18 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *subset = [cap subset:@[@"type", @"ext"]];
 
     // Direction is always preserved, only ext from the list
-    XCTAssertEqualObjects([subset toString], @"cap:ext=pdf;in=std:void.v1;out=std:obj.v1");
+    XCTAssertEqualObjects([subset toString], @"cap:ext=pdf;in=\"media:type=void;v=1\";out=\"media:type=object;v=1\"");
 }
 
 - (void)testMerge {
     NSError *error;
-    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=std:void.v1;op=generate;out=std:obj.v1" error:&error];
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=std:str.v1;out=std:binary.v1;output=binary" error:&error];
+    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=\"media:type=string;v=1\";out=\"media:type=binary;v=1\";output=binary" error:&error];
     CSCapUrn *merged = [cap1 merge:cap2];
 
     // Direction comes from cap2 (other takes precedence)
-    XCTAssertEqualObjects([merged getInSpec], @"std:str.v1");
-    XCTAssertEqualObjects([merged getOutSpec], @"std:binary.v1");
+    XCTAssertEqualObjects([merged getInSpec], @"media:type=string;v=1");
+    XCTAssertEqualObjects([merged getOutSpec], @"media:type=binary;v=1");
     // Tags are merged
     XCTAssertEqualObjects([merged getTag:@"op"], @"generate");
     XCTAssertEqualObjects([merged getTag:@"ext"], @"pdf");
@@ -414,7 +415,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
     CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
     CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"op=generate;type=image") error:&error];
-    CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=std:str.v1;op=generate;out=std:obj.v1" error:&error]; // Different in
+    CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=\"media:type=string;v=1\";op=generate;out=\"media:type=object;v=1\"" error:&error]; // Different in
 
     XCTAssertEqualObjects(cap1, cap2);
     XCTAssertNotEqualObjects(cap1, cap3);
@@ -439,8 +440,8 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNil(unarchiveError, @"Unarchive should succeed");
     XCTAssertNotNil(decoded);
     XCTAssertEqualObjects(original, decoded);
-    XCTAssertEqualObjects([decoded getInSpec], @"std:void.v1");
-    XCTAssertEqualObjects([decoded getOutSpec], @"std:obj.v1");
+    XCTAssertEqualObjects([decoded getInSpec], @"media:type=void;v=1");
+    XCTAssertEqualObjects([decoded getOutSpec], @"media:type=object;v=1");
 }
 
 - (void)testCopying {
@@ -459,7 +460,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testExtendedCharacterSupport {
     NSError *error = nil;
     // Test forward slashes and colons in tag components
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;out=std:obj.v1;url=https://example_org/api;path=/some/file" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\";url=https://example_org/api;path=/some/file" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"url"], @"https://example_org/api");
@@ -469,7 +470,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWildcardRestrictions {
     NSError *error = nil;
     // Wildcard should be rejected in keys
-    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=std:void.v1;out=std:obj.v1;*=value" error:&error];
+    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\";*=value" error:&error];
     XCTAssertNil(invalidKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidCharacter);
@@ -487,7 +488,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testDuplicateKeyRejection {
     NSError *error = nil;
     // Duplicate keys should be rejected
-    CSCapUrn *duplicate = [CSCapUrn fromString:@"cap:in=std:void.v1;key=value1;key=value2;out=std:obj.v1" error:&error];
+    CSCapUrn *duplicate = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=value1;key=value2;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNil(duplicate);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorDuplicateKey);
@@ -497,7 +498,7 @@ static NSString* testUrn(NSString *tags) {
     NSError *error = nil;
 
     // Pure numeric keys should be rejected
-    CSCapUrn *numericKey = [CSCapUrn fromString:@"cap:in=std:void.v1;123=value;out=std:obj.v1" error:&error];
+    CSCapUrn *numericKey = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";123=value;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNil(numericKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorNumericKey);
@@ -528,7 +529,8 @@ static NSString* testUrn(NSString *tags) {
 - (void)testUnquotedValuesLowercased {
     NSError *error = nil;
     // Unquoted values are normalized to lowercase
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:IN=std:void.v1;OP=Generate;OUT=std:obj.v1;EXT=PDF;Target=Thumbnail" error:&error];
+    // Note: in/out values must be quoted since media URNs contain special chars
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:EXT=PDF;IN=\"media:type=void;v=1\";OP=Generate;OUT=\"media:type=object;v=1\";Target=Thumbnail" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
 
@@ -551,14 +553,14 @@ static NSString* testUrn(NSString *tags) {
 - (void)testQuotedValuesPreserveCase {
     NSError *error = nil;
     // Quoted values preserve their case
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"Value With Spaces\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"Value With Spaces\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"key"], @"Value With Spaces");
 
     // Key is still lowercase
     error = nil;
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=std:void.v1;KEY=\"Value With Spaces\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";KEY=\"Value With Spaces\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"Value With Spaces");
@@ -568,7 +570,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *unquoted = [CSCapUrn fromString:testUrn(@"key=UPPERCASE") error:&error];
     XCTAssertNotNil(unquoted);
     error = nil;
-    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"UPPERCASE\";out=std:obj.v1" error:&error];
+    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"UPPERCASE\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(quoted);
 
     XCTAssertEqualObjects([unquoted getTag:@"key"], @"uppercase"); // lowercase
@@ -579,21 +581,21 @@ static NSString* testUrn(NSString *tags) {
 - (void)testQuotedValueSpecialChars {
     NSError *error = nil;
     // Semicolons in quoted values
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"value;with;semicolons\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"value;with;semicolons\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"key"], @"value;with;semicolons");
 
     // Equals in quoted values
     error = nil;
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"value=with=equals\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"value=with=equals\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"value=with=equals");
 
     // Spaces in quoted values
     error = nil;
-    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"hello world\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"hello world\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap3);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap3 getTag:@"key"], @"hello world");
@@ -602,14 +604,14 @@ static NSString* testUrn(NSString *tags) {
 - (void)testQuotedValueEscapeSequences {
     NSError *error = nil;
     // Escaped quotes
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"value\\\"quoted\\\"\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"value\\\"quoted\\\"\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"key"], @"value\"quoted\"");
 
     // Escaped backslashes
     error = nil;
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"path\\\\file\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"path\\\\file\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"path\\file");
@@ -617,7 +619,7 @@ static NSString* testUrn(NSString *tags) {
 
 - (void)testMixedQuotedUnquoted {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:a=\"Quoted\";b=simple;in=std:void.v1;out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:a=\"Quoted\";b=simple;in=\"media:type=void;v=1\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"a"], @"Quoted");
@@ -626,7 +628,7 @@ static NSString* testUrn(NSString *tags) {
 
 - (void)testUnterminatedQuoteError {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"unterminated;out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"unterminated;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNil(cap);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorUnterminatedQuote);
@@ -634,7 +636,7 @@ static NSString* testUrn(NSString *tags) {
 
 - (void)testInvalidEscapeSequenceError {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"bad\\n\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"bad\\n\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNil(cap);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidEscapeSequence);
@@ -653,7 +655,7 @@ static NSString* testUrn(NSString *tags) {
 
 - (void)testRoundTripQuoted {
     NSError *error = nil;
-    NSString *original = @"cap:in=std:void.v1;key=\"Value With Spaces\";out=std:obj.v1";
+    NSString *original = @"cap:in=\"media:type=void;v=1\";key=\"Value With Spaces\";out=\"media:type=object;v=1\"";
     CSCapUrn *cap = [CSCapUrn fromString:original error:&error];
     XCTAssertNotNil(cap);
     NSString *serialized = [cap toString];
@@ -665,7 +667,7 @@ static NSString* testUrn(NSString *tags) {
 
 - (void)testHasTagCaseSensitive {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"Value\";out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"Value\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap);
 
     // Exact case match works
@@ -680,9 +682,9 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap hasTag:@"Key" withValue:@"Value"]);
 
     // hasTag works for direction too
-    XCTAssertTrue([cap hasTag:@"in" withValue:@"std:void.v1"]);
-    XCTAssertTrue([cap hasTag:@"IN" withValue:@"std:void.v1"]);
-    XCTAssertTrue([cap hasTag:@"out" withValue:@"std:obj.v1"]);
+    XCTAssertTrue([cap hasTag:@"in" withValue:@"media:type=void;v=1"]);
+    XCTAssertTrue([cap hasTag:@"IN" withValue:@"media:type=void;v=1"]);
+    XCTAssertTrue([cap hasTag:@"out" withValue:@"media:type=object;v=1"]);
 }
 
 - (void)testSemanticEquivalence {
@@ -690,13 +692,13 @@ static NSString* testUrn(NSString *tags) {
     // Unquoted and quoted simple lowercase values are equivalent
     CSCapUrn *unquoted = [CSCapUrn fromString:testUrn(@"key=simple") error:&error];
     XCTAssertNotNil(unquoted);
-    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=std:void.v1;key=\"simple\";out=std:obj.v1" error:&error];
+    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key=\"simple\";out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(quoted);
     XCTAssertEqualObjects(unquoted, quoted);
 
     // Both serialize the same way (unquoted)
-    XCTAssertEqualObjects([unquoted toString], @"cap:in=std:void.v1;key=simple;out=std:obj.v1");
-    XCTAssertEqualObjects([quoted toString], @"cap:in=std:void.v1;key=simple;out=std:obj.v1");
+    XCTAssertEqualObjects([unquoted toString], @"cap:in=\"media:type=void;v=1\";key=simple;out=\"media:type=object;v=1\"");
+    XCTAssertEqualObjects([quoted toString], @"cap:in=\"media:type=void;v=1\";key=simple;out=\"media:type=object;v=1\"");
 }
 
 #pragma mark - Matching Semantics Specification Tests
@@ -818,10 +820,10 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMatchingSemantics_Test10_DirectionMismatch {
     // Test 10: Direction mismatch prevents match even with matching tags
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=std:str.v1;op=generate;out=std:obj.v1" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:type=string;v=1\";op=generate;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(cap);
 
-    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=std:binary.v1;op=generate;out=std:obj.v1" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:type=binary;v=1\";op=generate;out=\"media:type=object;v=1\"" error:&error];
     XCTAssertNotNil(request);
 
     XCTAssertFalse([cap matches:request], @"Test 10: Direction mismatch should prevent match");

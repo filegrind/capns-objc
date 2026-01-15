@@ -86,7 +86,7 @@
 
     // Resolve the mediaSpec to determine expected type
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(output.mediaSpec, cap.mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(output.mediaSpec, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
         // FAIL HARD on unresolvable spec ID
         if (error) {
@@ -174,7 +174,7 @@
 
     // Resolve the mediaSpec - fail hard if resolution fails
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
         if (error) {
             NSString *message = [NSString stringWithFormat:@"Failed to resolve output spec ID '%@' for cap '%@': %@",

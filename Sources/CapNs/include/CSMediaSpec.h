@@ -27,25 +27,26 @@ typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
     CSMediaSpecErrorEmptyContentType = 1,
     CSMediaSpecErrorUnterminatedQuote = 2,
     CSMediaSpecErrorLegacyFormat = 3,
-    CSMediaSpecErrorUnresolvableSpecId = 4
+    CSMediaSpecErrorUnresolvableMediaUrn = 4
 };
 
 // ============================================================================
-// BUILT-IN SPEC ID CONSTANTS
+// BUILT-IN MEDIA URN CONSTANTS
 // ============================================================================
 
-/// Well-known built-in spec IDs - these do not need to be declared in mediaSpecs
-FOUNDATION_EXPORT NSString * const CSSpecIdStr;      // std:str.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdInt;      // std:int.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdNum;      // std:num.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdBool;     // std:bool.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdObj;      // std:obj.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdStrArray; // std:str-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdIntArray; // std:int-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdNumArray; // std:num-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdBoolArray;// std:bool-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdObjArray; // std:obj-array.v1
-FOUNDATION_EXPORT NSString * const CSSpecIdBinary;   // std:binary.v1
+/// Well-known built-in media URNs - these do not need to be declared in mediaSpecs
+FOUNDATION_EXPORT NSString * const CSMediaString;       // media:type=string;v=1
+FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:type=integer;v=1
+FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:type=number;v=1
+FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:type=boolean;v=1
+FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:type=object;v=1
+FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:type=string-array;v=1
+FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:type=integer-array;v=1
+FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:type=number-array;v=1
+FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:type=boolean-array;v=1
+FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:type=object-array;v=1
+FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=binary;v=1
+FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:type=void;v=1
 
 /**
  * A parsed MediaSpec value
@@ -132,39 +133,39 @@ FOUNDATION_EXPORT NSString * const CSSpecIdBinary;   // std:binary.v1
 @end
 
 // ============================================================================
-// SPEC ID RESOLUTION
+// MEDIA URN RESOLUTION
 // ============================================================================
 
 /**
- * Resolve a spec ID to a MediaSpec
+ * Resolve a media URN to a MediaSpec
  *
  * Resolution algorithm:
- * 1. Look up spec_id in mediaSpecs table
- * 2. If not found AND spec_id is a known built-in (std:*): use built-in definition
+ * 1. Look up media URN in mediaSpecs table
+ * 2. If not found AND media URN is a known built-in (media:type=*): use built-in definition
  * 3. If not found and not a built-in: FAIL HARD
  *
- * @param specId The spec ID (e.g., "std:str.v1")
+ * @param mediaUrn The media URN (e.g., "media:type=string;v=1")
  * @param mediaSpecs The mediaSpecs lookup table (can be nil)
- * @param error Error if spec ID cannot be resolved
+ * @param error Error if media URN cannot be resolved
  * @return The resolved MediaSpec or nil on error
  */
-CSMediaSpec * _Nullable CSResolveSpecId(NSString *specId,
-                                        NSDictionary * _Nullable mediaSpecs,
-                                        NSError * _Nullable * _Nullable error);
+CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
+                                          NSDictionary * _Nullable mediaSpecs,
+                                          NSError * _Nullable * _Nullable error);
 
 /**
- * Check if a spec ID is a known built-in
- * @param specId The spec ID to check
+ * Check if a media URN is a known built-in
+ * @param mediaUrn The media URN to check
  * @return YES if built-in
  */
-BOOL CSIsBuiltinSpecId(NSString *specId);
+BOOL CSIsBuiltinMediaUrn(NSString *mediaUrn);
 
 /**
- * Get the canonical media spec string for a built-in spec ID
- * @param specId The built-in spec ID
+ * Get the canonical media spec string for a built-in media URN
+ * @param mediaUrn The built-in media URN
  * @return The canonical media spec string or nil if not built-in
  */
-NSString * _Nullable CSGetBuiltinSpecDefinition(NSString *specId);
+NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn);
 
 /**
  * Helper functions for working with MediaSpec in CapUrn
@@ -172,10 +173,10 @@ NSString * _Nullable CSGetBuiltinSpecDefinition(NSString *specId);
 @interface CSMediaSpec (CapUrn)
 
 /**
- * Extract MediaSpec from a CapUrn's 'out' tag (which now contains a spec ID)
+ * Extract MediaSpec from a CapUrn's 'out' tag (which now contains a media URN)
  * @param capUrn The cap URN to extract from
  * @param mediaSpecs The mediaSpecs lookup table for resolution (can be nil)
- * @param error Error if spec ID not found or resolution fails
+ * @param error Error if media URN not found or resolution fails
  * @return The resolved MediaSpec or nil if not found
  */
 + (nullable instancetype)fromCapUrn:(CSCapUrn *)capUrn
