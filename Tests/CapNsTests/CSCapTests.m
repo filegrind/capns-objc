@@ -3,7 +3,7 @@
 //  CapNsTests
 //
 //  NOTE: All ArgumentType/OutputType enums have been removed.
-//  Arguments and outputs now use mediaSpec fields containing spec IDs
+//  Arguments and outputs now use mediaUrn fields containing media URNs
 //  (e.g., "media:type=string;v=1") that resolve via the mediaSpecs table.
 //
 
@@ -184,12 +184,12 @@
 }
 
 - (void)testCanonicalArgumentsDeserialization {
-    // Test CSCapArguments.argumentsWithDictionary with new media_spec format
+    // Test CSCapArguments.argumentsWithDictionary with media_urn format
     NSDictionary *argumentsDict = @{
         @"required": @[
             @{
                 @"name": @"file_path",
-                @"media_spec": CSMediaString,  // Use spec ID instead of arg_type
+                @"media_urn": CSMediaString,
                 @"arg_description": @"Path to file",
                 @"cli_flag": @"--file_path",
                 @"position": @0
@@ -198,7 +198,7 @@
         @"optional": @[
             @{
                 @"name": @"output_format",
-                @"media_spec": CSMediaString,
+                @"media_urn": CSMediaString,
                 @"arg_description": @"Output format",
                 @"cli_flag": @"--ext",
                 @"default_value": @"json"
@@ -221,9 +221,9 @@
 }
 
 - (void)testCanonicalOutputDeserialization {
-    // Test CSCapOutput.outputWithDictionary with new media_spec format
+    // Test CSCapOutput.outputWithDictionary with media_urn format
     NSDictionary *outputDict = @{
-        @"media_spec": CSMediaObject,  // Use spec ID instead of output_type
+        @"media_urn": CSMediaObject,
         @"output_description": @"JSON metadata object"
     };
 
@@ -275,7 +275,7 @@
             @"required": @[
                 @{
                     @"name": @"transformation",
-                    @"media_spec": CSMediaString,
+                    @"media_urn": CSMediaString,
                     @"arg_description": @"JQ transformation expression",
                     @"cli_flag": @"--transform",
                     @"position": @0,
@@ -288,7 +288,7 @@
             @"optional": @[
                 @{
                     @"name": @"output_format",
-                    @"media_spec": CSMediaString,
+                    @"media_urn": CSMediaString,
                     @"arg_description": @"Output format",
                     @"cli_flag": @"--ext",
                     @"default_value": @"json",
@@ -299,7 +299,7 @@
             ]
         },
         @"output": @{
-            @"media_spec": @"my:output.v1",
+            @"media_urn": @"my:output.v1",
             @"output_description": @"Transformed data"
         }
     };

@@ -266,7 +266,21 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
 }
 
 - (void)fetchFromRegistryWithUrn:(NSString *)urn completion:(void (^)(CSCap *cap, NSError *error))completion {
-    NSString *urlString = [NSString stringWithFormat:@"%@/%@", REGISTRY_BASE_URL, urn];
+    // Normalize the cap URN using the proper parser
+    NSString *normalizedUrn = urn;
+    NSError *parseError = nil;
+    CSCapUrn *parsedUrn = [CSCapUrn fromString:urn error:&parseError];
+    if (parsedUrn) {
+        normalizedUrn = [parsedUrn toString];
+    }
+
+    // URL-encode only the tags part (after "cap:") while keeping "cap:" literal
+    NSString *tagsPart = normalizedUrn;
+    if ([normalizedUrn hasPrefix:@"cap:"]) {
+        tagsPart = [normalizedUrn substringFromIndex:4];
+    }
+    NSString *encodedTags = [tagsPart stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet alphanumericCharacterSet]];
+    NSString *urlString = [NSString stringWithFormat:@"%@/cap:%@", REGISTRY_BASE_URL, encodedTags];
     NSURL *url = [NSURL URLWithString:urlString];
     
     NSURLSessionDataTask *task = [self.session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
