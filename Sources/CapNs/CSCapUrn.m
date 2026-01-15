@@ -22,51 +22,7 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
     return [self.mutableTags copy];
 }
 
-#pragma mark - Helper Methods
-
-+ (BOOL)isValidKeyChar:(unichar)c {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-           c == '_' || c == '-' || c == '/' || c == ':' || c == '.';
-}
-
-+ (BOOL)isValidUnquotedValueChar:(unichar)c {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-           c == '_' || c == '-' || c == '/' || c == ':' || c == '.' || c == '*';
-}
-
-+ (BOOL)isPurelyNumeric:(NSString *)s {
-    if (s.length == 0) return NO;
-    NSCharacterSet *numericSet = [NSCharacterSet decimalDigitCharacterSet];
-    NSCharacterSet *nonNumericSet = [numericSet invertedSet];
-    return [s rangeOfCharacterFromSet:nonNumericSet].location == NSNotFound;
-}
-
-+ (BOOL)needsQuoting:(NSString *)value {
-    for (NSUInteger i = 0; i < value.length; i++) {
-        unichar c = [value characterAtIndex:i];
-        if (c == ';' || c == '=' || c == '"' || c == '\\' || c == ' ') {
-            return YES;
-        }
-        // Check for uppercase letter
-        if (c >= 'A' && c <= 'Z') {
-            return YES;
-        }
-    }
-    return NO;
-}
-
-+ (NSString *)quoteValue:(NSString *)value {
-    NSMutableString *result = [NSMutableString stringWithString:@"\""];
-    for (NSUInteger i = 0; i < value.length; i++) {
-        unichar c = [value characterAtIndex:i];
-        if (c == '"' || c == '\\') {
-            [result appendString:@"\\"];
-        }
-        [result appendFormat:@"%C", c];
-    }
-    [result appendString:@"\""];
-    return result;
-}
+// Note: Utility methods (needsQuoting, quoteValue) are delegated to CSTaggedUrn
 
 #pragma mark - Media URN Validation
 
@@ -519,29 +475,11 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
     allTags[@"in"] = self.inSpec;
     allTags[@"out"] = self.outSpec;
 
-    // Use CSTaggedUrn for serialization to ensure consistent output
+    // Use CSTaggedUrn for serialization
     NSError *error = nil;
     CSTaggedUrn *taggedUrn = [CSTaggedUrn fromPrefix:@"cap" tags:allTags error:&error];
-    if (taggedUrn) {
-        return [taggedUrn toString];
-    }
-
-    // Fallback to manual serialization if TaggedUrn fails (should not happen)
-    // Sort keys for canonical representation (alphabetical order including in/out)
-    NSArray<NSString *> *sortedKeys = [allTags.allKeys sortedArrayUsingSelector:@selector(compare:)];
-
-    NSMutableArray<NSString *> *parts = [NSMutableArray array];
-    for (NSString *key in sortedKeys) {
-        NSString *value = allTags[key];
-        if ([CSCapUrn needsQuoting:value]) {
-            [parts addObject:[NSString stringWithFormat:@"%@=%@", key, [CSCapUrn quoteValue:value]]];
-        } else {
-            [parts addObject:[NSString stringWithFormat:@"%@=%@", key, value]];
-        }
-    }
-
-    NSString *tagsString = [parts componentsJoinedByString:@";"];
-    return [NSString stringWithFormat:@"cap:%@", tagsString];
+    NSAssert(taggedUrn != nil, @"CSTaggedUrn serialization failed: %@", error.localizedDescription);
+    return [taggedUrn toString];
 }
 
 - (NSString *)description {
