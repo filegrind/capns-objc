@@ -151,7 +151,7 @@
 - (void)testNonStructuredArgumentSkipsSchemaValidation {
     // Create string argument (built-in, no schema validation expected)
     CSCapArgument *argument = [CSCapArgument argumentWithName:@"name"
-                                                    mediaSpec:CSSpecIdStr
+                                                    mediaSpec:CSMediaString
                                                 argDescription:@"User name"
                                                       cliFlag:@"--name"
                                                      position:nil
@@ -255,7 +255,7 @@
 
 - (void)testIntegrationWithInputValidation {
     // Create cap with schema-enabled arguments
-    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"] tag:@"op" value:@"process"] tag:@"target" value:@"user"] build:nil];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:type=void;v=1"] outSpec:@"media:type=object;v=1"] tag:@"op" value:@"process"] tag:@"target" value:@"user"] build:nil];
 
     NSDictionary *userSchema = @{
         @"type": @"object",
@@ -327,7 +327,7 @@
 
 - (void)testIntegrationWithOutputValidation {
     // Create cap with schema-enabled output
-    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"] tag:@"op" value:@"query"] tag:@"target" value:@"data"] build:nil];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:type=void;v=1"] outSpec:@"media:type=object;v=1"] tag:@"op" value:@"query"] tag:@"target" value:@"data"] build:nil];
 
     NSDictionary *resultSchema = @{
         @"type": @"array",
@@ -537,7 +537,7 @@
     // Built-in spec IDs should resolve even with empty mediaSpecs
 
     CSCapArgument *strArg = [CSCapArgument argumentWithName:@"text"
-                                                  mediaSpec:CSSpecIdStr
+                                                  mediaSpec:CSMediaString
                                               argDescription:@"Text input"
                                                     cliFlag:@"--text"
                                                    position:nil
@@ -550,7 +550,7 @@
     XCTAssertNil(error);
 
     CSCapArgument *intArg = [CSCapArgument argumentWithName:@"count"
-                                                  mediaSpec:CSSpecIdInt
+                                                  mediaSpec:CSMediaInteger
                                               argDescription:@"Count value"
                                                     cliFlag:@"--count"
                                                    position:nil
@@ -562,7 +562,7 @@
     XCTAssertNil(error);
 
     CSCapArgument *objArg = [CSCapArgument argumentWithName:@"data"
-                                                  mediaSpec:CSSpecIdObj
+                                                  mediaSpec:CSMediaObject
                                               argDescription:@"JSON data"
                                                     cliFlag:@"--data"
                                                    position:nil
@@ -662,7 +662,7 @@
 - (void)testFullCapValidationWithMediaSpecs {
     // Test complete cap validation flow with mediaSpecs resolution
     NSError *error = nil;
-    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"] tag:@"format" value:@"json"] tag:@"op" value:@"transform"] build:&error];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:type=void;v=1"] outSpec:@"media:type=object;v=1"] tag:@"format" value:@"json"] tag:@"op" value:@"transform"] build:&error];
     XCTAssertNotNil(urn);
 
     NSDictionary *inputSchema = @{

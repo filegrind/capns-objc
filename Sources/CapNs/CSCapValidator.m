@@ -294,7 +294,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Schema validation - resolve mediaSpec and check for schema
     if (argDef.mediaSpec) {
         NSError *resolveError = nil;
-        CSMediaSpec *mediaSpec = CSResolveSpecId(argDef.mediaSpec, cap.mediaSpecs, &resolveError);
+        CSMediaSpec *mediaSpec = CSResolveMediaUrn(argDef.mediaSpec, cap.mediaSpecs, &resolveError);
         if (mediaSpec && mediaSpec.schema) {
             CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
             NSError *schemaError = nil;
@@ -328,7 +328,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
     // Resolve mediaSpec to determine expected type
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(argDef.mediaSpec, cap.mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(argDef.mediaSpec, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
         // FAIL HARD on unresolvable spec ID
         if (error) {
@@ -572,7 +572,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Schema validation - resolve mediaSpec and check for schema
     if (outputDef.mediaSpec) {
         NSError *resolveError = nil;
-        CSMediaSpec *mediaSpec = CSResolveSpecId(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
+        CSMediaSpec *mediaSpec = CSResolveMediaUrn(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
         if (mediaSpec && mediaSpec.schema) {
             CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
             NSError *schemaError = nil;
@@ -605,7 +605,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
     // Resolve mediaSpec to determine expected type
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveSpecId(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
         // FAIL HARD on unresolvable spec ID
         if (error) {
@@ -896,7 +896,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     // Resolve mediaSpec to check if it's binary - fail hard if resolution fails
     if (output.mediaSpec) {
         NSError *resolveError = nil;
-        CSMediaSpec *mediaSpec = CSResolveSpecId(output.mediaSpec, cap.mediaSpecs, &resolveError);
+        CSMediaSpec *mediaSpec = CSResolveMediaUrn(output.mediaSpec, cap.mediaSpecs, &resolveError);
 
         if (!mediaSpec) {
             // FAIL HARD on unresolvable spec ID

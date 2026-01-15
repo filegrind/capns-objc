@@ -16,8 +16,8 @@
 - (void)testBuilderBasicConstruction {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:void.v1"];
-    [builder outSpec:@"std:obj.v1"];
+    [builder inSpec:@"media:type=void;v=1"];
+    [builder outSpec:@"media:type=object;v=1"];
     [builder tag:@"type" value:@"data_processing"];
     [builder tag:@"op" value:@"transform"];
     [builder tag:@"format" value:@"json"];
@@ -26,13 +26,13 @@
     XCTAssertNotNil(capUrn);
     XCTAssertNil(error);
     // Alphabetical order: format, in, op, out, type
-    XCTAssertEqualObjects([capUrn toString], @"cap:format=json;in=std:void.v1;op=transform;out=std:obj.v1;type=data_processing");
+    XCTAssertEqualObjects([capUrn toString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data_processing");
 }
 
 - (void)testBuilderFluentAPI {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [[[[[[builder inSpec:@"std:void.v1"] outSpec:@"std:obj.v1"]
+    [[[[[[builder inSpec:@"media:type=void;v=1"] outSpec:@"media:type=object;v=1"]
         tag:@"op" value:@"generate"]
        tag:@"target" value:@"thumbnail"]
       tag:@"format" value:@"pdf"]
@@ -46,32 +46,32 @@
     XCTAssertEqualObjects([cap getTag:@"target"], @"thumbnail");
     XCTAssertEqualObjects([cap getTag:@"format"], @"pdf");
     XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
-    XCTAssertEqualObjects([cap getInSpec], @"std:void.v1");
-    XCTAssertEqualObjects([cap getOutSpec], @"std:obj.v1");
+    XCTAssertEqualObjects([cap getInSpec], @"media:type=void;v=1");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:type=object;v=1");
 }
 
 - (void)testBuilderDirectionAccess {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:str.v1"];
-    [builder outSpec:@"std:binary.v1"];
+    [builder inSpec:@"media:type=string;v=1"];
+    [builder outSpec:@"media:type=binary;v=1"];
     [builder tag:@"op" value:@"process"];
     CSCapUrn *cap = [builder build:&error];
 
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
 
-    XCTAssertEqualObjects([cap getInSpec], @"std:str.v1");
-    XCTAssertEqualObjects([cap getOutSpec], @"std:binary.v1");
-    XCTAssertEqualObjects([cap getTag:@"in"], @"std:str.v1");
-    XCTAssertEqualObjects([cap getTag:@"out"], @"std:binary.v1");
+    XCTAssertEqualObjects([cap getInSpec], @"media:type=string;v=1");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:type=binary;v=1");
+    XCTAssertEqualObjects([cap getTag:@"in"], @"media:type=string;v=1");
+    XCTAssertEqualObjects([cap getTag:@"out"], @"media:type=binary;v=1");
 }
 
 - (void)testBuilderCustomTags {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:void.v1"];
-    [builder outSpec:@"std:obj.v1"];
+    [builder inSpec:@"media:type=void;v=1"];
+    [builder outSpec:@"media:type=object;v=1"];
     [builder tag:@"engine" value:@"v2"];
     [builder tag:@"quality" value:@"high"];
     [builder tag:@"op" value:@"compress"];
@@ -88,8 +88,8 @@
 - (void)testBuilderTagOverrides {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:void.v1"];
-    [builder outSpec:@"std:obj.v1"];
+    [builder inSpec:@"media:type=void;v=1"];
+    [builder outSpec:@"media:type=object;v=1"];
     [builder tag:@"op" value:@"old"];
     [builder tag:@"op" value:@"convert"]; // Override
     [builder tag:@"format" value:@"jpg"];
@@ -106,7 +106,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     // Only set outSpec, not inSpec
-    [builder outSpec:@"std:obj.v1"];
+    [builder outSpec:@"media:type=object;v=1"];
     [builder tag:@"op" value:@"test"];
     CSCapUrn *cap = [builder build:&error];
 
@@ -119,7 +119,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     // Only set inSpec, not outSpec
-    [builder inSpec:@"std:void.v1"];
+    [builder inSpec:@"media:type=void;v=1"];
     [builder tag:@"op" value:@"test"];
     CSCapUrn *cap = [builder build:&error];
 
@@ -140,8 +140,8 @@
 - (void)testBuilderTagIgnoresInOut {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:void.v1"];
-    [builder outSpec:@"std:obj.v1"];
+    [builder inSpec:@"media:type=void;v=1"];
+    [builder outSpec:@"media:type=object;v=1"];
     // Trying to set in/out via tag should be silently ignored
     [builder tag:@"in" value:@"different"];
     [builder tag:@"out" value:@"different"];
@@ -151,21 +151,21 @@
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     // Direction should be from inSpec/outSpec, not from tag calls
-    XCTAssertEqualObjects([cap getInSpec], @"std:void.v1");
-    XCTAssertEqualObjects([cap getOutSpec], @"std:obj.v1");
+    XCTAssertEqualObjects([cap getInSpec], @"media:type=void;v=1");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:type=object;v=1");
 }
 
 - (void)testBuilderMinimalValid {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:void.v1"];
-    [builder outSpec:@"std:obj.v1"];
+    [builder inSpec:@"media:type=void;v=1"];
+    [builder outSpec:@"media:type=object;v=1"];
     // No other tags
     CSCapUrn *cap = [builder build:&error];
 
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([cap toString], @"cap:in=std:void.v1;out=std:obj.v1");
+    XCTAssertEqualObjects([cap toString], @"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\"");
     XCTAssertEqual(cap.tags.count, 0);
     XCTAssertEqual([cap specificity], 2); // in + out
 }
@@ -173,8 +173,8 @@
 - (void)testBuilderComplex {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"std:binary.v1"];
-    [builder outSpec:@"std:binary.v1"];
+    [builder inSpec:@"media:type=binary;v=1"];
+    [builder outSpec:@"media:type=binary;v=1"];
     [builder tag:@"type" value:@"media"];
     [builder tag:@"op" value:@"transcode"];
     [builder tag:@"target" value:@"video"];
@@ -189,7 +189,7 @@
     XCTAssertNil(error);
 
     // Alphabetical order: codec, format, framerate, in, op, out, output, quality, target, type
-    NSString *expected = @"cap:codec=h264;format=mp4;framerate=30fps;in=std:binary.v1;op=transcode;out=std:binary.v1;output=binary;quality=1080p;target=video;type=media";
+    NSString *expected = @"cap:codec=h264;format=mp4;framerate=30fps;in=\"media:type=binary;v=1\";op=transcode;out=\"media:type=binary;v=1\";output=binary;quality=1080p;target=video;type=media";
     XCTAssertEqualObjects([cap toString], expected);
 
     XCTAssertEqualObjects([cap getTag:@"type"], @"media");
@@ -241,8 +241,8 @@
 
     // Create a specific cap
     CSCapUrnBuilder *builder1 = [CSCapUrnBuilder builder];
-    [builder1 inSpec:@"std:void.v1"];
-    [builder1 outSpec:@"std:obj.v1"];
+    [builder1 inSpec:@"media:type=void;v=1"];
+    [builder1 outSpec:@"media:type=object;v=1"];
     [builder1 tag:@"op" value:@"generate"];
     [builder1 tag:@"target" value:@"thumbnail"];
     [builder1 tag:@"format" value:@"pdf"];
@@ -250,15 +250,15 @@
 
     // Create a more general request (same direction)
     CSCapUrnBuilder *builder2 = [CSCapUrnBuilder builder];
-    [builder2 inSpec:@"std:void.v1"];
-    [builder2 outSpec:@"std:obj.v1"];
+    [builder2 inSpec:@"media:type=void;v=1"];
+    [builder2 outSpec:@"media:type=object;v=1"];
     [builder2 tag:@"op" value:@"generate"];
     CSCapUrn *generalRequest = [builder2 build:&error];
 
     // Create a wildcard request (same direction)
     CSCapUrnBuilder *builder3 = [CSCapUrnBuilder builder];
-    [builder3 inSpec:@"std:void.v1"];
-    [builder3 outSpec:@"std:obj.v1"];
+    [builder3 inSpec:@"media:type=void;v=1"];
+    [builder3 outSpec:@"media:type=object;v=1"];
     [builder3 tag:@"op" value:@"generate"];
     [builder3 tag:@"target" value:@"thumbnail"];
     [builder3 tag:@"ext" value:@"*"];
@@ -286,14 +286,14 @@
 
     // Create caps with different directions
     CSCapUrnBuilder *builder1 = [CSCapUrnBuilder builder];
-    [builder1 inSpec:@"std:str.v1"];
-    [builder1 outSpec:@"std:obj.v1"];
+    [builder1 inSpec:@"media:type=string;v=1"];
+    [builder1 outSpec:@"media:type=object;v=1"];
     [builder1 tag:@"op" value:@"process"];
     CSCapUrn *cap1 = [builder1 build:&error];
 
     CSCapUrnBuilder *builder2 = [CSCapUrnBuilder builder];
-    [builder2 inSpec:@"std:binary.v1"]; // Different inSpec
-    [builder2 outSpec:@"std:obj.v1"];
+    [builder2 inSpec:@"media:type=binary;v=1"]; // Different inSpec
+    [builder2 outSpec:@"media:type=object;v=1"];
     [builder2 tag:@"op" value:@"process"];
     CSCapUrn *cap2 = [builder2 build:&error];
 

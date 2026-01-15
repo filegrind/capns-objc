@@ -154,7 +154,7 @@
 
 + (instancetype)argumentWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
     NSString *name = dictionary[@"name"];
-    NSString *mediaSpec = dictionary[@"media_spec"];
+    NSString *mediaUrn = dictionary[@"media_urn"];
     NSString *argDescription = dictionary[@"arg_description"];
     NSString *cliFlag = dictionary[@"cli_flag"];
     NSNumber *position = dictionary[@"position"];
@@ -171,11 +171,11 @@
         return nil;
     }
 
-    if (!mediaSpec) {
+    if (!mediaUrn) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapArgumentError"
                                          code:1002
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Missing required field 'media_spec' for argument '%@'", name]}];
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Missing required field 'media_urn' for argument '%@'", name]}];
         }
         return nil;
     }
@@ -210,7 +210,7 @@
 
     CSCapArgument *argument = [[CSCapArgument alloc] init];
     argument->_name = [name copy];
-    argument->_mediaSpec = [mediaSpec copy];
+    argument->_mediaSpec = [mediaUrn copy];
     argument->_argDescription = [argDescription copy];
     argument->_cliFlag = [cliFlag copy];
     argument->_position = position;
@@ -273,7 +273,7 @@
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
 
     dict[@"name"] = self.name;
-    dict[@"media_spec"] = self.mediaSpec;
+    dict[@"media_urn"] = self.mediaSpec;
     dict[@"arg_description"] = self.argDescription;
     dict[@"cli_flag"] = self.cliFlag;
 
@@ -533,16 +533,16 @@
 }
 
 + (instancetype)outputWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
-    NSString *mediaSpec = dictionary[@"media_spec"];
+    NSString *mediaUrn = dictionary[@"media_urn"];
     NSString *outputDescription = dictionary[@"output_description"];
     NSDictionary *metadata = dictionary[@"metadata"];
 
     // FAIL HARD on missing required fields
-    if (!mediaSpec) {
+    if (!mediaUrn) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapOutputError"
                                          code:1001
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required field 'media_spec' for output"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required field 'media_urn' for output"}];
         }
         return nil;
     }
@@ -567,7 +567,7 @@
     }
 
     CSCapOutput *output = [[CSCapOutput alloc] init];
-    output->_mediaSpec = [mediaSpec copy];
+    output->_mediaSpec = [mediaUrn copy];
     output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
     output->_metadata = [metadata copy];
@@ -613,7 +613,7 @@
 - (NSDictionary *)toDictionary {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
 
-    dict[@"media_spec"] = self.mediaSpec;
+    dict[@"media_urn"] = self.mediaSpec;
     dict[@"output_description"] = self.outputDescription;
 
     if (self.validation) dict[@"validation"] = [self.validation toDictionary];
@@ -1164,7 +1164,7 @@
 }
 
 - (nullable CSMediaSpec *)resolveSpecId:(NSString *)specId error:(NSError **)error {
-    return CSResolveSpecId(specId, self.mediaSpecs, error);
+    return CSResolveMediaUrn(specId, self.mediaSpecs, error);
 }
 
 + (BOOL)supportsSecureCoding {

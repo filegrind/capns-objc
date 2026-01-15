@@ -2,21 +2,13 @@
 //  CSCapUrn.m
 //  Flat Tag-Based Cap Identifier Implementation with Required Direction
 //
+//  Uses CSTaggedUrn for parsing to ensure consistency across implementations.
+//
 
 #import "CSCapUrn.h"
+@import TaggedUrn;
 
 NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
-
-// Parser states for state machine
-typedef NS_ENUM(NSInteger, CSParseState) {
-    CSParseStateExpectingKey,
-    CSParseStateInKey,
-    CSParseStateExpectingValue,
-    CSParseStateInUnquotedValue,
-    CSParseStateInQuotedValue,
-    CSParseStateInQuotedValueEscape,
-    CSParseStateExpectingSemiOrEnd
-};
 
 @interface CSCapUrn ()
 @property (nonatomic, strong) NSString *inSpec;
@@ -76,7 +68,43 @@ typedef NS_ENUM(NSInteger, CSParseState) {
     return result;
 }
 
+#pragma mark - Media URN Validation
+
++ (BOOL)isValidMediaUrnOrWildcard:(NSString *)value {
+    return [value isEqualToString:@"*"] || [value hasPrefix:@"media:"];
+}
+
 #pragma mark - Parsing
+
+/// Convert CSTaggedUrnError to CSCapUrnError with appropriate error code
++ (NSError *)capUrnErrorFromTaggedUrnError:(NSError *)taggedError {
+    NSString *msg = taggedError.localizedDescription ?: @"";
+    NSString *msgLower = [msg lowercaseString];
+
+    CSCapUrnError code;
+    if ([msgLower containsString:@"invalid character"]) {
+        code = CSCapUrnErrorInvalidCharacter;
+    } else if ([msgLower containsString:@"duplicate"]) {
+        code = CSCapUrnErrorDuplicateKey;
+    } else if ([msgLower containsString:@"unterminated"] || [msgLower containsString:@"unclosed"]) {
+        code = CSCapUrnErrorUnterminatedQuote;
+    } else if ([msgLower containsString:@"expected"] && [msgLower containsString:@"after quoted"]) {
+        // "expected ';' or end after quoted value" - treat as unterminated quote for compatibility
+        code = CSCapUrnErrorUnterminatedQuote;
+    } else if ([msgLower containsString:@"numeric"]) {
+        code = CSCapUrnErrorNumericKey;
+    } else if ([msgLower containsString:@"escape"]) {
+        code = CSCapUrnErrorInvalidEscapeSequence;
+    } else if ([msgLower containsString:@"incomplete"] || [msgLower containsString:@"missing value"]) {
+        code = CSCapUrnErrorInvalidTagFormat;
+    } else {
+        code = CSCapUrnErrorInvalidFormat;
+    }
+
+    return [NSError errorWithDomain:CSCapUrnErrorDomain
+                               code:code
+                           userInfo:@{NSLocalizedDescriptionKey: msg}];
+}
 
 + (nullable instancetype)fromString:(NSString *)string error:(NSError **)error {
     if (!string || string.length == 0) {
@@ -88,7 +116,7 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         return nil;
     }
 
-    // Check for "cap:" prefix (case-insensitive)
+    // Check for "cap:" prefix early to give better error messages
     if (string.length < 4 || ![[string substringToIndex:4] caseInsensitiveCompare:@"cap:"] == NSOrderedSame) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
@@ -98,203 +126,35 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         return nil;
     }
 
-    NSString *tagsPart = [string substringFromIndex:4];
-    NSMutableDictionary<NSString *, NSString *> *allTags = [NSMutableDictionary dictionary];
-
-    // Handle empty cap URN - this now FAILS because in/out are required
-    if (tagsPart.length == 0 || [tagsPart isEqualToString:@";"]) {
+    // Use CSTaggedUrn for parsing
+    NSError *parseError = nil;
+    CSTaggedUrn *taggedUrn = [CSTaggedUrn fromString:string error:&parseError];
+    if (parseError) {
         if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorMissingInSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input spec"}];
+            *error = [self capUrnErrorFromTaggedUrnError:parseError];
         }
         return nil;
     }
 
-    CSParseState state = CSParseStateExpectingKey;
-    NSMutableString *currentKey = [NSMutableString string];
-    NSMutableString *currentValue = [NSMutableString string];
-    NSUInteger pos = 0;
-
-    while (pos < tagsPart.length) {
-        unichar c = [tagsPart characterAtIndex:pos];
-
-        switch (state) {
-            case CSParseStateExpectingKey:
-                if (c == ';') {
-                    // Empty segment, skip
-                    pos++;
-                    continue;
-                } else if ([self isValidKeyChar:c]) {
-                    [currentKey appendFormat:@"%c", tolower(c)];
-                    state = CSParseStateInKey;
-                } else {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorInvalidCharacter
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"invalid character '%C' at position %lu", c, (unsigned long)pos]}];
-                    }
-                    return nil;
-                }
-                break;
-
-            case CSParseStateInKey:
-                if (c == '=') {
-                    if (currentKey.length == 0) {
-                        if (error) {
-                            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                         code:CSCapUrnErrorEmptyTag
-                                                     userInfo:@{NSLocalizedDescriptionKey: @"empty key"}];
-                        }
-                        return nil;
-                    }
-                    state = CSParseStateExpectingValue;
-                } else if ([self isValidKeyChar:c]) {
-                    [currentKey appendFormat:@"%c", tolower(c)];
-                } else {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorInvalidCharacter
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"invalid character '%C' in key at position %lu", c, (unsigned long)pos]}];
-                    }
-                    return nil;
-                }
-                break;
-
-            case CSParseStateExpectingValue:
-                if (c == '"') {
-                    state = CSParseStateInQuotedValue;
-                } else if (c == ';') {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorEmptyTag
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"empty value for key '%@'", currentKey]}];
-                    }
-                    return nil;
-                } else if ([self isValidUnquotedValueChar:c]) {
-                    [currentValue appendFormat:@"%c", tolower(c)];
-                    state = CSParseStateInUnquotedValue;
-                } else {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorInvalidCharacter
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"invalid character '%C' in value at position %lu", c, (unsigned long)pos]}];
-                    }
-                    return nil;
-                }
-                break;
-
-            case CSParseStateInUnquotedValue:
-                if (c == ';') {
-                    if (![self finishTag:allTags key:currentKey value:currentValue error:error]) {
-                        return nil;
-                    }
-                    [currentKey setString:@""];
-                    [currentValue setString:@""];
-                    state = CSParseStateExpectingKey;
-                } else if ([self isValidUnquotedValueChar:c]) {
-                    [currentValue appendFormat:@"%c", tolower(c)];
-                } else {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorInvalidCharacter
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"invalid character '%C' in unquoted value at position %lu", c, (unsigned long)pos]}];
-                    }
-                    return nil;
-                }
-                break;
-
-            case CSParseStateInQuotedValue:
-                if (c == '"') {
-                    state = CSParseStateExpectingSemiOrEnd;
-                } else if (c == '\\') {
-                    state = CSParseStateInQuotedValueEscape;
-                } else {
-                    // Any character allowed in quoted value, preserve case
-                    [currentValue appendFormat:@"%C", c];
-                }
-                break;
-
-            case CSParseStateInQuotedValueEscape:
-                if (c == '"' || c == '\\') {
-                    [currentValue appendFormat:@"%C", c];
-                    state = CSParseStateInQuotedValue;
-                } else {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorInvalidEscapeSequence
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"invalid escape sequence at position %lu (only \\\" and \\\\ allowed)", (unsigned long)pos]}];
-                    }
-                    return nil;
-                }
-                break;
-
-            case CSParseStateExpectingSemiOrEnd:
-                if (c == ';') {
-                    if (![self finishTag:allTags key:currentKey value:currentValue error:error]) {
-                        return nil;
-                    }
-                    [currentKey setString:@""];
-                    [currentValue setString:@""];
-                    state = CSParseStateExpectingKey;
-                } else {
-                    if (error) {
-                        *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                                     code:CSCapUrnErrorInvalidCharacter
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"expected ';' or end after quoted value, got '%C' at position %lu", c, (unsigned long)pos]}];
-                    }
-                    return nil;
-                }
-                break;
+    // Double-check prefix (should always be 'cap' after the early check above)
+    if (![[taggedUrn.prefix lowercaseString] isEqualToString:@"cap"]) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorMissingCapPrefix
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Expected 'cap:' prefix, got '%@:'", taggedUrn.prefix]}];
         }
-
-        pos++;
-    }
-
-    // Handle end of input
-    switch (state) {
-        case CSParseStateInUnquotedValue:
-        case CSParseStateExpectingSemiOrEnd:
-            if (![self finishTag:allTags key:currentKey value:currentValue error:error]) {
-                return nil;
-            }
-            break;
-        case CSParseStateExpectingKey:
-            // Valid - trailing semicolon or empty input after prefix
-            break;
-        case CSParseStateInQuotedValue:
-        case CSParseStateInQuotedValueEscape:
-            if (error) {
-                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                             code:CSCapUrnErrorUnterminatedQuote
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"unterminated quote at position %lu", (unsigned long)pos]}];
-            }
-            return nil;
-        case CSParseStateInKey:
-            if (error) {
-                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                             code:CSCapUrnErrorInvalidTagFormat
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"incomplete tag '%@'", currentKey]}];
-            }
-            return nil;
-        case CSParseStateExpectingValue:
-            if (error) {
-                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                             code:CSCapUrnErrorEmptyTag
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"empty value for key '%@'", currentKey]}];
-            }
-            return nil;
+        return nil;
     }
 
     // Extract required 'in' and 'out' tags
-    NSString *inSpecValue = allTags[@"in"];
-    NSString *outSpecValue = allTags[@"out"];
+    NSString *inSpecValue = [taggedUrn getTag:@"in"];
+    NSString *outSpecValue = [taggedUrn getTag:@"out"];
 
     if (!inSpecValue) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                          code:CSCapUrnErrorMissingInSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input spec"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input media URN"}];
         }
         return nil;
     }
@@ -302,63 +162,39 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                          code:CSCapUrnErrorMissingOutSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output spec"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output media URN"}];
+        }
+        return nil;
+    }
+
+    // Validate in/out are media URNs or wildcards
+    if (![self isValidMediaUrnOrWildcard:inSpecValue]) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid 'in' media URN: %@. Must start with 'media:' or be '*'", inSpecValue]}];
+        }
+        return nil;
+    }
+    if (![self isValidMediaUrnOrWildcard:outSpecValue]) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid 'out' media URN: %@. Must start with 'media:' or be '*'", outSpecValue]}];
         }
         return nil;
     }
 
     // Build remaining tags (excluding in/out)
     NSMutableDictionary<NSString *, NSString *> *remainingTags = [NSMutableDictionary dictionary];
-    for (NSString *key in allTags) {
-        if (![key isEqualToString:@"in"] && ![key isEqualToString:@"out"]) {
-            remainingTags[key] = allTags[key];
+    for (NSString *key in taggedUrn.tags) {
+        NSString *keyLower = [key lowercaseString];
+        if (![keyLower isEqualToString:@"in"] && ![keyLower isEqualToString:@"out"]) {
+            remainingTags[keyLower] = taggedUrn.tags[key];
         }
     }
 
     return [self fromInSpec:inSpecValue outSpec:outSpecValue tags:remainingTags error:error];
-}
-
-+ (BOOL)finishTag:(NSMutableDictionary *)tags key:(NSString *)key value:(NSString *)value error:(NSError **)error {
-    if (key.length == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorEmptyTag
-                                     userInfo:@{NSLocalizedDescriptionKey: @"empty key"}];
-        }
-        return NO;
-    }
-    if (value.length == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorEmptyTag
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"empty value for key '%@'", key]}];
-        }
-        return NO;
-    }
-
-    // Check for duplicate keys
-    if (tags[key] != nil) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorDuplicateKey
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Duplicate tag key: %@", key]}];
-        }
-        return NO;
-    }
-
-    // Validate key cannot be purely numeric
-    if ([self isPurelyNumeric:key]) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorNumericKey
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Tag key cannot be purely numeric: %@", key]}];
-        }
-        return NO;
-    }
-
-    // Copy strings to prevent mutation after storage
-    tags[[key copy]] = [value copy];
-    return YES;
 }
 
 + (nullable instancetype)fromTags:(NSDictionary<NSString *, NSString *> *)tags error:(NSError **)error {
@@ -381,7 +217,7 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                          code:CSCapUrnErrorMissingInSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input spec"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input media URN"}];
         }
         return nil;
     }
@@ -389,7 +225,25 @@ typedef NS_ENUM(NSInteger, CSParseState) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                          code:CSCapUrnErrorMissingOutSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output spec"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output media URN"}];
+        }
+        return nil;
+    }
+
+    // Validate in/out are media URNs or wildcards
+    if (![self isValidMediaUrnOrWildcard:inSpecValue]) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid 'in' media URN: %@. Must start with 'media:' or be '*'", inSpecValue]}];
+        }
+        return nil;
+    }
+    if (![self isValidMediaUrnOrWildcard:outSpecValue]) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidFormat
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid 'out' media URN: %@. Must start with 'media:' or be '*'", outSpecValue]}];
         }
         return nil;
     }
@@ -665,6 +519,14 @@ typedef NS_ENUM(NSInteger, CSParseState) {
     allTags[@"in"] = self.inSpec;
     allTags[@"out"] = self.outSpec;
 
+    // Use CSTaggedUrn for serialization to ensure consistent output
+    NSError *error = nil;
+    CSTaggedUrn *taggedUrn = [CSTaggedUrn fromPrefix:@"cap" tags:allTags error:&error];
+    if (taggedUrn) {
+        return [taggedUrn toString];
+    }
+
+    // Fallback to manual serialization if TaggedUrn fails (should not happen)
     // Sort keys for canonical representation (alphabetical order including in/out)
     NSArray<NSString *> *sortedKeys = [allTags.allKeys sortedArrayUsingSelector:@selector(compare:)];
 
