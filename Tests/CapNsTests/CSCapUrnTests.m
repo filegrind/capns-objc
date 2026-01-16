@@ -103,22 +103,23 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidFormat);
 }
 
-- (void)testInvalidTagFormat {
+- (void)testValuelessTagParsing {
     NSError *error;
-    // A tag without an '=' causes CSCapUrnErrorInvalidCharacter when the semicolon is encountered
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";invalid_tag;out=\"media:type=object;v=1\"" error:&error];
+    // Value-less tags are now valid (parsed as wildcards)
+    // Cap URN with valid in/out and a value-less tag should succeed
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";optimize;out=\"media:type=object;v=1\"" error:&error];
 
-    XCTAssertNil(capUrn);
-    XCTAssertNotNil(error);
-    // The parser sees ';' as an invalid character in the key (since key is still being parsed)
-    XCTAssertEqual(error.code, CSCapUrnErrorInvalidCharacter);
+    XCTAssertNotNil(capUrn);
+    XCTAssertNil(error);
+    // Value-less tag is parsed as wildcard
+    XCTAssertEqualObjects([capUrn getTag:@"optimize"], @"*");
 
-    // Test CSCapUrnErrorInvalidTagFormat - incomplete tag at end of input
+    // Test value-less tag at end of input
     error = nil;
-    capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";key" error:&error];
-    XCTAssertNil(capUrn);
-    XCTAssertNotNil(error);
-    XCTAssertEqual(error.code, CSCapUrnErrorInvalidTagFormat);
+    capUrn = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";out=\"media:type=object;v=1\";flag" error:&error];
+    XCTAssertNotNil(capUrn);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([capUrn getTag:@"flag"], @"*");
 }
 
 - (void)testInvalidCharacters {
