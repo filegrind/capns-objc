@@ -217,8 +217,8 @@
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
 
-    // Alphabetical order: ext, in, op, out, quality
-    XCTAssertEqualObjects([cap toString], @"cap:ext=*;in=*;op=convert;out=*;quality=*");
+    // Alphabetical order: ext, in, op, out, quality (wildcards serialized as value-less tags)
+    XCTAssertEqualObjects([cap toString], @"cap:ext;in;op=convert;out;quality");
     XCTAssertEqual([cap specificity], 1); // Only op is specific
 
     XCTAssertEqualObjects([cap getTag:@"ext"], @"*");
