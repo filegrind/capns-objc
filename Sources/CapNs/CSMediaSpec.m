@@ -12,17 +12,17 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 // BUILT-IN MEDIA URN CONSTANTS
 // ============================================================================
 
-NSString * const CSMediaString = @"media:type=string;v=1";
-NSString * const CSMediaInteger = @"media:type=integer;v=1";
-NSString * const CSMediaNumber = @"media:type=number;v=1";
-NSString * const CSMediaBoolean = @"media:type=boolean;v=1";
-NSString * const CSMediaObject = @"media:type=object;v=1";
-NSString * const CSMediaStringArray = @"media:type=string-array;v=1";
-NSString * const CSMediaIntegerArray = @"media:type=integer-array;v=1";
-NSString * const CSMediaNumberArray = @"media:type=number-array;v=1";
-NSString * const CSMediaBooleanArray = @"media:type=boolean-array;v=1";
-NSString * const CSMediaObjectArray = @"media:type=object-array;v=1";
-NSString * const CSMediaBinary = @"media:type=binary;v=1";
+NSString * const CSMediaString = @"media:type=string;v=1;textable;scalar";
+NSString * const CSMediaInteger = @"media:type=integer;v=1;textable;numeric;scalar";
+NSString * const CSMediaNumber = @"media:type=number;v=1;textable;numeric;scalar";
+NSString * const CSMediaBoolean = @"media:type=boolean;v=1;textable;scalar";
+NSString * const CSMediaObject = @"media:type=object;v=1;textable;keyed";
+NSString * const CSMediaStringArray = @"media:type=string-array;v=1;textable;sequence";
+NSString * const CSMediaIntegerArray = @"media:type=integer-array;v=1;textable;numeric;sequence";
+NSString * const CSMediaNumberArray = @"media:type=number-array;v=1;textable;numeric;sequence";
+NSString * const CSMediaBooleanArray = @"media:type=boolean-array;v=1;textable;sequence";
+NSString * const CSMediaObjectArray = @"media:type=object-array;v=1;textable;keyed;sequence";
+NSString * const CSMediaBinary = @"media:type=binary;v=1;binary";
 NSString * const CSMediaVoid = @"media:type=void;v=1";
 
 // Built-in media URN definitions - maps media URN to canonical media spec string
