@@ -34,18 +34,18 @@ typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
 // BUILT-IN MEDIA URN CONSTANTS
 // ============================================================================
 
-/// Well-known built-in media URNs - these do not need to be declared in mediaSpecs
-FOUNDATION_EXPORT NSString * const CSMediaString;       // media:type=string;v=1
-FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:type=integer;v=1
-FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:type=number;v=1
-FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:type=boolean;v=1
-FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:type=object;v=1
-FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:type=string-array;v=1
-FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:type=integer-array;v=1
-FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:type=number-array;v=1
-FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:type=boolean-array;v=1
-FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:type=object-array;v=1
-FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=binary;v=1
+/// Well-known built-in media URNs with coercion tags - these do not need to be declared in mediaSpecs
+FOUNDATION_EXPORT NSString * const CSMediaString;       // media:type=string;v=1;textable;scalar
+FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:type=integer;v=1;textable;numeric;scalar
+FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:type=number;v=1;textable;numeric;scalar
+FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:type=boolean;v=1;textable;scalar
+FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:type=object;v=1;textable;keyed
+FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:type=string-array;v=1;textable;sequence
+FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:type=integer-array;v=1;textable;numeric;sequence
+FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:type=number-array;v=1;textable;numeric;sequence
+FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:type=boolean-array;v=1;textable;sequence
+FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:type=object-array;v=1;textable;keyed;sequence
+FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=binary;v=1;binary
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:type=void;v=1
 
 /**
