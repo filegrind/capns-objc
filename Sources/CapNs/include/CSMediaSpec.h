@@ -47,6 +47,23 @@ FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:type=boolean-ar
 FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:type=object-array;v=1;textable;keyed;sequence
 FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=binary;v=1;binary
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:type=void;v=1
+// Semantic content types
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:type=image;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:type=audio;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:type=video;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaText;         // media:type=text;v=1;textable
+// Document types (PRIMARY naming - type IS the format)
+FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:type=pdf;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:type=epub;v=1;binary
+// Text format types (PRIMARY naming - type IS the format)
+FOUNDATION_EXPORT NSString * const CSMediaMd;           // media:type=md;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaTxt;          // media:type=txt;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaRst;          // media:type=rst;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaLog;          // media:type=log;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaHtml;         // media:type=html;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaXml;          // media:type=xml;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:type=json;v=1;textable;keyed
+FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:type=yaml;v=1;textable;keyed
 
 /**
  * A parsed MediaSpec value
@@ -61,6 +78,12 @@ FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:type=void;v=1
 
 /// Optional JSON Schema for local validation
 @property (nonatomic, readonly, nullable) NSDictionary *schema;
+
+/// Optional display-friendly title
+@property (nonatomic, readonly, nullable) NSString *title;
+
+/// Optional description
+@property (nonatomic, readonly, nullable) NSString *descriptionText;
 
 /**
  * Parse a media_spec string in canonical format
@@ -166,6 +189,21 @@ BOOL CSIsBuiltinMediaUrn(NSString *mediaUrn);
  * @return The canonical media spec string or nil if not built-in
  */
 NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn);
+
+/**
+ * Check if a media URN satisfies another media URN's requirements.
+ * Used for cap matching - checks if a provided media type can satisfy a cap's input requirement.
+ *
+ * Matching rules:
+ * - Type must match (e.g., "image" != "binary")
+ * - Extension must match if specified in requirement
+ * - Version must match if specified in requirement
+ *
+ * @param providedUrn The media URN being provided (e.g., from a listing)
+ * @param requirementUrn The media URN required (e.g., from a cap's input spec)
+ * @return YES if providedUrn satisfies requirementUrn
+ */
+BOOL CSMediaUrnSatisfies(NSString *providedUrn, NSString *requirementUrn);
 
 /**
  * Helper functions for working with MediaSpec in CapUrn
