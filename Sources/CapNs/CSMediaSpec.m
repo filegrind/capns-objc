@@ -24,6 +24,23 @@ NSString * const CSMediaBooleanArray = @"media:type=boolean-array;v=1;textable;s
 NSString * const CSMediaObjectArray = @"media:type=object-array;v=1;textable;keyed;sequence";
 NSString * const CSMediaBinary = @"media:type=binary;v=1;binary";
 NSString * const CSMediaVoid = @"media:type=void;v=1";
+// Semantic content types
+NSString * const CSMediaImage = @"media:type=image;v=1;binary";
+NSString * const CSMediaAudio = @"media:type=audio;v=1;binary";
+NSString * const CSMediaVideo = @"media:type=video;v=1;binary";
+NSString * const CSMediaText = @"media:type=text;v=1;textable";
+// Document types (PRIMARY naming - type IS the format)
+NSString * const CSMediaPdf = @"media:type=pdf;v=1;binary";
+NSString * const CSMediaEpub = @"media:type=epub;v=1;binary";
+// Text format types (PRIMARY naming - type IS the format)
+NSString * const CSMediaMd = @"media:type=md;v=1;textable";
+NSString * const CSMediaTxt = @"media:type=txt;v=1;textable";
+NSString * const CSMediaRst = @"media:type=rst;v=1;textable";
+NSString * const CSMediaLog = @"media:type=log;v=1;textable";
+NSString * const CSMediaHtml = @"media:type=html;v=1;textable";
+NSString * const CSMediaXml = @"media:type=xml;v=1;textable";
+NSString * const CSMediaJson = @"media:type=json;v=1;textable;keyed";
+NSString * const CSMediaYaml = @"media:type=yaml;v=1;textable;keyed";
 
 // Built-in media URN definitions - maps media URN to canonical media spec string
 static NSDictionary<NSString *, NSString *> *_builtinMediaUrns = nil;
@@ -43,7 +60,24 @@ static NSDictionary<NSString *, NSString *> *CSGetBuiltinMediaUrns(void) {
             CSMediaBooleanArray: @"application/json; profile=https://capns.org/schema/boolean-array",
             CSMediaObjectArray: @"application/json; profile=https://capns.org/schema/object-array",
             CSMediaBinary: @"application/octet-stream",
-            CSMediaVoid: @"application/x-void; profile=https://capns.org/schema/void"
+            CSMediaVoid: @"application/x-void; profile=https://capns.org/schema/void",
+            // Semantic content types
+            CSMediaImage: @"image/png; profile=https://capns.org/schema/image",
+            CSMediaAudio: @"audio/wav; profile=https://capns.org/schema/audio",
+            CSMediaVideo: @"video/mp4; profile=https://capns.org/schema/video",
+            CSMediaText: @"text/plain; profile=https://capns.org/schema/text",
+            // Document types (PRIMARY naming)
+            CSMediaPdf: @"application/pdf",
+            CSMediaEpub: @"application/epub+zip",
+            // Text format types (PRIMARY naming)
+            CSMediaMd: @"text/markdown",
+            CSMediaTxt: @"text/plain",
+            CSMediaRst: @"text/x-rst",
+            CSMediaLog: @"text/plain",
+            CSMediaHtml: @"text/html",
+            CSMediaXml: @"application/xml",
+            CSMediaJson: @"application/json",
+            CSMediaYaml: @"application/x-yaml"
         };
     });
     return _builtinMediaUrns;
@@ -65,6 +99,8 @@ NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
 @property (nonatomic, readwrite) NSString *contentType;
 @property (nonatomic, readwrite, nullable) NSString *profile;
 @property (nonatomic, readwrite, nullable) NSDictionary *schema;
+@property (nonatomic, readwrite, nullable) NSString *title;
+@property (nonatomic, readwrite, nullable) NSString *descriptionText;
 @end
 
 @implementation CSMediaSpec
@@ -155,10 +191,20 @@ NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
 + (instancetype)withContentType:(NSString *)contentType
                         profile:(nullable NSString *)profile
                          schema:(nullable NSDictionary *)schema {
+    return [self withContentType:contentType profile:profile schema:schema title:nil descriptionText:nil];
+}
+
++ (instancetype)withContentType:(NSString *)contentType
+                        profile:(nullable NSString *)profile
+                         schema:(nullable NSDictionary *)schema
+                          title:(nullable NSString *)title
+                descriptionText:(nullable NSString *)descriptionText {
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
     spec.profile = profile;
     spec.schema = schema;
+    spec.title = title;
+    spec.descriptionText = descriptionText;
     return spec;
 }
 
@@ -232,11 +278,13 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
             // String form: canonical media spec string
             return [CSMediaSpec parse:(NSString *)def error:error];
         } else if ([def isKindOfClass:[NSDictionary class]]) {
-            // Object form: { media_type, profile_uri, schema? }
+            // Object form: { media_type, profile_uri, schema?, title?, description? }
             NSDictionary *objDef = (NSDictionary *)def;
             NSString *mediaType = objDef[@"media_type"] ?: objDef[@"mediaType"];
             NSString *profileUri = objDef[@"profile_uri"] ?: objDef[@"profileUri"];
             NSDictionary *schema = objDef[@"schema"];
+            NSString *title = objDef[@"title"];
+            NSString *descriptionText = objDef[@"description"];
 
             if (!mediaType) {
                 if (error) {
@@ -247,7 +295,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                 return nil;
             }
 
-            return [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema];
+            return [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText];
         }
     }
 
@@ -264,6 +312,65 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                                  userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Cannot resolve media URN: '%@'. Not found in mediaSpecs table and not a known built-in.", mediaUrn]}];
     }
     return nil;
+}
+
+// ============================================================================
+// MEDIA URN SATISFIES
+// ============================================================================
+
+/// Helper to extract a tag value from a media URN string
+static NSString * _Nullable CSExtractMediaUrnTag(NSString *mediaUrn, NSString *tagName) {
+    // Media URN format: media:type=X;ext=Y;v=1;...
+    NSString *prefix = [NSString stringWithFormat:@"%@=", tagName];
+    NSRange range = [mediaUrn rangeOfString:prefix];
+    if (range.location == NSNotFound) {
+        return nil;
+    }
+
+    NSUInteger start = range.location + range.length;
+    NSRange semicolonRange = [mediaUrn rangeOfString:@";" options:0 range:NSMakeRange(start, mediaUrn.length - start)];
+
+    if (semicolonRange.location == NSNotFound) {
+        return [mediaUrn substringFromIndex:start];
+    }
+    return [mediaUrn substringWithRange:NSMakeRange(start, semicolonRange.location - start)];
+}
+
+BOOL CSMediaUrnSatisfies(NSString *providedUrn, NSString *requirementUrn) {
+    if (!providedUrn || !requirementUrn) {
+        return NO;
+    }
+
+    // Extract type from both URNs
+    NSString *providedType = CSExtractMediaUrnTag(providedUrn, @"type");
+    NSString *requiredType = CSExtractMediaUrnTag(requirementUrn, @"type");
+
+    // Type must match if required
+    if (requiredType) {
+        if (!providedType || ![providedType isEqualToString:requiredType]) {
+            return NO;
+        }
+    }
+
+    // Extension must match if specified in requirement
+    NSString *requiredExt = CSExtractMediaUrnTag(requirementUrn, @"ext");
+    if (requiredExt) {
+        NSString *providedExt = CSExtractMediaUrnTag(providedUrn, @"ext");
+        if (!providedExt || ![providedExt isEqualToString:requiredExt]) {
+            return NO;
+        }
+    }
+
+    // Version must match if specified in requirement
+    NSString *requiredVersion = CSExtractMediaUrnTag(requirementUrn, @"v");
+    if (requiredVersion) {
+        NSString *providedVersion = CSExtractMediaUrnTag(providedUrn, @"v");
+        if (!providedVersion || ![providedVersion isEqualToString:requiredVersion]) {
+            return NO;
+        }
+    }
+
+    return YES;
 }
 
 // ============================================================================

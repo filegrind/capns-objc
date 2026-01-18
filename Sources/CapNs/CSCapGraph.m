@@ -7,6 +7,7 @@
 
 #import "include/CSCapGraph.h"
 #import "include/CSCapUrn.h"
+#import "include/CSMediaSpec.h"
 
 // ============================================================================
 // CSCapGraphEdge
@@ -122,15 +123,24 @@
 }
 
 - (NSArray<CSCapGraphEdge *> *)getOutgoing:(NSString *)spec {
-    NSArray<NSNumber *> *indices = self.outgoing[spec];
-    if (!indices) {
-        return @[];
+    // Use satisfies-based matching: find all edges where the provided spec
+    // satisfies the edge's input requirement (fromSpec)
+    NSMutableArray<CSCapGraphEdge *> *result = [[NSMutableArray alloc] init];
+
+    for (CSCapGraphEdge *edge in self.edges) {
+        // Check if the provided spec satisfies the edge's input requirement
+        if (CSMediaUrnSatisfies(spec, edge.fromSpec)) {
+            [result addObject:edge];
+        }
     }
 
-    NSMutableArray<CSCapGraphEdge *> *result = [[NSMutableArray alloc] initWithCapacity:indices.count];
-    for (NSNumber *idx in indices) {
-        [result addObject:self.edges[idx.integerValue]];
-    }
+    // Sort by specificity (highest first) for consistent ordering
+    [result sortUsingComparator:^NSComparisonResult(CSCapGraphEdge *a, CSCapGraphEdge *b) {
+        if (a.specificity > b.specificity) return NSOrderedAscending;
+        if (a.specificity < b.specificity) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+
     return [result copy];
 }
 
