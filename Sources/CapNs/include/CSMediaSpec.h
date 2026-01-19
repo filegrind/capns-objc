@@ -45,11 +45,11 @@ FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:type=integer-ar
 FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:type=number-array;v=1;textable;numeric;sequence
 FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:type=boolean-array;v=1;textable;sequence
 FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:type=object-array;v=1;textable;keyed;sequence
-FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=binary;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=raw;v=1;binary
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:type=void;v=1
 // Semantic content types
-FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:type=image;v=1;binary
-FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:type=audio;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:type=png;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:type=wav;audio;binary;v=1;
 FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:type=video;v=1;binary
 FOUNDATION_EXPORT NSString * const CSMediaText;         // media:type=text;v=1;textable
 // Document types (PRIMARY naming - type IS the format)
