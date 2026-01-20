@@ -301,12 +301,6 @@ NS_ASSUME_NONNULL_BEGIN
               metadataJSON:(nullable NSDictionary *)metadataJSON;
 
 /**
- * Check if cap accepts stdin
- * @return YES if cap accepts stdin (stdin property is not nil)
- */
-- (BOOL)acceptsStdin;
-
-/**
  * Get the media type expected for stdin
  * @return The media type string if cap accepts stdin, nil otherwise
  */

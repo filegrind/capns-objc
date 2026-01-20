@@ -1128,10 +1128,6 @@
     return cap;
 }
 
-- (BOOL)acceptsStdin {
-    return self.stdinType != nil;
-}
-
 - (nullable NSString *)stdinMediaType {
     return self.stdinType;
 }

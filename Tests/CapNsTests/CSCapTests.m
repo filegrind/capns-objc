@@ -40,8 +40,7 @@
     // URN tags are sorted alphabetically: format, op, type
     XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data_processing");
     XCTAssertEqualObjects(cap.command, @"test-command");
-    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin when stdin is nil");
-    XCTAssertNil(cap.stdinType, @"stdin should be nil when not specified");
+    XCTAssertNil(cap.stdinType, @"stdinType should be nil when not specified");
 }
 
 - (void)testCapWithDescription {
@@ -63,10 +62,10 @@
 
     XCTAssertNotNil(cap);
     XCTAssertEqualObjects(cap.capDescription, @"Parse JSON data");
-    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin when stdin is nil");
+    XCTAssertNil(cap.stdinType, @"stdinType should be nil when not specified");
 }
 
-- (void)testCapAcceptsStdin {
+- (void)testCapStdinType {
     NSError *error;
     CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\";target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
@@ -84,9 +83,8 @@
                        metadataJSON:nil];
 
     XCTAssertNotNil(cap1);
-    XCTAssertFalse(cap1.acceptsStdin, @"Should not accept stdin when stdin is nil");
-    XCTAssertNil(cap1.stdinType, @"stdin should be nil");
-    XCTAssertNil(cap1.stdinMediaType, @"stdinMediaType should be nil");
+    XCTAssertNil(cap1.stdinType, @"stdinType should be nil when not set");
+    XCTAssertNil(cap1.stdinMediaType, @"stdinMediaType should be nil when stdinType is nil");
 
     // Test with stdin = media type (accepts stdin)
     NSString *stdinMediaType = @"media:type=text;v=1;textable";
@@ -102,9 +100,9 @@
                        metadataJSON:nil];
 
     XCTAssertNotNil(cap2);
-    XCTAssertTrue(cap2.acceptsStdin, @"Should accept stdin when stdin is set");
-    XCTAssertEqualObjects(cap2.stdinType, stdinMediaType, @"stdin should match the set value");
-    XCTAssertEqualObjects(cap2.stdinMediaType, stdinMediaType, @"stdinMediaType should return the stdin value");
+    XCTAssertNotNil(cap2.stdinType, @"stdinType should be set");
+    XCTAssertEqualObjects(cap2.stdinType, stdinMediaType, @"stdinType should match the set value");
+    XCTAssertEqualObjects(cap2.stdinMediaType, stdinMediaType, @"stdinMediaType should return the stdinType value");
 }
 
 - (void)testCapMatching {
@@ -154,7 +152,7 @@
     XCTAssertNotNil(copied);
     XCTAssertEqualObjects(original.stdinType, copied.stdinType);
     XCTAssertEqualObjects(copied.stdinType, stdinMediaType);
-    XCTAssertTrue(copied.acceptsStdin);
+    XCTAssertNotNil(copied.stdinType, @"stdinType should be preserved after copy");
 }
 
 - (void)testCanonicalDictionaryDeserialization {
@@ -177,8 +175,8 @@
     XCTAssertEqualObjects([cap urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
-    XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when stdin is set in dictionary");
-    XCTAssertEqualObjects(cap.stdinType, stdinMediaType, @"stdin should match the value in dictionary");
+    XCTAssertNotNil(cap.stdinType, @"stdinType should be set when stdin is in dictionary");
+    XCTAssertEqualObjects(cap.stdinType, stdinMediaType, @"stdinType should match the value in dictionary");
 
     // Test with missing required fields - should fail hard
     NSDictionary *invalidDict = @{
@@ -325,7 +323,7 @@
     // Verify basic properties - URN tags are sorted alphabetically
     XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data");
     XCTAssertEqualObjects(cap.command, @"transform-data");
-    XCTAssertTrue(cap.acceptsStdin);
+    XCTAssertNotNil(cap.stdinType, @"stdinType should be set");
     XCTAssertEqualObjects(cap.stdinType, stdinMediaType);
 
     // Verify metadata
@@ -519,7 +517,7 @@
 
     CSCap *cap = manifest.caps.firstObject;
     XCTAssertEqualObjects([cap urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
-    XCTAssertTrue(cap.acceptsStdin);
+    XCTAssertNotNil(cap.stdinType, @"stdinType should be set from manifest");
     XCTAssertEqualObjects(cap.stdinType, stdinMediaType);
 }
 
