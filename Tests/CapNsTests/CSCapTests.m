@@ -33,14 +33,15 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                             stdinType:nil
                       metadataJSON:nil];
 
     XCTAssertNotNil(cap);
     // URN tags are sorted alphabetically: format, op, type
     XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data_processing");
     XCTAssertEqualObjects(cap.command, @"test-command");
-    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
+    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin when stdin is nil");
+    XCTAssertNil(cap.stdinType, @"stdin should be nil when not specified");
 }
 
 - (void)testCapWithDescription {
@@ -57,12 +58,12 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                             stdinType:nil
                       metadataJSON:nil];
 
     XCTAssertNotNil(cap);
     XCTAssertEqualObjects(cap.capDescription, @"Parse JSON data");
-    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin by default");
+    XCTAssertFalse(cap.acceptsStdin, @"Caps should not accept stdin when stdin is nil");
 }
 
 - (void)testCapAcceptsStdin {
@@ -70,7 +71,7 @@
     CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\";target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
-    // Test with acceptsStdin = NO (default)
+    // Test with stdin = nil (does not accept stdin)
     CSCap *cap1 = [CSCap capWithUrn:key
                               title:@"Generate"
                             command:@"generate"
@@ -79,13 +80,16 @@
                          mediaSpecs:@{}
                           arguments:[CSCapArguments arguments]
                              output:nil
-                       acceptsStdin:NO
+                              stdinType:nil
                        metadataJSON:nil];
 
     XCTAssertNotNil(cap1);
-    XCTAssertFalse(cap1.acceptsStdin, @"Should not accept stdin when explicitly set to NO");
+    XCTAssertFalse(cap1.acceptsStdin, @"Should not accept stdin when stdin is nil");
+    XCTAssertNil(cap1.stdinType, @"stdin should be nil");
+    XCTAssertNil(cap1.stdinMediaType, @"stdinMediaType should be nil");
 
-    // Test with acceptsStdin = YES
+    // Test with stdin = media type (accepts stdin)
+    NSString *stdinMediaType = @"media:type=text;v=1;textable";
     CSCap *cap2 = [CSCap capWithUrn:key
                               title:@"Generate"
                             command:@"generate"
@@ -94,11 +98,13 @@
                          mediaSpecs:@{}
                           arguments:[CSCapArguments arguments]
                              output:nil
-                       acceptsStdin:YES
+                              stdinType:stdinMediaType
                        metadataJSON:nil];
 
     XCTAssertNotNil(cap2);
-    XCTAssertTrue(cap2.acceptsStdin, @"Should accept stdin when explicitly set to YES");
+    XCTAssertTrue(cap2.acceptsStdin, @"Should accept stdin when stdin is set");
+    XCTAssertEqualObjects(cap2.stdinType, stdinMediaType, @"stdin should match the set value");
+    XCTAssertEqualObjects(cap2.stdinMediaType, stdinMediaType, @"stdinMediaType should return the stdin value");
 }
 
 - (void)testCapMatching {
@@ -115,7 +121,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                             stdinType:nil
                       metadataJSON:nil];
 
     // URN tags are sorted alphabetically
@@ -130,7 +136,9 @@
     CSCapUrn *key = [CSCapUrn fromString:@"cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\";target=embeddings" error:&error];
     XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
 
-    // Test copying preserves acceptsStdin
+    NSString *stdinMediaType = @"media:type=text;v=1;textable";
+
+    // Test copying preserves stdin
     CSCap *original = [CSCap capWithUrn:key
                                   title:@"Generate"
                                 command:@"generate"
@@ -139,24 +147,26 @@
                              mediaSpecs:@{}
                               arguments:[CSCapArguments arguments]
                                  output:nil
-                           acceptsStdin:YES
+                                  stdinType:stdinMediaType
                            metadataJSON:nil];
 
     CSCap *copied = [original copy];
     XCTAssertNotNil(copied);
-    XCTAssertEqual(original.acceptsStdin, copied.acceptsStdin);
+    XCTAssertEqualObjects(original.stdinType, copied.stdinType);
+    XCTAssertEqualObjects(copied.stdinType, stdinMediaType);
     XCTAssertTrue(copied.acceptsStdin);
 }
 
 - (void)testCanonicalDictionaryDeserialization {
     // Test CSCap.capWithDictionary with new format
+    NSString *stdinMediaType = @"media:type=pdf;v=1;binary";
     NSDictionary *capDict = @{
         @"urn": @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata",
         @"title": @"Extract Metadata",
         @"command": @"extract-metadata",
         @"cap_description": @"Extract metadata from documents",
         @"metadata": @{@"ext": @"json"},
-        @"accepts_stdin": @YES
+        @"stdin": stdinMediaType
     };
 
     NSError *error;
@@ -167,7 +177,8 @@
     XCTAssertEqualObjects([cap urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
     XCTAssertEqualObjects(cap.command, @"extract-metadata");
     XCTAssertEqualObjects(cap.capDescription, @"Extract metadata from documents");
-    XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when specified in dictionary");
+    XCTAssertTrue(cap.acceptsStdin, @"Should accept stdin when stdin is set in dictionary");
+    XCTAssertEqualObjects(cap.stdinType, stdinMediaType, @"stdin should match the value in dictionary");
 
     // Test with missing required fields - should fail hard
     NSDictionary *invalidDict = @{
@@ -258,13 +269,14 @@
 
 - (void)testCompleteCapDeserialization {
     // Test a complete cap with all nested structures using new format
+    NSString *stdinMediaType = @"media:type=json;v=1;textable;keyed";
     NSDictionary *completeCapDict = @{
         @"urn": @"cap:in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";format=json;type=data",
         @"title": @"Transform Data",
         @"command": @"transform-data",
         @"cap_description": @"Transform JSON data with validation",
         @"metadata": @{@"engine": @"jq", @"performance": @"high"},
-        @"accepts_stdin": @YES,
+        @"stdin": stdinMediaType,
         @"media_specs": @{
             @"my:output.v1": @{
                 @"media_type": @"application/json",
@@ -314,6 +326,7 @@
     XCTAssertEqualObjects([cap urnString], @"cap:format=json;in=\"media:type=void;v=1\";op=transform;out=\"media:type=object;v=1\";type=data");
     XCTAssertEqualObjects(cap.command, @"transform-data");
     XCTAssertTrue(cap.acceptsStdin);
+    XCTAssertEqualObjects(cap.stdinType, stdinMediaType);
 
     // Verify metadata
     XCTAssertEqualObjects(cap.metadata[@"engine"], @"jq");
@@ -371,7 +384,7 @@
                         mediaSpecs:mediaSpecs
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO
+                             stdinType:nil
                       metadataJSON:nil];
 
     // Resolve custom spec ID
@@ -431,7 +444,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     CSCapManifest *manifest = [CSCapManifest manifestWithName:@"TestComponent"
@@ -460,7 +473,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     CSCapManifest *manifest = [[CSCapManifest manifestWithName:@"TestComponent"
@@ -473,6 +486,7 @@
 }
 
 - (void)testCapManifestDictionaryDeserialization {
+    NSString *stdinMediaType = @"media:type=pdf;v=1;binary";
     NSDictionary *manifestDict = @{
         @"name": @"TestComponent",
         @"version": @"0.1.0",
@@ -483,7 +497,7 @@
                 @"urn": @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata",
                 @"title": @"Extract Metadata",
                 @"command": @"extract-metadata",
-                @"accepts_stdin": @YES,
+                @"stdin": stdinMediaType,
                 @"arguments": @{
                     @"required": @[],
                     @"optional": @[]
@@ -506,6 +520,7 @@
     CSCap *cap = manifest.caps.firstObject;
     XCTAssertEqualObjects([cap urnString], @"cap:in=\"media:type=void;v=1\";op=extract;out=\"media:type=object;v=1\";target=metadata");
     XCTAssertTrue(cap.acceptsStdin);
+    XCTAssertEqualObjects(cap.stdinType, stdinMediaType);
 }
 
 - (void)testCapManifestRequiredFields {
@@ -539,7 +554,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     CSCap *cap2 = [CSCap capWithUrn:key2
@@ -550,7 +565,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     CSCapManifest *manifest = [CSCapManifest manifestWithName:@"MultiCapComponent"
@@ -602,7 +617,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     CSCapManifest *manifestWithoutAuthor = [CSCapManifest manifestWithName:@"ValidatorComponent"
@@ -650,7 +665,7 @@
                         mediaSpecs:@{}
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     // Create manifest similar to what a plugin would have

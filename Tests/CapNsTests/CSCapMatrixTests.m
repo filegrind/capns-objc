@@ -66,7 +66,7 @@
                         mediaSpecs:@{}
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     NSError *registerError = nil;
@@ -110,7 +110,7 @@
                               mediaSpecs:@{}
                                arguments:[CSCapArguments arguments]
                                   output:nil
-                            acceptsStdin:NO
+                            stdinType:nil
                             metadataJSON:nil];
 
     // Register specific host
@@ -124,7 +124,7 @@
                                mediaSpecs:@{}
                                 arguments:[CSCapArguments arguments]
                                    output:nil
-                             acceptsStdin:NO
+                             stdinType:nil
                              metadataJSON:nil];
 
     [self.registry registerCapSet:@"general" host:generalHost capabilities:@[generalCap] error:nil];
@@ -169,7 +169,7 @@
                         mediaSpecs:@{}
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
@@ -195,7 +195,7 @@
                         mediaSpecs:@{}
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
@@ -226,7 +226,7 @@
                         mediaSpecs:@{}
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];

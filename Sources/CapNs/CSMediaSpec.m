@@ -5,6 +5,7 @@
 
 #import "include/CSMediaSpec.h"
 #import "include/CSCapUrn.h"
+@import TaggedUrn;
 
 NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 
@@ -101,7 +102,17 @@ NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
 @property (nonatomic, readwrite, nullable) NSDictionary *schema;
 @property (nonatomic, readwrite, nullable) NSString *title;
 @property (nonatomic, readwrite, nullable) NSString *descriptionText;
+@property (nonatomic, readwrite, nullable) NSString *mediaUrn;
 @end
+
+/// Helper to check if a media URN has a marker tag using CSTaggedUrn
+static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
+    if (!mediaUrn) return NO;
+    NSError *error = nil;
+    CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
+    if (error || !parsed) return NO;
+    return [parsed getTag:tagName] != nil;
+}
 
 @implementation CSMediaSpec
 
@@ -213,27 +224,15 @@ NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
 }
 
 - (BOOL)isBinary {
-    NSString *ct = [self.contentType lowercaseString];
-
-    // Binary content types
-    return [ct hasPrefix:@"image/"] ||
-           [ct hasPrefix:@"audio/"] ||
-           [ct hasPrefix:@"video/"] ||
-           [ct isEqualToString:@"application/octet-stream"] ||
-           [ct isEqualToString:@"application/pdf"] ||
-           [ct hasPrefix:@"application/x-"] ||
-           [ct containsString:@"+zip"] ||
-           [ct containsString:@"+gzip"];
+    return CSMediaUrnHasTag(self.mediaUrn, @"binary");
 }
 
 - (BOOL)isJSON {
-    NSString *ct = [self.contentType lowercaseString];
-    return [ct isEqualToString:@"application/json"] || [ct hasSuffix:@"+json"];
+    return CSMediaUrnHasTag(self.mediaUrn, @"keyed");
 }
 
 - (BOOL)isText {
-    NSString *ct = [self.contentType lowercaseString];
-    return [ct hasPrefix:@"text/"] || (![self isBinary] && ![self isJSON]);
+    return CSMediaUrnHasTag(self.mediaUrn, @"textable");
 }
 
 - (NSString *)primaryType {
@@ -276,7 +275,9 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
 
         if ([def isKindOfClass:[NSString class]]) {
             // String form: canonical media spec string
-            return [CSMediaSpec parse:(NSString *)def error:error];
+            CSMediaSpec *spec = [CSMediaSpec parse:(NSString *)def error:error];
+            if (spec) spec.mediaUrn = mediaUrn;
+            return spec;
         } else if ([def isKindOfClass:[NSDictionary class]]) {
             // Object form: { media_type, profile_uri, schema?, title?, description? }
             NSDictionary *objDef = (NSDictionary *)def;
@@ -295,14 +296,18 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                 return nil;
             }
 
-            return [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText];
+            CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText];
+            spec.mediaUrn = mediaUrn;
+            return spec;
         }
     }
 
     // Check built-in media URNs
     NSString *builtinDef = CSGetBuiltinMediaUrnDefinition(mediaUrn);
     if (builtinDef) {
-        return [CSMediaSpec parse:builtinDef error:error];
+        CSMediaSpec *spec = [CSMediaSpec parse:builtinDef error:error];
+        if (spec) spec.mediaUrn = mediaUrn;
+        return spec;
     }
 
     // FAIL HARD - no fallbacks, no guessing
