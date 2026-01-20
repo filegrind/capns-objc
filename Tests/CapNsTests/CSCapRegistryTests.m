@@ -146,7 +146,7 @@ static NSString *buildRegistryURL(NSString *urn) {
                            command:@"extract-metadata"
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO];
+                      stdinType:nil];
     
     XCTestExpectation *expectation = [self expectationWithDescription:@"Validate cap"];
     

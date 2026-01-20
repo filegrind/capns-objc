@@ -51,7 +51,7 @@
                   mediaSpecs:@{}
                    arguments:[CSCapArguments arguments]
                       output:nil
-                acceptsStdin:NO
+                stdinType:nil
                 metadataJSON:nil];
 }
 
@@ -233,7 +233,7 @@
                         mediaSpecs:@{}
                          arguments:[CSCapArguments arguments]
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     [registry1 registerCapSet:@"converter1" host:host1 capabilities:@[cap1] error:nil];

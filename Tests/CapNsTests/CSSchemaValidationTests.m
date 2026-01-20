@@ -292,7 +292,7 @@
                         mediaSpecs:mediaSpecs
                          arguments:arguments
                             output:nil
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     // Valid user data
@@ -362,7 +362,7 @@
                         mediaSpecs:mediaSpecs
                          arguments:[CSCapArguments arguments]
                             output:output
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     // Valid output
@@ -723,7 +723,7 @@
                         mediaSpecs:mediaSpecs
                          arguments:arguments
                             output:output
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     // Validate cap itself

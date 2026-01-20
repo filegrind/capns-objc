@@ -140,15 +140,18 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
             completion(validationError);
             return;
         }
-        
-        if (cap.acceptsStdin != canonicalCap.acceptsStdin) {
+
+        // Compare stdin - both nil or both equal strings
+        BOOL stdinMatches = (cap.stdinType == nil && canonicalCap.stdinType == nil) ||
+                           (cap.stdinType != nil && canonicalCap.stdinType != nil && [cap.stdinType isEqualToString:canonicalCap.stdinType]);
+        if (!stdinMatches) {
             NSError *validationError = [NSError errorWithDomain:@"CSCapRegistryError"
                                                            code:1004
-                                                       userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"accepts_stdin mismatch. Local: %@, Canonical: %@", cap.acceptsStdin ? @"YES" : @"NO", canonicalCap.acceptsStdin ? @"YES" : @"NO"]}];
+                                                       userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"stdin mismatch. Local: %@, Canonical: %@", cap.stdinType ?: @"(none)", canonicalCap.stdinType ?: @"(none)"]}];
             completion(validationError);
             return;
         }
-        
+
         completion(nil); // Validation passed
     }];
 }

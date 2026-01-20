@@ -50,7 +50,7 @@
                   mediaSpecs:@{}
                    arguments:[CSCapArguments arguments]
                       output:nil
-                acceptsStdin:NO
+                stdinType:nil
                 metadataJSON:nil];
 }
 

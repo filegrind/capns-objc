@@ -101,7 +101,7 @@
                         mediaSpecs:mediaSpecs
                          arguments:arguments
                             output:output
-                      acceptsStdin:NO
+                      stdinType:nil
                       metadataJSON:nil];
 
     // Test with valid data

@@ -263,8 +263,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Output definition
 @property (nonatomic, readonly, nullable) CSCapOutput *output;
 
-/// Whether this cap accepts input via stdin
-@property (nonatomic, readonly) BOOL acceptsStdin;
+/// Media type of stdin input, or nil if cap does not accept stdin
+/// If present, cap accepts stdin of this media type (e.g., "media:type=pdf;v=1;binary")
+/// If nil, cap does NOT accept stdin
+@property (nonatomic, readonly, nullable) NSString *stdinType;
 
 /// Arbitrary metadata as JSON object
 @property (nonatomic, readonly, nullable) NSDictionary *metadataJSON;
@@ -283,7 +285,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param mediaSpecs Media spec resolution table (spec ID -> definition)
  * @param arguments The cap arguments
  * @param output The output definition
- * @param acceptsStdin Whether this cap accepts stdin input
+ * @param stdinType Media type expected on stdin, or nil if cap does not accept stdin
  * @param metadataJSON Arbitrary metadata as JSON object
  * @return A new CSCap instance
  */
@@ -295,8 +297,20 @@ NS_ASSUME_NONNULL_BEGIN
                 mediaSpecs:(NSDictionary<NSString *, id> * _Nonnull)mediaSpecs
                  arguments:(CSCapArguments * _Nonnull)arguments
                     output:(nullable CSCapOutput *)output
-              acceptsStdin:(BOOL)acceptsStdin
+                 stdinType:(nullable NSString *)stdinType
               metadataJSON:(nullable NSDictionary *)metadataJSON;
+
+/**
+ * Check if cap accepts stdin
+ * @return YES if cap accepts stdin (stdin property is not nil)
+ */
+- (BOOL)acceptsStdin;
+
+/**
+ * Get the media type expected for stdin
+ * @return The media type string if cap accepts stdin, nil otherwise
+ */
+- (nullable NSString *)stdinMediaType;
 
 /**
  * Create a cap with URN, title and command (minimal constructor)

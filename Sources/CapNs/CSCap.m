@@ -822,7 +822,7 @@
     NSString *capDescription = dictionary[@"cap_description"];
     NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
     NSDictionary *mediaSpecs = dictionary[@"media_specs"] ?: @{};
-    BOOL acceptsStdin = [dictionary[@"accepts_stdin"] boolValue];
+    NSString *stdinType = dictionary[@"stdin"];
     NSDictionary *metadataJSON = dictionary[@"metadata_json"];
 
     // Parse arguments
@@ -865,7 +865,7 @@
                        mediaSpecs:mediaSpecs
                         arguments:arguments
                            output:output
-                     acceptsStdin:acceptsStdin
+                            stdinType:stdinType
                      metadataJSON:metadataJSON];
     cap->_registeredBy = registeredBy;
     return cap;
@@ -896,7 +896,9 @@
         dict[@"output"] = [self.output toDictionary];
     }
 
-    dict[@"accepts_stdin"] = @(self.acceptsStdin);
+    if (self.stdinType) {
+        dict[@"stdin"] = self.stdinType;
+    }
 
     if (self.metadataJSON) {
         dict[@"metadata_json"] = self.metadataJSON;
@@ -988,8 +990,9 @@
     if ((self.output == nil) != (other.output == nil)) return NO;
     if (self.output && ![self.output isEqual:other.output]) return NO;
 
-    // AcceptsStdin
-    if (self.acceptsStdin != other.acceptsStdin) return NO;
+    // Stdin
+    if ((self.stdinType == nil) != (other.stdinType == nil)) return NO;
+    if (self.stdinType && ![self.stdinType isEqualToString:other.stdinType]) return NO;
 
     // MetadataJSON
     if ((self.metadataJSON == nil) != (other.metadataJSON == nil)) return NO;
@@ -1010,7 +1013,7 @@
     hash ^= [self.mediaSpecs hash];
     hash ^= [self.arguments hash];
     hash ^= [self.output hash];
-    hash ^= self.acceptsStdin ? 1 : 0;
+    hash ^= [self.stdinType hash];
     hash ^= [self.metadataJSON hash];
     hash ^= [self.registeredBy hash];
     return hash;
@@ -1029,7 +1032,7 @@
                         mediaSpecs:self.mediaSpecs
                          arguments:self.arguments
                             output:self.output
-                      acceptsStdin:self.acceptsStdin
+                             stdinType:self.stdinType
                       metadataJSON:self.metadataJSON];
     copy->_registeredBy = [self.registeredBy copy];
     return copy;
@@ -1044,7 +1047,7 @@
     [coder encodeObject:self.mediaSpecs forKey:@"mediaSpecs"];
     [coder encodeObject:self.arguments forKey:@"arguments"];
     [coder encodeObject:self.output forKey:@"output"];
-    [coder encodeBool:self.acceptsStdin forKey:@"acceptsStdin"];
+    [coder encodeObject:self.stdinType forKey:@"stdinType"];
     [coder encodeObject:self.metadataJSON forKey:@"metadataJSON"];
     [coder encodeObject:self.registeredBy forKey:@"registeredBy"];
 }
@@ -1058,7 +1061,7 @@
     NSDictionary *mediaSpecs = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"mediaSpecs"];
     CSCapArguments *arguments = [coder decodeObjectOfClass:[CSCapArguments class] forKey:@"arguments"];
     CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
-    BOOL acceptsStdin = [coder decodeBoolForKey:@"acceptsStdin"];
+    NSString *stdinType = [coder decodeObjectOfClass:[NSString class] forKey:@"stdinType"];
     NSDictionary *metadataJSON = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadataJSON"];
     CSRegisteredBy *registeredBy = [coder decodeObjectOfClass:[CSRegisteredBy class] forKey:@"registeredBy"];
 
@@ -1075,7 +1078,7 @@
                        mediaSpecs:mediaSpecs ?: @{}
                         arguments:arguments ?: [CSCapArguments arguments]
                            output:output
-                     acceptsStdin:acceptsStdin
+                            stdinType:stdinType
                      metadataJSON:metadataJSON];
     cap->_registeredBy = registeredBy;
     return cap;
@@ -1092,7 +1095,7 @@
                  mediaSpecs:@{}
                   arguments:[CSCapArguments arguments]
                      output:nil
-               acceptsStdin:NO
+                      stdinType:nil
                metadataJSON:nil];
 }
 
@@ -1104,7 +1107,7 @@
                 mediaSpecs:(NSDictionary<NSString *, id> *)mediaSpecs
                  arguments:(CSCapArguments *)arguments
                     output:(nullable CSCapOutput *)output
-              acceptsStdin:(BOOL)acceptsStdin
+                 stdinType:(nullable NSString *)stdinType
               metadataJSON:(nullable NSDictionary *)metadataJSON {
     // FAIL HARD if required fields are nil
     if (!capUrn || !title || !command || !metadata || !mediaSpecs || !arguments) {
@@ -1120,9 +1123,17 @@
     cap->_mediaSpecs = [mediaSpecs copy];
     cap->_arguments = arguments;
     cap->_output = output;
-    cap->_acceptsStdin = acceptsStdin;
+    cap->_stdinType = [stdinType copy];
     cap->_metadataJSON = [metadataJSON copy];
     return cap;
+}
+
+- (BOOL)acceptsStdin {
+    return self.stdinType != nil;
+}
+
+- (nullable NSString *)stdinMediaType {
+    return self.stdinType;
 }
 
 - (nullable NSString *)getCommand {
