@@ -6,8 +6,7 @@
 //  the cap URN, versioning, and metadata. Caps are general-purpose
 //  and do not assume any specific domain like files or documents.
 //
-//  NOTE: ArgumentType and OutputType enums have been REMOVED.
-//  All type information is now conveyed via mediaSpec fields that
+//  NOTE: All type information is conveyed via mediaSpec fields that
 //  contain spec IDs (e.g., "media:type=string;v=1") which resolve to
 //  MediaSpec definitions via the mediaSpecs table.
 //
@@ -45,123 +44,230 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-/**
- * Cap argument definition
- *
- * NOTE: argType enum has been replaced with mediaSpec string field.
- * The mediaSpec contains a spec ID (e.g., "media:type=string;v=1") that resolves
- * to a MediaSpec definition. Schema is now stored in the cap's mediaSpecs table.
- */
-@interface CSCapArgument : NSObject <NSCopying, NSCoding>
+#pragma mark - CSArgSource
 
-@property (nonatomic, readonly) NSString *name;
-@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "media:type=string;v=1")
-@property (nonatomic, readonly) NSString *argDescription;
-@property (nonatomic, readonly) NSString *cliFlag;
-@property (nonatomic, readonly, nullable) NSNumber *position;
+/**
+ * Source type enum for CSArgSource
+ */
+typedef NS_ENUM(NSInteger, CSArgSourceType) {
+    CSArgSourceTypeStdin,
+    CSArgSourceTypePosition,
+    CSArgSourceTypeCliFlag
+};
+
+/**
+ * Specifies how an argument can be provided
+ */
+@interface CSArgSource : NSObject <NSCopying, NSCoding>
+
+/// The type of this source
+@property (nonatomic, readonly) CSArgSourceType type;
+
+/// For stdin type - the media URN expected on stdin
+@property (nonatomic, readonly, nullable) NSString *stdinMediaUrn;
+
+/// For position type - the positional index (-1 if not set)
+@property (nonatomic, readonly) NSInteger position;
+
+/// For cli_flag type - the CLI flag string
+@property (nonatomic, readonly, nullable) NSString *cliFlag;
+
+/**
+ * Create a stdin source
+ * @param mediaUrn The media URN expected on stdin
+ * @return A new CSArgSource instance
+ */
++ (instancetype)stdinSourceWithMediaUrn:(NSString *)mediaUrn;
+
+/**
+ * Create a position source
+ * @param position The positional index
+ * @return A new CSArgSource instance
+ */
++ (instancetype)positionSource:(NSInteger)position;
+
+/**
+ * Create a cli_flag source
+ * @param cliFlag The CLI flag string
+ * @return A new CSArgSource instance
+ */
++ (instancetype)cliFlagSource:(NSString *)cliFlag;
+
+/**
+ * Create from dictionary representation
+ * @param dictionary The dictionary containing source data
+ * @param error Pointer to NSError for error reporting
+ * @return A new CSArgSource instance, or nil if parsing fails
+ */
++ (nullable instancetype)sourceWithDictionary:(NSDictionary *)dictionary error:(NSError * _Nullable * _Nullable)error;
+
+/**
+ * Convert to dictionary representation
+ * @return Dictionary representation of the source
+ */
+- (NSDictionary *)toDictionary;
+
+/**
+ * Check if this is a stdin source
+ */
+- (BOOL)isStdin;
+
+/**
+ * Check if this is a position source
+ */
+- (BOOL)isPosition;
+
+/**
+ * Check if this is a cli_flag source
+ */
+- (BOOL)isCliFlag;
+
+@end
+
+#pragma mark - CSCapArg
+
+/**
+ * Unified argument definition with sources
+ */
+@interface CSCapArg : NSObject <NSCopying, NSCoding>
+
+/// Unique identifier (media URN)
+@property (nonatomic, readonly) NSString *mediaUrn;
+
+/// Whether this argument is required
+@property (nonatomic, readonly) BOOL required;
+
+/// Array of sources for this argument
+@property (nonatomic, readonly) NSArray<CSArgSource *> *sources;
+
+/// Optional description
+@property (nonatomic, readonly, nullable) NSString *argDescription;
+
+/// Optional validation rules
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
+
+/// Optional default value
 @property (nonatomic, readonly, nullable) id defaultValue;
+
+/// Optional metadata
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
 /**
- * Create an argument with spec ID
- * @param name Argument name
- * @param mediaSpec Spec ID (e.g., "media:type=string;v=1")
- * @param argDescription Argument description
- * @param cliFlag CLI flag
- * @param position Optional position for positional arguments
+ * Create an argument with minimal fields
+ * @param mediaUrn The media URN identifier
+ * @param required Whether this argument is required
+ * @param sources Array of sources
+ * @return A new CSCapArg instance
+ */
++ (instancetype)argWithMediaUrn:(NSString *)mediaUrn
+                       required:(BOOL)required
+                        sources:(NSArray<CSArgSource *> *)sources;
+
+/**
+ * Create an argument with all fields
+ * @param mediaUrn The media URN identifier
+ * @param required Whether this argument is required
+ * @param sources Array of sources
+ * @param argDescription Optional description
  * @param validation Optional validation rules
  * @param defaultValue Optional default value
- * @return A new CSCapArgument instance
+ * @return A new CSCapArg instance
  */
-+ (instancetype)argumentWithName:(NSString * _Nonnull)name
-                       mediaSpec:(NSString * _Nonnull)mediaSpec
-                   argDescription:(NSString * _Nonnull)argDescription
-                         cliFlag:(NSString * _Nonnull)cliFlag
-                        position:(nullable NSNumber *)position
-                      validation:(nullable CSArgumentValidation *)validation
-                    defaultValue:(nullable id)defaultValue;
-
-+ (instancetype)argumentWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
++ (instancetype)argWithMediaUrn:(NSString *)mediaUrn
+                       required:(BOOL)required
+                        sources:(NSArray<CSArgSource *> *)sources
+                 argDescription:(nullable NSString *)argDescription
+                     validation:(nullable CSArgumentValidation *)validation
+                   defaultValue:(nullable id)defaultValue;
 
 /**
- * Convert argument to dictionary representation
+ * Create from dictionary representation
+ * @param dictionary The dictionary containing argument data
+ * @param error Pointer to NSError for error reporting
+ * @return A new CSCapArg instance, or nil if parsing fails
+ */
++ (nullable instancetype)argWithDictionary:(NSDictionary *)dictionary error:(NSError * _Nullable * _Nullable)error;
+
+/**
+ * Convert to dictionary representation
  * @return Dictionary representation of the argument
  */
-- (NSDictionary * _Nonnull)toDictionary;
+- (NSDictionary *)toDictionary;
 
 /**
- * Get the metadata JSON
- * @return The metadata JSON dictionary or nil
+ * Check if this argument has a stdin source
+ */
+- (BOOL)hasStdinSource;
+
+/**
+ * Get the stdin media URN if present
+ * @return The stdin media URN or nil
+ */
+- (nullable NSString *)getStdinMediaUrn;
+
+/**
+ * Check if this argument has a position source
+ */
+- (BOOL)hasPositionSource;
+
+/**
+ * Get the position if present
+ * @return The position as NSNumber or nil
+ */
+- (nullable NSNumber *)getPosition;
+
+/**
+ * Check if this argument has a cli_flag source
+ */
+- (BOOL)hasCliFlagSource;
+
+/**
+ * Get the cli_flag if present
+ * @return The cli_flag or nil
+ */
+- (nullable NSString *)getCliFlag;
+
+/**
+ * Get the metadata
+ * @return The metadata dictionary or nil
  */
 - (nullable NSDictionary *)getMetadata;
 
 /**
- * Set the metadata JSON
- * @param metadata The metadata JSON dictionary
+ * Set the metadata
+ * @param metadata The metadata dictionary
  */
 - (void)setMetadata:(nullable NSDictionary *)metadata;
 
 /**
- * Clear the metadata JSON
+ * Clear the metadata
  */
 - (void)clearMetadata;
 
 @end
 
-/**
- * Cap arguments collection
- */
-@interface CSCapArguments : NSObject <NSCopying, NSCoding>
-
-@property (nonatomic, readonly) NSArray<CSCapArgument *> *required;
-@property (nonatomic, readonly) NSArray<CSCapArgument *> *optional;
-
-+ (instancetype)arguments;
-+ (instancetype)argumentsWithRequired:(NSArray<CSCapArgument *> * _Nonnull)required
-                             optional:(NSArray<CSCapArgument *> * _Nonnull)optional;
-+ (instancetype)argumentsWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
-
-/**
- * Convert arguments to dictionary representation
- * @return Dictionary representation of the arguments
- */
-- (NSDictionary * _Nonnull)toDictionary;
-
-- (void)addRequiredArgument:(CSCapArgument * _Nonnull)argument;
-- (void)addOptionalArgument:(CSCapArgument * _Nonnull)argument;
-- (nullable CSCapArgument *)findArgumentWithName:(NSString * _Nonnull)name;
-- (NSArray<CSCapArgument *> *)positionalArguments;
-- (NSArray<CSCapArgument *> *)flagArguments;
-- (BOOL)isEmpty;
-
-@end
-
+#pragma mark - CSCapOutput
 
 /**
  * Output definition
- *
- * NOTE: outputType enum has been replaced with mediaSpec string field.
- * The mediaSpec contains a spec ID (e.g., "media:type=object;v=1") that resolves
- * to a MediaSpec definition. Schema is now stored in the cap's mediaSpecs table.
  */
 @interface CSCapOutput : NSObject <NSCopying, NSCoding>
 
-@property (nonatomic, readonly) NSString *mediaSpec;  // Spec ID (e.g., "media:type=object;v=1")
+@property (nonatomic, readonly) NSString *mediaUrn;
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
 /**
- * Create an output with spec ID
- * @param mediaSpec Spec ID (e.g., "media:type=object;v=1")
+ * Create an output with media URN
+ * @param mediaUrn Media URN (e.g., "media:type=object;v=1")
  * @param validation Optional validation rules
  * @param outputDescription Description of the output
  * @return A new CSCapOutput instance
  */
-+ (instancetype)outputWithMediaSpec:(NSString * _Nonnull)mediaSpec
-                         validation:(nullable CSArgumentValidation *)validation
-                  outputDescription:(NSString * _Nonnull)outputDescription;
++ (instancetype)outputWithMediaUrn:(NSString * _Nonnull)mediaUrn
+                        validation:(nullable CSArgumentValidation *)validation
+                 outputDescription:(NSString * _Nonnull)outputDescription;
 
 + (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));
 
@@ -189,6 +295,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearMetadata;
 
 @end
+
+#pragma mark - CSRegisteredBy
 
 /**
  * Registration attribution - who registered a capability and when
@@ -229,11 +337,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class CSMediaSpec;
 
+#pragma mark - CSCap
+
 /**
  * Formal cap definition
  *
  * The mediaSpecs property is a resolution table that maps spec IDs to MediaSpec definitions.
- * Arguments and output use spec IDs in their mediaSpec fields, which resolve via this table.
+ * Arguments and output use spec IDs in their mediaUrn fields, which resolve via this table.
  */
 @interface CSCap : NSObject <NSCopying, NSCoding>
 
@@ -253,20 +363,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSString *command;
 
 /// Media specs resolution table: maps spec ID -> string or object definition
-/// String form: "text/plain; profile=https://..." (canonical)
-/// Object form: { media_type, profile_uri, schema? }
 @property (nonatomic, readonly) NSDictionary<NSString *, id> *mediaSpecs;
 
-/// Cap arguments
-@property (nonatomic, readonly) CSCapArguments *arguments;
+/// Cap arguments (new unified args array)
+@property (nonatomic, readonly) NSArray<CSCapArg *> *args;
 
 /// Output definition
 @property (nonatomic, readonly, nullable) CSCapOutput *output;
-
-/// Media type of stdin input, or nil if cap does not accept stdin
-/// If present, cap accepts stdin of this media type (e.g., "media:type=pdf;v=1;binary")
-/// If nil, cap does NOT accept stdin
-@property (nonatomic, readonly, nullable) NSString *stdinType;
 
 /// Arbitrary metadata as JSON object
 @property (nonatomic, readonly, nullable) NSDictionary *metadataJSON;
@@ -283,9 +386,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param description The cap description
  * @param metadata The cap metadata
  * @param mediaSpecs Media spec resolution table (spec ID -> definition)
- * @param arguments The cap arguments
+ * @param args The cap arguments array
  * @param output The output definition
- * @param stdinType Media type expected on stdin, or nil if cap does not accept stdin
  * @param metadataJSON Arbitrary metadata as JSON object
  * @return A new CSCap instance
  */
@@ -295,16 +397,9 @@ NS_ASSUME_NONNULL_BEGIN
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
                 mediaSpecs:(NSDictionary<NSString *, id> * _Nonnull)mediaSpecs
-                 arguments:(CSCapArguments * _Nonnull)arguments
+                      args:(NSArray<CSCapArg *> * _Nonnull)args
                     output:(nullable CSCapOutput *)output
-                 stdinType:(nullable NSString *)stdinType
               metadataJSON:(nullable NSDictionary *)metadataJSON;
-
-/**
- * Get the media type expected for stdin
- * @return The media type string if cap accepts stdin, nil otherwise
- */
-- (nullable NSString *)stdinMediaType;
 
 /**
  * Create a cap with URN, title and command (minimal constructor)
@@ -380,28 +475,65 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)getCommand;
 
 /**
- * Get the arguments
- * @return The cap arguments
- */
-- (CSCapArguments *)getArguments;
-
-/**
  * Get the output definition if defined
  * @return The output definition or nil
  */
 - (nullable CSCapOutput *)getOutput;
 
 /**
- * Add a required argument
- * @param argument The argument to add
+ * Get all arguments
+ * @return Array of all arguments
  */
-- (void)addRequiredArgument:(CSCapArgument * _Nonnull)argument;
+- (NSArray<CSCapArg *> *)getArgs;
 
 /**
- * Add an optional argument
- * @param argument The argument to add
+ * Get required arguments
+ * @return Array of required arguments
  */
-- (void)addOptionalArgument:(CSCapArgument * _Nonnull)argument;
+- (NSArray<CSCapArg *> *)getRequiredArgs;
+
+/**
+ * Get optional arguments
+ * @return Array of optional arguments
+ */
+- (NSArray<CSCapArg *> *)getOptionalArgs;
+
+/**
+ * Add an argument
+ * @param arg The argument to add
+ */
+- (void)addArg:(CSCapArg * _Nonnull)arg;
+
+/**
+ * Find an argument by media URN
+ * @param mediaUrn The media URN to find
+ * @return The argument or nil if not found
+ */
+- (nullable CSCapArg *)findArgByMediaUrn:(NSString * _Nonnull)mediaUrn;
+
+/**
+ * Get positional arguments (sorted by position)
+ * @return Array of arguments with position sources
+ */
+- (NSArray<CSCapArg *> *)getPositionalArgs;
+
+/**
+ * Get flag arguments
+ * @return Array of arguments with cli_flag sources
+ */
+- (NSArray<CSCapArg *> *)getFlagArgs;
+
+/**
+ * Get stdin media URN from args (first stdin source found)
+ * @return The stdin media URN or nil
+ */
+- (nullable NSString *)getStdinMediaUrn;
+
+/**
+ * Check if this cap accepts stdin
+ * @return YES if any argument has a stdin source
+ */
+- (BOOL)acceptsStdin;
 
 /**
  * Get the metadata JSON

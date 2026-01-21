@@ -63,13 +63,12 @@
         }
     };
 
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"user_data"
-                                                    mediaSpec:@"my:user-data.v1"
-                                                argDescription:@"User data object"
-                                                      cliFlag:@"--user"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--user"]]
+                                       argDescription:@"User data object"
+                                           validation:nil
+                                         defaultValue:nil];
 
     // Valid data that matches schema
     NSDictionary *validData = @{
@@ -103,13 +102,12 @@
         }
     };
 
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"user_data"
-                                                    mediaSpec:@"my:user-data.v1"
-                                                argDescription:@"User data object"
-                                                      cliFlag:@"--user"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--user"]]
+                                       argDescription:@"User data object"
+                                           validation:nil
+                                         defaultValue:nil];
 
     // Invalid data - missing required field
     NSDictionary *invalidData = @{
@@ -125,18 +123,17 @@
 
     CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
     XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeArgumentValidation);
-    XCTAssertEqualObjects(schemaError.argumentName, @"user_data");
+    XCTAssertEqualObjects(schemaError.argumentName, @"my:user-data.v1");
 }
 
 - (void)testArgumentWithUnresolvableSpecIdFailsHard {
     // Create argument with non-existent spec ID
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"data"
-                                                    mediaSpec:@"unknown:spec.v1"
-                                                argDescription:@"Some data"
-                                                      cliFlag:@"--data"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"unknown:spec.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--data"]]
+                                       argDescription:@"Some data"
+                                           validation:nil
+                                         defaultValue:nil];
 
     NSDictionary *data = @{@"test": @"value"};
 
@@ -150,13 +147,12 @@
 
 - (void)testNonStructuredArgumentSkipsSchemaValidation {
     // Create string argument (built-in, no schema validation expected)
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"name"
-                                                    mediaSpec:CSMediaString
-                                                argDescription:@"User name"
-                                                      cliFlag:@"--name"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:CSMediaString
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--name"]]
+                                       argDescription:@"User name"
+                                           validation:nil
+                                         defaultValue:nil];
 
     NSString *value = @"test";
 
@@ -191,7 +187,7 @@
         }
     };
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:query-results.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
                                                 validation:nil
                                          outputDescription:@"Query results"];
 
@@ -230,7 +226,7 @@
         }
     };
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:query-results.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
                                                 validation:nil
                                          outputDescription:@"Query results"];
 
@@ -275,24 +271,21 @@
         }
     };
 
-    CSCapArgument *userArg = [CSCapArgument argumentWithName:@"user"
-                                                   mediaSpec:@"my:user.v1"
-                                               argDescription:@"User object"
-                                                     cliFlag:@"--user"
-                                                    position:nil
-                                                  validation:nil
-                                                defaultValue:nil];
+    CSCapArg *userArg = [CSCapArg argWithMediaUrn:@"my:user.v1"
+                                            required:YES
+                                             sources:@[[CSArgSource cliFlagSource:@"--user"]]
+                                      argDescription:@"User object"
+                                          validation:nil
+                                        defaultValue:nil];
 
-    CSCapArguments *arguments = [CSCapArguments argumentsWithRequired:@[userArg] optional:@[]];
     CSCap *cap = [CSCap capWithUrn:urn
                              title:@"Process User"
                            command:@"process-user"
                        description:@"Process user data"
                           metadata:@{}
                         mediaSpecs:mediaSpecs
-                         arguments:arguments
+                              args:@[userArg]
                             output:nil
-                      stdinType:nil
                       metadataJSON:nil];
 
     // Valid user data
@@ -350,7 +343,7 @@
         }
     };
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:results-array.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:results-array.v1"
                                                 validation:nil
                                          outputDescription:@"Query results array"];
 
@@ -360,9 +353,8 @@
                        description:@"Query data"
                           metadata:@{}
                         mediaSpecs:mediaSpecs
-                         arguments:[CSCapArguments arguments]
+                              args:@[]
                             output:output
-                      stdinType:nil
                       metadataJSON:nil];
 
     // Valid output
@@ -433,13 +425,12 @@
         }
     };
 
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"payload"
-                                                    mediaSpec:@"my:payload.v1"
-                                                argDescription:@"Complex payload"
-                                                      cliFlag:@"--payload"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:payload.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--payload"]]
+                                       argDescription:@"Complex payload"
+                                           validation:nil
+                                         defaultValue:nil];
 
     // Valid complex data
     NSDictionary *validData = @{
@@ -504,13 +495,12 @@
         }
     };
 
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"test_arg"
-                                                    mediaSpec:@"my:test-arg.v1"
-                                                argDescription:@"Test argument"
-                                                      cliFlag:@"--test"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:test-arg.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--test"]]
+                                       argDescription:@"Test argument"
+                                           validation:nil
+                                         defaultValue:nil];
 
     // Invalid data with multiple errors
     NSDictionary *invalidData = @{
@@ -526,7 +516,7 @@
 
     CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
     XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeArgumentValidation);
-    XCTAssertEqualObjects(schemaError.argumentName, @"test_arg");
+    XCTAssertEqualObjects(schemaError.argumentName, @"my:test-arg.v1");
     XCTAssertNotNil(schemaError.validationErrors);
     XCTAssertTrue(schemaError.validationErrors.count > 0, @"Should have validation error details");
 }
@@ -536,38 +526,35 @@
 - (void)testBuiltinSpecIdsResolve {
     // Built-in spec IDs should resolve even with empty mediaSpecs
 
-    CSCapArgument *strArg = [CSCapArgument argumentWithName:@"text"
-                                                  mediaSpec:CSMediaString
-                                              argDescription:@"Text input"
-                                                    cliFlag:@"--text"
-                                                   position:nil
-                                                 validation:nil
-                                               defaultValue:nil];
+    CSCapArg *strArg = [CSCapArg argWithMediaUrn:CSMediaString
+                                           required:YES
+                                            sources:@[[CSArgSource cliFlagSource:@"--text"]]
+                                     argDescription:@"Text input"
+                                         validation:nil
+                                       defaultValue:nil];
 
     NSError *error = nil;
     BOOL result = [self.validator validateArgument:strArg withValue:@"hello" mediaSpecs:@{} error:&error];
     XCTAssertTrue(result, @"Built-in str spec should validate string");
     XCTAssertNil(error);
 
-    CSCapArgument *intArg = [CSCapArgument argumentWithName:@"count"
-                                                  mediaSpec:CSMediaInteger
-                                              argDescription:@"Count value"
-                                                    cliFlag:@"--count"
-                                                   position:nil
-                                                 validation:nil
-                                               defaultValue:nil];
+    CSCapArg *intArg = [CSCapArg argWithMediaUrn:CSMediaInteger
+                                         required:YES
+                                          sources:@[[CSArgSource cliFlagSource:@"--count"]]
+                                   argDescription:@"Count value"
+                                       validation:nil
+                                     defaultValue:nil];
 
     result = [self.validator validateArgument:intArg withValue:@42 mediaSpecs:@{} error:&error];
     XCTAssertTrue(result, @"Built-in int spec should validate integer");
     XCTAssertNil(error);
 
-    CSCapArgument *objArg = [CSCapArgument argumentWithName:@"data"
-                                                  mediaSpec:CSMediaObject
-                                              argDescription:@"JSON data"
-                                                    cliFlag:@"--data"
-                                                   position:nil
-                                                 validation:nil
-                                               defaultValue:nil];
+    CSCapArg *objArg = [CSCapArg argWithMediaUrn:CSMediaObject
+                                        required:YES
+                                         sources:@[[CSArgSource cliFlagSource:@"--data"]]
+                                  argDescription:@"JSON data"
+                                      validation:nil
+                                    defaultValue:nil];
 
     result = [self.validator validateArgument:objArg withValue:@{@"key": @"value"} mediaSpecs:@{} error:&error];
     XCTAssertTrue(result, @"Built-in obj spec should validate object");
@@ -582,13 +569,12 @@
         @"my:text-input.v1": @"text/plain; profile=https://example.com/schema/text-input"
     };
 
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"input"
-                                                    mediaSpec:@"my:text-input.v1"
-                                                argDescription:@"Text input"
-                                                      cliFlag:@"--input"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:text-input.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--input"]]
+                                       argDescription:@"Text input"
+                                           validation:nil
+                                         defaultValue:nil];
 
     // String-form spec has no schema, so any value passes schema validation
     // (schema validation is skipped when no schema is present)
@@ -629,13 +615,12 @@
         }
     };
 
-    CSCapArgument *argument = [CSCapArgument argumentWithName:@"large_data"
-                                                    mediaSpec:@"my:large-data.v1"
-                                                argDescription:@"Large data set"
-                                                      cliFlag:@"--data"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:large-data.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource cliFlagSource:@"--data"]]
+                                       argDescription:@"Large data set"
+                                           validation:nil
+                                         defaultValue:nil];
 
     // Create large valid data set
     NSMutableArray *largeDataSet = [NSMutableArray array];
@@ -702,28 +687,25 @@
         }
     };
 
-    CSCapArgument *inputArg = [CSCapArgument argumentWithName:@"input"
-                                                    mediaSpec:@"my:transform-input.v1"
-                                                argDescription:@"Transformation input"
-                                                      cliFlag:@"--input"
-                                                     position:@0
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *inputArg = [CSCapArg argWithMediaUrn:@"my:transform-input.v1"
+                                             required:YES
+                                              sources:@[[CSArgSource positionSource:0], [CSArgSource cliFlagSource:@"--input"]]
+                                       argDescription:@"Transformation input"
+                                           validation:nil
+                                         defaultValue:nil];
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:transform-output.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:transform-output.v1"
                                                 validation:nil
                                          outputDescription:@"Transformation result"];
 
-    CSCapArguments *arguments = [CSCapArguments argumentsWithRequired:@[inputArg] optional:@[]];
     CSCap *cap = [CSCap capWithUrn:urn
                              title:@"Transform JSON"
                            command:@"transform-json"
                        description:@"Transform JSON data"
                           metadata:@{}
                         mediaSpecs:mediaSpecs
-                         arguments:arguments
+                              args:@[inputArg]
                             output:output
-                      stdinType:nil
                       metadataJSON:nil];
 
     // Validate cap itself

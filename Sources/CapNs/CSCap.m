@@ -2,8 +2,7 @@
 //  CSCap.m
 //  Formal cap implementation
 //
-//  NOTE: ArgumentType and OutputType enums have been REMOVED.
-//  All type information is now conveyed via mediaSpec fields containing spec IDs.
+//  NOTE: All type information is conveyed via mediaSpec fields containing spec IDs.
 //
 
 #import "include/CSCap.h"
@@ -129,74 +128,253 @@
 
 @end
 
-#pragma mark - CSCapArgument Implementation
+#pragma mark - CSArgSource Implementation
 
-@implementation CSCapArgument
+@implementation CSArgSource
 
-+ (instancetype)argumentWithName:(NSString *)name
-                       mediaSpec:(NSString *)mediaSpec
-                   argDescription:(NSString *)argDescription
-                         cliFlag:(NSString *)cliFlag
-                        position:(nullable NSNumber *)position
-                      validation:(nullable CSArgumentValidation *)validation
-                    defaultValue:(nullable id)defaultValue {
-    CSCapArgument *argument = [[CSCapArgument alloc] init];
-    argument->_name = [name copy];
-    argument->_mediaSpec = [mediaSpec copy];
-    argument->_argDescription = [argDescription copy];
-    argument->_cliFlag = [cliFlag copy];
-    argument->_position = position;
-    argument->_validation = validation;
-    argument->_defaultValue = defaultValue;
-    argument->_metadata = nil;
-    return argument;
++ (instancetype)stdinSourceWithMediaUrn:(NSString *)mediaUrn {
+    CSArgSource *source = [[CSArgSource alloc] init];
+    source->_type = CSArgSourceTypeStdin;
+    source->_stdinMediaUrn = [mediaUrn copy];
+    source->_position = -1;
+    source->_cliFlag = nil;
+    return source;
 }
 
-+ (instancetype)argumentWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
-    NSString *name = dictionary[@"name"];
-    NSString *mediaUrn = dictionary[@"media_urn"];
-    NSString *argDescription = dictionary[@"arg_description"];
-    NSString *cliFlag = dictionary[@"cli_flag"];
-    NSNumber *position = dictionary[@"position"];
-    id defaultValue = dictionary[@"default_value"];
-    NSDictionary *metadata = dictionary[@"metadata"];
++ (instancetype)positionSource:(NSInteger)position {
+    CSArgSource *source = [[CSArgSource alloc] init];
+    source->_type = CSArgSourceTypePosition;
+    source->_stdinMediaUrn = nil;
+    source->_position = position;
+    source->_cliFlag = nil;
+    return source;
+}
 
-    // FAIL HARD on missing required fields
-    if (!name) {
-        if (error) {
-            *error = [NSError errorWithDomain:@"CSCapArgumentError"
-                                         code:1001
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required field: name"}];
-        }
-        return nil;
++ (instancetype)cliFlagSource:(NSString *)cliFlag {
+    CSArgSource *source = [[CSArgSource alloc] init];
+    source->_type = CSArgSourceTypeCliFlag;
+    source->_stdinMediaUrn = nil;
+    source->_position = -1;
+    source->_cliFlag = [cliFlag copy];
+    return source;
+}
+
++ (nullable instancetype)sourceWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    // Check for stdin source
+    NSString *stdinValue = dictionary[@"stdin"];
+    if (stdinValue) {
+        return [self stdinSourceWithMediaUrn:stdinValue];
     }
 
+    // Check for position source
+    NSNumber *positionValue = dictionary[@"position"];
+    if (positionValue) {
+        return [self positionSource:[positionValue integerValue]];
+    }
+
+    // Check for cli_flag source
+    NSString *cliFlagValue = dictionary[@"cli_flag"];
+    if (cliFlagValue) {
+        return [self cliFlagSource:cliFlagValue];
+    }
+
+    // No valid source type found
+    if (error) {
+        *error = [NSError errorWithDomain:@"CSArgSourceError"
+                                     code:1001
+                                 userInfo:@{NSLocalizedDescriptionKey: @"Source must have one of: stdin, position, or cli_flag"}];
+    }
+    return nil;
+}
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+
+    switch (self.type) {
+        case CSArgSourceTypeStdin:
+            if (self.stdinMediaUrn) {
+                dict[@"stdin"] = self.stdinMediaUrn;
+            }
+            break;
+        case CSArgSourceTypePosition:
+            dict[@"position"] = @(self.position);
+            break;
+        case CSArgSourceTypeCliFlag:
+            if (self.cliFlag) {
+                dict[@"cli_flag"] = self.cliFlag;
+            }
+            break;
+    }
+
+    return [dict copy];
+}
+
+- (BOOL)isStdin {
+    return self.type == CSArgSourceTypeStdin;
+}
+
+- (BOOL)isPosition {
+    return self.type == CSArgSourceTypePosition;
+}
+
+- (BOOL)isCliFlag {
+    return self.type == CSArgSourceTypeCliFlag;
+}
+
+- (id)copyWithZone:(NSZone *)zone {
+    CSArgSource *copy = [[CSArgSource alloc] init];
+    copy->_type = self.type;
+    copy->_stdinMediaUrn = [self.stdinMediaUrn copy];
+    copy->_position = self.position;
+    copy->_cliFlag = [self.cliFlag copy];
+    return copy;
+}
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeInteger:self.type forKey:@"type"];
+    [coder encodeObject:self.stdinMediaUrn forKey:@"stdinMediaUrn"];
+    [coder encodeInteger:self.position forKey:@"position"];
+    [coder encodeObject:self.cliFlag forKey:@"cliFlag"];
+}
+
+- (nullable instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super init];
+    if (self) {
+        _type = [coder decodeIntegerForKey:@"type"];
+        _stdinMediaUrn = [coder decodeObjectOfClass:[NSString class] forKey:@"stdinMediaUrn"];
+        _position = [coder decodeIntegerForKey:@"position"];
+        _cliFlag = [coder decodeObjectOfClass:[NSString class] forKey:@"cliFlag"];
+    }
+    return self;
+}
+
++ (BOOL)supportsSecureCoding {
+    return YES;
+}
+
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[CSArgSource class]]) return NO;
+
+    CSArgSource *other = (CSArgSource *)object;
+
+    if (self.type != other.type) return NO;
+
+    switch (self.type) {
+        case CSArgSourceTypeStdin:
+            if ((self.stdinMediaUrn == nil) != (other.stdinMediaUrn == nil)) return NO;
+            if (self.stdinMediaUrn && ![self.stdinMediaUrn isEqualToString:other.stdinMediaUrn]) return NO;
+            break;
+        case CSArgSourceTypePosition:
+            if (self.position != other.position) return NO;
+            break;
+        case CSArgSourceTypeCliFlag:
+            if ((self.cliFlag == nil) != (other.cliFlag == nil)) return NO;
+            if (self.cliFlag && ![self.cliFlag isEqualToString:other.cliFlag]) return NO;
+            break;
+    }
+
+    return YES;
+}
+
+- (NSUInteger)hash {
+    NSUInteger hash = (NSUInteger)self.type;
+    switch (self.type) {
+        case CSArgSourceTypeStdin:
+            hash ^= [self.stdinMediaUrn hash];
+            break;
+        case CSArgSourceTypePosition:
+            hash ^= self.position;
+            break;
+        case CSArgSourceTypeCliFlag:
+            hash ^= [self.cliFlag hash];
+            break;
+    }
+    return hash;
+}
+
+@end
+
+#pragma mark - CSCapArg Implementation
+
+@implementation CSCapArg
+
++ (instancetype)argWithMediaUrn:(NSString *)mediaUrn
+                       required:(BOOL)required
+                        sources:(NSArray<CSArgSource *> *)sources {
+    return [self argWithMediaUrn:mediaUrn
+                        required:required
+                         sources:sources
+                  argDescription:nil
+                      validation:nil
+                    defaultValue:nil];
+}
+
++ (instancetype)argWithMediaUrn:(NSString *)mediaUrn
+                       required:(BOOL)required
+                        sources:(NSArray<CSArgSource *> *)sources
+                 argDescription:(nullable NSString *)argDescription
+                     validation:(nullable CSArgumentValidation *)validation
+                   defaultValue:(nullable id)defaultValue {
+    CSCapArg *arg = [[CSCapArg alloc] init];
+    arg->_mediaUrn = [mediaUrn copy];
+    arg->_required = required;
+    arg->_sources = [sources copy];
+    arg->_argDescription = [argDescription copy];
+    arg->_validation = validation;
+    arg->_defaultValue = defaultValue;
+    arg->_metadata = nil;
+    return arg;
+}
+
++ (nullable instancetype)argWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
+    // Required: media_urn
+    NSString *mediaUrn = dictionary[@"media_urn"];
     if (!mediaUrn) {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapArgumentError"
+            *error = [NSError errorWithDomain:@"CSCapArgError"
+                                         code:1001
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required field: media_urn"}];
+        }
+        return nil;
+    }
+
+    // Required: required (boolean)
+    NSNumber *requiredValue = dictionary[@"required"];
+    if (requiredValue == nil) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapArgError"
                                          code:1002
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Missing required field 'media_urn' for argument '%@'", name]}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required field: required"}];
         }
         return nil;
     }
+    BOOL required = [requiredValue boolValue];
 
-    if (!argDescription) {
+    // Required: sources (array)
+    NSArray *sourcesArray = dictionary[@"sources"];
+    if (!sourcesArray || ![sourcesArray isKindOfClass:[NSArray class]]) {
         if (error) {
-            *error = [NSError errorWithDomain:@"CSCapArgumentError"
+            *error = [NSError errorWithDomain:@"CSCapArgError"
                                          code:1003
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Missing required field 'arg_description' for argument '%@'", name]}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Missing required field: sources"}];
         }
         return nil;
     }
 
-    if (!cliFlag) {
-        if (error) {
-            *error = [NSError errorWithDomain:@"CSCapArgumentError"
-                                         code:1004
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Missing required field 'cli_flag' for argument '%@'", name]}];
+    NSMutableArray<CSArgSource *> *sources = [NSMutableArray array];
+    for (NSDictionary *sourceDict in sourcesArray) {
+        CSArgSource *source = [CSArgSource sourceWithDictionary:sourceDict error:error];
+        if (!source) {
+            return nil;
         }
-        return nil;
+        [sources addObject:source];
     }
+
+    // Optional fields
+    NSString *argDescription = dictionary[@"arg_description"];
+    id defaultValue = dictionary[@"default_value"];
+    NSDictionary *metadata = dictionary[@"metadata"];
 
     // Parse validation if present
     CSArgumentValidation *validation = nil;
@@ -208,81 +386,90 @@
         }
     }
 
-    CSCapArgument *argument = [[CSCapArgument alloc] init];
-    argument->_name = [name copy];
-    argument->_mediaSpec = [mediaUrn copy];
-    argument->_argDescription = [argDescription copy];
-    argument->_cliFlag = [cliFlag copy];
-    argument->_position = position;
-    argument->_validation = validation;
-    argument->_defaultValue = defaultValue;
-    argument->_metadata = [metadata copy];
+    CSCapArg *arg = [[CSCapArg alloc] init];
+    arg->_mediaUrn = [mediaUrn copy];
+    arg->_required = required;
+    arg->_sources = [sources copy];
+    arg->_argDescription = [argDescription copy];
+    arg->_validation = validation;
+    arg->_defaultValue = defaultValue;
+    arg->_metadata = [metadata copy];
 
-    return argument;
-}
-
-- (id)copyWithZone:(NSZone *)zone {
-    CSCapArgument *copy = [[CSCapArgument alloc] init];
-    copy->_name = [self.name copy];
-    copy->_mediaSpec = [self.mediaSpec copy];
-    copy->_argDescription = [self.argDescription copy];
-    copy->_cliFlag = [self.cliFlag copy];
-    copy->_position = self.position;
-    copy->_validation = [self.validation copy];
-    copy->_defaultValue = self.defaultValue;
-    copy->_metadata = [self.metadata copy];
-    return copy;
-}
-
-- (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.name forKey:@"name"];
-    [coder encodeObject:self.mediaSpec forKey:@"mediaSpec"];
-    [coder encodeObject:self.argDescription forKey:@"argDescription"];
-    [coder encodeObject:self.cliFlag forKey:@"cliFlag"];
-    [coder encodeObject:self.position forKey:@"position"];
-    [coder encodeObject:self.validation forKey:@"validation"];
-    [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
-    [coder encodeObject:self.metadata forKey:@"metadata"];
-}
-
-- (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    NSString *name = [coder decodeObjectOfClass:[NSString class] forKey:@"name"];
-    NSString *mediaSpec = [coder decodeObjectOfClass:[NSString class] forKey:@"mediaSpec"];
-    NSString *argDescription = [coder decodeObjectOfClass:[NSString class] forKey:@"argDescription"];
-
-    // FAIL HARD on missing required fields
-    if (!name || !mediaSpec || !argDescription) {
-        return nil;
-    }
-
-    self = [super init];
-    if (self) {
-        _name = name;
-        _mediaSpec = mediaSpec;
-        _argDescription = argDescription;
-        _cliFlag = [coder decodeObjectOfClass:[NSString class] forKey:@"cliFlag"];
-        _position = [coder decodeObjectOfClass:[NSNumber class] forKey:@"position"];
-        _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
-        _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
-        _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
-    }
-    return self;
+    return arg;
 }
 
 - (NSDictionary *)toDictionary {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
 
-    dict[@"name"] = self.name;
-    dict[@"media_urn"] = self.mediaSpec;
-    dict[@"arg_description"] = self.argDescription;
-    dict[@"cli_flag"] = self.cliFlag;
+    dict[@"media_urn"] = self.mediaUrn;
+    dict[@"required"] = @(self.required);
 
-    if (self.position) dict[@"position"] = self.position;
-    if (self.defaultValue) dict[@"default_value"] = self.defaultValue;
+    NSMutableArray *sourceDicts = [NSMutableArray array];
+    for (CSArgSource *source in self.sources) {
+        [sourceDicts addObject:[source toDictionary]];
+    }
+    dict[@"sources"] = sourceDicts;
+
+    if (self.argDescription) dict[@"arg_description"] = self.argDescription;
     if (self.validation) dict[@"validation"] = [self.validation toDictionary];
+    if (self.defaultValue) dict[@"default_value"] = self.defaultValue;
     if (self.metadata) dict[@"metadata"] = self.metadata;
 
     return [dict copy];
+}
+
+- (BOOL)hasStdinSource {
+    for (CSArgSource *source in self.sources) {
+        if ([source isStdin]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (nullable NSString *)getStdinMediaUrn {
+    for (CSArgSource *source in self.sources) {
+        if ([source isStdin]) {
+            return source.stdinMediaUrn;
+        }
+    }
+    return nil;
+}
+
+- (BOOL)hasPositionSource {
+    for (CSArgSource *source in self.sources) {
+        if ([source isPosition]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (nullable NSNumber *)getPosition {
+    for (CSArgSource *source in self.sources) {
+        if ([source isPosition]) {
+            return @(source.position);
+        }
+    }
+    return nil;
+}
+
+- (BOOL)hasCliFlagSource {
+    for (CSArgSource *source in self.sources) {
+        if ([source isCliFlag]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (nullable NSString *)getCliFlag {
+    for (CSArgSource *source in self.sources) {
+        if ([source isCliFlag]) {
+            return source.cliFlag;
+        }
+    }
+    return nil;
 }
 
 - (nullable NSDictionary *)getMetadata {
@@ -297,23 +484,65 @@
     _metadata = nil;
 }
 
+- (id)copyWithZone:(NSZone *)zone {
+    CSCapArg *copy = [[CSCapArg alloc] init];
+    copy->_mediaUrn = [self.mediaUrn copy];
+    copy->_required = self.required;
+    copy->_sources = [[NSArray alloc] initWithArray:self.sources copyItems:YES];
+    copy->_argDescription = [self.argDescription copy];
+    copy->_validation = [self.validation copy];
+    copy->_defaultValue = self.defaultValue;
+    copy->_metadata = [self.metadata copy];
+    return copy;
+}
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeObject:self.mediaUrn forKey:@"mediaUrn"];
+    [coder encodeBool:self.required forKey:@"required"];
+    [coder encodeObject:self.sources forKey:@"sources"];
+    [coder encodeObject:self.argDescription forKey:@"argDescription"];
+    [coder encodeObject:self.validation forKey:@"validation"];
+    [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
+    [coder encodeObject:self.metadata forKey:@"metadata"];
+}
+
+- (nullable instancetype)initWithCoder:(NSCoder *)coder {
+    NSString *mediaUrn = [coder decodeObjectOfClass:[NSString class] forKey:@"mediaUrn"];
+
+    // FAIL HARD on missing required fields
+    if (!mediaUrn) {
+        return nil;
+    }
+
+    self = [super init];
+    if (self) {
+        _mediaUrn = mediaUrn;
+        _required = [coder decodeBoolForKey:@"required"];
+        _sources = [coder decodeObjectOfClasses:[NSSet setWithObjects:[NSArray class], [CSArgSource class], nil] forKey:@"sources"];
+        _argDescription = [coder decodeObjectOfClass:[NSString class] forKey:@"argDescription"];
+        _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
+        _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
+        _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
+    }
+    return self;
+}
+
 + (BOOL)supportsSecureCoding {
     return YES;
 }
 
 - (BOOL)isEqual:(id)object {
     if (self == object) return YES;
-    if (![object isKindOfClass:[CSCapArgument class]]) return NO;
+    if (![object isKindOfClass:[CSCapArg class]]) return NO;
 
-    CSCapArgument *other = (CSCapArgument *)object;
+    CSCapArg *other = (CSCapArg *)object;
 
-    if (![self.name isEqualToString:other.name]) return NO;
-    if (![self.mediaSpec isEqualToString:other.mediaSpec]) return NO;
-    if (![self.argDescription isEqualToString:other.argDescription]) return NO;
-    if (![self.cliFlag isEqualToString:other.cliFlag]) return NO;
+    if (![self.mediaUrn isEqualToString:other.mediaUrn]) return NO;
+    if (self.required != other.required) return NO;
+    if (![self.sources isEqualToArray:other.sources]) return NO;
 
-    if ((self.position == nil) != (other.position == nil)) return NO;
-    if (self.position && ![self.position isEqualToNumber:other.position]) return NO;
+    if ((self.argDescription == nil) != (other.argDescription == nil)) return NO;
+    if (self.argDescription && ![self.argDescription isEqualToString:other.argDescription]) return NO;
 
     if ((self.validation == nil) != (other.validation == nil)) return NO;
     if (self.validation && ![self.validation isEqual:other.validation]) return NO;
@@ -328,191 +557,9 @@
 }
 
 - (NSUInteger)hash {
-    return [self.name hash] ^ [self.mediaSpec hash] ^ [self.argDescription hash] ^
-           [self.cliFlag hash] ^ [self.position hash] ^ [self.validation hash] ^
+    return [self.mediaUrn hash] ^ (self.required ? 1 : 0) ^ [self.sources hash] ^
+           [self.argDescription hash] ^ [self.validation hash] ^
            [self.defaultValue hash] ^ [self.metadata hash];
-}
-
-@end
-
-#pragma mark - CSCapArguments Implementation
-
-@implementation CSCapArguments
-
-+ (instancetype)arguments {
-    return [[CSCapArguments alloc] init];
-}
-
-+ (instancetype)argumentsWithRequired:(NSArray<CSCapArgument *> *)required
-                             optional:(NSArray<CSCapArgument *> *)optional {
-    // FAIL HARD if arrays are nil
-    if (!required || !optional) {
-        return nil;
-    }
-    CSCapArguments *arguments = [[CSCapArguments alloc] init];
-    arguments->_required = [required copy];
-    arguments->_optional = [optional copy];
-    return arguments;
-}
-
-+ (instancetype)argumentsWithDictionary:(NSDictionary *)dictionary error:(NSError **)error {
-    NSArray *requiredArray = dictionary[@"required"];
-    NSArray *optionalArray = dictionary[@"optional"];
-
-    NSMutableArray<CSCapArgument *> *required = [NSMutableArray array];
-    NSMutableArray<CSCapArgument *> *optional = [NSMutableArray array];
-
-    if (requiredArray) {
-        for (NSDictionary *argDict in requiredArray) {
-            CSCapArgument *argument = [CSCapArgument argumentWithDictionary:argDict error:error];
-            if (!argument) {
-                return nil;
-            }
-            [required addObject:argument];
-        }
-    }
-
-    if (optionalArray) {
-        for (NSDictionary *argDict in optionalArray) {
-            CSCapArgument *argument = [CSCapArgument argumentWithDictionary:argDict error:error];
-            if (!argument) {
-                return nil;
-            }
-            [optional addObject:argument];
-        }
-    }
-
-    return [self argumentsWithRequired:required optional:optional];
-}
-
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        _required = @[];
-        _optional = @[];
-    }
-    return self;
-}
-
-- (void)addRequiredArgument:(CSCapArgument *)argument {
-    NSMutableArray *mutableRequired = [_required mutableCopy];
-    [mutableRequired addObject:argument];
-    _required = [mutableRequired copy];
-}
-
-- (void)addOptionalArgument:(CSCapArgument *)argument {
-    NSMutableArray *mutableOptional = [_optional mutableCopy];
-    [mutableOptional addObject:argument];
-    _optional = [mutableOptional copy];
-}
-
-- (nullable CSCapArgument *)findArgumentWithName:(NSString *)name {
-    for (CSCapArgument *arg in self.required) {
-        if ([arg.name isEqualToString:name]) return arg;
-    }
-    for (CSCapArgument *arg in self.optional) {
-        if ([arg.name isEqualToString:name]) return arg;
-    }
-    return nil;
-}
-
-- (NSArray<CSCapArgument *> *)positionalArguments {
-    NSMutableArray *positional = [[NSMutableArray alloc] init];
-
-    for (CSCapArgument *arg in self.required) {
-        if (arg.position) [positional addObject:arg];
-    }
-    for (CSCapArgument *arg in self.optional) {
-        if (arg.position) [positional addObject:arg];
-    }
-
-    [positional sortUsingComparator:^NSComparisonResult(CSCapArgument *a, CSCapArgument *b) {
-        return [a.position compare:b.position];
-    }];
-
-    return [positional copy];
-}
-
-- (NSArray<CSCapArgument *> *)flagArguments {
-    NSMutableArray *flags = [[NSMutableArray alloc] init];
-
-    for (CSCapArgument *arg in self.required) {
-        if (arg.cliFlag) [flags addObject:arg];
-    }
-    for (CSCapArgument *arg in self.optional) {
-        if (arg.cliFlag) [flags addObject:arg];
-    }
-
-    return [flags copy];
-}
-
-- (BOOL)isEmpty {
-    return self.required.count == 0 && self.optional.count == 0;
-}
-
-- (id)copyWithZone:(NSZone *)zone {
-    return [CSCapArguments argumentsWithRequired:self.required optional:self.optional];
-}
-
-- (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.required forKey:@"required"];
-    [coder encodeObject:self.optional forKey:@"optional"];
-}
-
-- (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    self = [super init];
-    if (self) {
-        NSArray *required = [coder decodeObjectOfClass:[NSArray class] forKey:@"required"];
-        NSArray *optional = [coder decodeObjectOfClass:[NSArray class] forKey:@"optional"];
-
-        // FAIL HARD if required arrays are missing
-        if (!required || !optional) {
-            return nil;
-        }
-
-        _required = required;
-        _optional = optional;
-    }
-    return self;
-}
-
-- (NSDictionary *)toDictionary {
-    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-
-    NSMutableArray *requiredDicts = [NSMutableArray array];
-    for (CSCapArgument *arg in self.required) {
-        [requiredDicts addObject:[arg toDictionary]];
-    }
-    if (requiredDicts.count > 0) {
-        dict[@"required"] = requiredDicts;
-    }
-
-    NSMutableArray *optionalDicts = [NSMutableArray array];
-    for (CSCapArgument *arg in self.optional) {
-        [optionalDicts addObject:[arg toDictionary]];
-    }
-    if (optionalDicts.count > 0) {
-        dict[@"optional"] = optionalDicts;
-    }
-
-    return [dict copy];
-}
-
-+ (BOOL)supportsSecureCoding {
-    return YES;
-}
-
-- (BOOL)isEqual:(id)object {
-    if (self == object) return YES;
-    if (![object isKindOfClass:[CSCapArguments class]]) return NO;
-
-    CSCapArguments *other = (CSCapArguments *)object;
-    return [self.required isEqualToArray:other.required] &&
-           [self.optional isEqualToArray:other.optional];
-}
-
-- (NSUInteger)hash {
-    return [self.required hash] ^ [self.optional hash];
 }
 
 @end
@@ -521,11 +568,11 @@
 
 @implementation CSCapOutput
 
-+ (instancetype)outputWithMediaSpec:(NSString *)mediaSpec
-                         validation:(nullable CSArgumentValidation *)validation
-                  outputDescription:(NSString *)outputDescription {
++ (instancetype)outputWithMediaUrn:(NSString *)mediaUrn
+                        validation:(nullable CSArgumentValidation *)validation
+                 outputDescription:(NSString *)outputDescription {
     CSCapOutput *output = [[CSCapOutput alloc] init];
-    output->_mediaSpec = [mediaSpec copy];
+    output->_mediaUrn = [mediaUrn copy];
     output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
     output->_metadata = nil;
@@ -567,7 +614,7 @@
     }
 
     CSCapOutput *output = [[CSCapOutput alloc] init];
-    output->_mediaSpec = [mediaUrn copy];
+    output->_mediaUrn = [mediaUrn copy];
     output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
     output->_metadata = [metadata copy];
@@ -577,7 +624,7 @@
 
 - (id)copyWithZone:(NSZone *)zone {
     CSCapOutput *copy = [[CSCapOutput alloc] init];
-    copy->_mediaSpec = [self.mediaSpec copy];
+    copy->_mediaUrn = [self.mediaUrn copy];
     copy->_validation = [self.validation copy];
     copy->_outputDescription = [self.outputDescription copy];
     copy->_metadata = [self.metadata copy];
@@ -585,24 +632,24 @@
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder {
-    [coder encodeObject:self.mediaSpec forKey:@"mediaSpec"];
+    [coder encodeObject:self.mediaUrn forKey:@"mediaUrn"];
     [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.outputDescription forKey:@"outputDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
 }
 
 - (nullable instancetype)initWithCoder:(NSCoder *)coder {
-    NSString *mediaSpec = [coder decodeObjectOfClass:[NSString class] forKey:@"mediaSpec"];
+    NSString *mediaUrn = [coder decodeObjectOfClass:[NSString class] forKey:@"mediaUrn"];
     NSString *outputDescription = [coder decodeObjectOfClass:[NSString class] forKey:@"outputDescription"];
 
     // FAIL HARD on missing required fields
-    if (!mediaSpec || !outputDescription) {
+    if (!mediaUrn || !outputDescription) {
         return nil;
     }
 
     self = [super init];
     if (self) {
-        _mediaSpec = mediaSpec;
+        _mediaUrn = mediaUrn;
         _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _outputDescription = outputDescription;
         _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
@@ -613,7 +660,7 @@
 - (NSDictionary *)toDictionary {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
 
-    dict[@"media_urn"] = self.mediaSpec;
+    dict[@"media_urn"] = self.mediaUrn;
     dict[@"output_description"] = self.outputDescription;
 
     if (self.validation) dict[@"validation"] = [self.validation toDictionary];
@@ -644,7 +691,7 @@
 
     CSCapOutput *other = (CSCapOutput *)object;
 
-    if (![self.mediaSpec isEqualToString:other.mediaSpec]) return NO;
+    if (![self.mediaUrn isEqualToString:other.mediaUrn]) return NO;
 
     if ((self.validation == nil) != (other.validation == nil)) return NO;
     if (self.validation && ![self.validation isEqual:other.validation]) return NO;
@@ -658,7 +705,7 @@
 }
 
 - (NSUInteger)hash {
-    return [self.mediaSpec hash] ^ [self.validation hash] ^ [self.outputDescription hash] ^ [self.metadata hash];
+    return [self.mediaUrn hash] ^ [self.validation hash] ^ [self.outputDescription hash] ^ [self.metadata hash];
 }
 
 @end
@@ -794,7 +841,6 @@
         NSDictionary *tags = urnDict[@"tags"];
 
         if ([tags isKindOfClass:[NSDictionary class]]) {
-            // Use fromTags: which properly extracts 'in' and 'out' from the tags dictionary
             capUrn = [CSCapUrn fromTags:tags error:&keyError];
         } else {
             if (error) {
@@ -822,19 +868,19 @@
     NSString *capDescription = dictionary[@"cap_description"];
     NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
     NSDictionary *mediaSpecs = dictionary[@"media_specs"] ?: @{};
-    NSString *stdinType = dictionary[@"stdin"];
     NSDictionary *metadataJSON = dictionary[@"metadata_json"];
 
-    // Parse arguments
-    CSCapArguments *arguments;
-    NSDictionary *argumentsDict = dictionary[@"arguments"];
-    if (argumentsDict) {
-        arguments = [CSCapArguments argumentsWithDictionary:argumentsDict error:error];
-        if (!arguments && error && *error) {
-            return nil;
+    // Parse args (new unified array format)
+    NSMutableArray<CSCapArg *> *args = [NSMutableArray array];
+    NSArray *argsArray = dictionary[@"args"];
+    if (argsArray && [argsArray isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *argDict in argsArray) {
+            CSCapArg *arg = [CSCapArg argWithDictionary:argDict error:error];
+            if (!arg) {
+                return nil;
+            }
+            [args addObject:arg];
         }
-    } else {
-        arguments = [CSCapArguments arguments];
     }
 
     // Parse output
@@ -863,9 +909,8 @@
                       description:capDescription
                          metadata:metadata
                        mediaSpecs:mediaSpecs
-                        arguments:arguments
+                             args:args
                            output:output
-                            stdinType:stdinType
                      metadataJSON:metadataJSON];
     cap->_registeredBy = registeredBy;
     return cap;
@@ -888,16 +933,16 @@
         dict[@"media_specs"] = self.mediaSpecs;
     }
 
-    if (self.arguments && !self.arguments.isEmpty) {
-        dict[@"arguments"] = [self.arguments toDictionary];
+    if (self.args && self.args.count > 0) {
+        NSMutableArray *argsDicts = [NSMutableArray array];
+        for (CSCapArg *arg in self.args) {
+            [argsDicts addObject:[arg toDictionary]];
+        }
+        dict[@"args"] = argsDicts;
     }
 
     if (self.output) {
         dict[@"output"] = [self.output toDictionary];
-    }
-
-    if (self.stdinType) {
-        dict[@"stdin"] = self.stdinType;
     }
 
     if (self.metadataJSON) {
@@ -955,11 +1000,14 @@
         [desc appendFormat:@", mediaSpecs: %lu entries", (unsigned long)self.mediaSpecs.count];
     }
 
+    if (self.args.count > 0) {
+        [desc appendFormat:@", args: %lu", (unsigned long)self.args.count];
+    }
+
     [desc appendString:@")"];
     return desc;
 }
 
-// Compares all fields to match Rust reference implementation
 - (BOOL)isEqual:(id)object {
     if (self == object) return YES;
     if (![object isKindOfClass:[CSCap class]]) return NO;
@@ -982,17 +1030,13 @@
     if ((self.mediaSpecs == nil) != (other.mediaSpecs == nil)) return NO;
     if (self.mediaSpecs && ![self.mediaSpecs isEqualToDictionary:other.mediaSpecs]) return NO;
 
-    // Arguments
-    if ((self.arguments == nil) != (other.arguments == nil)) return NO;
-    if (self.arguments && ![self.arguments isEqual:other.arguments]) return NO;
+    // Args
+    if ((self.args == nil) != (other.args == nil)) return NO;
+    if (self.args && ![self.args isEqualToArray:other.args]) return NO;
 
     // Output
     if ((self.output == nil) != (other.output == nil)) return NO;
     if (self.output && ![self.output isEqual:other.output]) return NO;
-
-    // Stdin
-    if ((self.stdinType == nil) != (other.stdinType == nil)) return NO;
-    if (self.stdinType && ![self.stdinType isEqualToString:other.stdinType]) return NO;
 
     // MetadataJSON
     if ((self.metadataJSON == nil) != (other.metadataJSON == nil)) return NO;
@@ -1011,9 +1055,8 @@
     hash ^= [self.command hash];
     hash ^= [self.metadata hash];
     hash ^= [self.mediaSpecs hash];
-    hash ^= [self.arguments hash];
+    hash ^= [self.args hash];
     hash ^= [self.output hash];
-    hash ^= [self.stdinType hash];
     hash ^= [self.metadataJSON hash];
     hash ^= [self.registeredBy hash];
     return hash;
@@ -1030,9 +1073,8 @@
                        description:self.capDescription
                           metadata:self.metadata
                         mediaSpecs:self.mediaSpecs
-                         arguments:self.arguments
+                              args:self.args
                             output:self.output
-                             stdinType:self.stdinType
                       metadataJSON:self.metadataJSON];
     copy->_registeredBy = [self.registeredBy copy];
     return copy;
@@ -1045,9 +1087,8 @@
     [coder encodeObject:self.capDescription forKey:@"capDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
     [coder encodeObject:self.mediaSpecs forKey:@"mediaSpecs"];
-    [coder encodeObject:self.arguments forKey:@"arguments"];
+    [coder encodeObject:self.args forKey:@"args"];
     [coder encodeObject:self.output forKey:@"output"];
-    [coder encodeObject:self.stdinType forKey:@"stdinType"];
     [coder encodeObject:self.metadataJSON forKey:@"metadataJSON"];
     [coder encodeObject:self.registeredBy forKey:@"registeredBy"];
 }
@@ -1059,9 +1100,8 @@
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     NSDictionary *mediaSpecs = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"mediaSpecs"];
-    CSCapArguments *arguments = [coder decodeObjectOfClass:[CSCapArguments class] forKey:@"arguments"];
+    NSArray *args = [coder decodeObjectOfClasses:[NSSet setWithObjects:[NSArray class], [CSCapArg class], nil] forKey:@"args"];
     CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
-    NSString *stdinType = [coder decodeObjectOfClass:[NSString class] forKey:@"stdinType"];
     NSDictionary *metadataJSON = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadataJSON"];
     CSRegisteredBy *registeredBy = [coder decodeObjectOfClass:[CSRegisteredBy class] forKey:@"registeredBy"];
 
@@ -1076,9 +1116,8 @@
                       description:description
                          metadata:metadata
                        mediaSpecs:mediaSpecs ?: @{}
-                        arguments:arguments ?: [CSCapArguments arguments]
+                             args:args ?: @[]
                            output:output
-                            stdinType:stdinType
                      metadataJSON:metadataJSON];
     cap->_registeredBy = registeredBy;
     return cap;
@@ -1093,9 +1132,8 @@
                 description:nil
                    metadata:@{}
                  mediaSpecs:@{}
-                  arguments:[CSCapArguments arguments]
+                       args:@[]
                      output:nil
-                      stdinType:nil
                metadataJSON:nil];
 }
 
@@ -1105,12 +1143,11 @@
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> *)metadata
                 mediaSpecs:(NSDictionary<NSString *, id> *)mediaSpecs
-                 arguments:(CSCapArguments *)arguments
+                      args:(NSArray<CSCapArg *> *)args
                     output:(nullable CSCapOutput *)output
-                 stdinType:(nullable NSString *)stdinType
               metadataJSON:(nullable NSDictionary *)metadataJSON {
     // FAIL HARD if required fields are nil
-    if (!capUrn || !title || !command || !metadata || !mediaSpecs || !arguments) {
+    if (!capUrn || !title || !command || !metadata || !mediaSpecs || !args) {
         return nil;
     }
 
@@ -1121,41 +1158,102 @@
     cap->_capDescription = [description copy];
     cap->_metadata = [metadata copy];
     cap->_mediaSpecs = [mediaSpecs copy];
-    cap->_arguments = arguments;
+    cap->_args = [args copy];
     cap->_output = output;
-    cap->_stdinType = [stdinType copy];
     cap->_metadataJSON = [metadataJSON copy];
     return cap;
-}
-
-- (nullable NSString *)stdinMediaType {
-    return self.stdinType;
 }
 
 - (nullable NSString *)getCommand {
     return self.command;
 }
 
-- (CSCapArguments *)getArguments {
-    return self.arguments ?: [CSCapArguments arguments];
-}
-
 - (nullable CSCapOutput *)getOutput {
     return self.output;
 }
 
-- (void)addRequiredArgument:(CSCapArgument *)argument {
-    if (!_arguments) {
-        _arguments = [CSCapArguments arguments];
-    }
-    [_arguments addRequiredArgument:argument];
+- (NSArray<CSCapArg *> *)getArgs {
+    return self.args ?: @[];
 }
 
-- (void)addOptionalArgument:(CSCapArgument *)argument {
-    if (!_arguments) {
-        _arguments = [CSCapArguments arguments];
+- (NSArray<CSCapArg *> *)getRequiredArgs {
+    NSMutableArray<CSCapArg *> *required = [NSMutableArray array];
+    for (CSCapArg *arg in self.args) {
+        if (arg.required) {
+            [required addObject:arg];
+        }
     }
-    [_arguments addOptionalArgument:argument];
+    return [required copy];
+}
+
+- (NSArray<CSCapArg *> *)getOptionalArgs {
+    NSMutableArray<CSCapArg *> *optional = [NSMutableArray array];
+    for (CSCapArg *arg in self.args) {
+        if (!arg.required) {
+            [optional addObject:arg];
+        }
+    }
+    return [optional copy];
+}
+
+- (void)addArg:(CSCapArg *)arg {
+    NSMutableArray *mutableArgs = [_args mutableCopy];
+    [mutableArgs addObject:arg];
+    _args = [mutableArgs copy];
+}
+
+- (nullable CSCapArg *)findArgByMediaUrn:(NSString *)mediaUrn {
+    for (CSCapArg *arg in self.args) {
+        if ([arg.mediaUrn isEqualToString:mediaUrn]) {
+            return arg;
+        }
+    }
+    return nil;
+}
+
+- (NSArray<CSCapArg *> *)getPositionalArgs {
+    NSMutableArray<CSCapArg *> *positional = [NSMutableArray array];
+    for (CSCapArg *arg in self.args) {
+        if ([arg hasPositionSource]) {
+            [positional addObject:arg];
+        }
+    }
+
+    // Sort by position
+    [positional sortUsingComparator:^NSComparisonResult(CSCapArg *a, CSCapArg *b) {
+        NSNumber *posA = [a getPosition];
+        NSNumber *posB = [b getPosition];
+        if (posA && posB) {
+            return [posA compare:posB];
+        }
+        return NSOrderedSame;
+    }];
+
+    return [positional copy];
+}
+
+- (NSArray<CSCapArg *> *)getFlagArgs {
+    NSMutableArray<CSCapArg *> *flagArgs = [NSMutableArray array];
+    for (CSCapArg *arg in self.args) {
+        if ([arg hasCliFlagSource]) {
+            [flagArgs addObject:arg];
+        }
+    }
+    return [flagArgs copy];
+}
+
+- (nullable NSString *)getStdinMediaUrn {
+    for (CSCapArg *arg in self.args) {
+        NSString *stdinUrn = [arg getStdinMediaUrn];
+        if (stdinUrn) {
+            return stdinUrn;
+        }
+    }
+    return nil;
+}
+
+- (BOOL)acceptsStdin {
+    return [self getStdinMediaUrn] != nil;
 }
 
 - (nullable NSDictionary *)getMetadataJSON {

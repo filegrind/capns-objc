@@ -113,7 +113,7 @@ typedef NS_ENUM(NSInteger, CSSchemaValidationErrorType) {
  * @param error Pointer to NSError for error reporting
  * @return YES if validation succeeds, NO if it fails
  */
-- (BOOL)validateArgument:(CSCapArgument *)argument
+- (BOOL)validateArgument:(CSCapArg *)argument
                withValue:(id)value
               mediaSpecs:(NSDictionary *)mediaSpecs
                    error:(NSError **)error;

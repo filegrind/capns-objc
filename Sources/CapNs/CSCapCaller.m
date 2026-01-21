@@ -86,8 +86,7 @@
              namedArgs:(NSArray *)namedArgs
                  error:(NSError * _Nullable * _Nullable)error {
 
-    CSCapArguments *arguments = [self.capDefinition getArguments];
-    NSArray<CSCapArgument *> *requiredArgs = arguments.required;
+    NSArray<CSCapArg *> *requiredArgs = [self.capDefinition getRequiredArgs];
 
     // Check if we have enough positional arguments for required arguments
     if (positionalArgs.count < requiredArgs.count) {
@@ -103,7 +102,7 @@
 
     // Validate each positional argument
     for (NSUInteger i = 0; i < positionalArgs.count && i < requiredArgs.count; i++) {
-        CSCapArgument *argDef = requiredArgs[i];
+        CSCapArg *argDef = requiredArgs[i];
         id value = positionalArgs[i];
 
         if (![self validateArgumentValue:value againstDefinition:argDef error:error]) {
@@ -115,11 +114,11 @@
 }
 
 - (BOOL)validateArgumentValue:(id)value
-            againstDefinition:(CSCapArgument *)argDef
+            againstDefinition:(CSCapArg *)argDef
                         error:(NSError * _Nullable * _Nullable)error {
 
-    // Resolve the mediaSpec to determine expected type
-    NSString *specId = argDef.mediaSpec;
+    // Resolve the mediaUrn to determine expected type
+    NSString *specId = argDef.mediaUrn;
     if (!specId) {
         // No mediaSpec, skip type validation
         return YES;
@@ -131,7 +130,7 @@
         // FAIL HARD on unresolvable spec ID
         if (error) {
             NSString *message = [NSString stringWithFormat:@"Cannot resolve spec ID '%@' for argument '%@': %@",
-                               specId, argDef.name, resolveError.localizedDescription];
+                               specId, argDef.mediaUrn, resolveError.localizedDescription];
             *error = [NSError errorWithDomain:@"CSCapCaller"
                                          code:1010
                                      userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -151,7 +150,7 @@
         if (![value isKindOfClass:[NSString class]]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Argument '%@' expects string but received %@",
-                                   argDef.name, NSStringFromClass([value class])];
+                                   argDef.mediaUrn, NSStringFromClass([value class])];
                 *error = [NSError errorWithDomain:@"CSCapCaller"
                                              code:1003
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -162,7 +161,7 @@
         if (![value isKindOfClass:[NSNumber class]] || ![self isInteger:(NSNumber *)value]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Argument '%@' expects integer but received %@",
-                                   argDef.name, NSStringFromClass([value class])];
+                                   argDef.mediaUrn, NSStringFromClass([value class])];
                 *error = [NSError errorWithDomain:@"CSCapCaller"
                                              code:1004
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -173,7 +172,7 @@
         if (![value isKindOfClass:[NSNumber class]]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Argument '%@' expects number but received %@",
-                                   argDef.name, NSStringFromClass([value class])];
+                                   argDef.mediaUrn, NSStringFromClass([value class])];
                 *error = [NSError errorWithDomain:@"CSCapCaller"
                                              code:1005
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -184,7 +183,7 @@
         if (![value isKindOfClass:[NSNumber class]]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Argument '%@' expects boolean but received %@",
-                                   argDef.name, NSStringFromClass([value class])];
+                                   argDef.mediaUrn, NSStringFromClass([value class])];
                 *error = [NSError errorWithDomain:@"CSCapCaller"
                                              code:1006
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -197,7 +196,7 @@
             if (![value isKindOfClass:[NSArray class]]) {
                 if (error) {
                     NSString *message = [NSString stringWithFormat:@"Argument '%@' expects array but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
+                                       argDef.mediaUrn, NSStringFromClass([value class])];
                     *error = [NSError errorWithDomain:@"CSCapCaller"
                                                  code:1007
                                              userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -208,7 +207,7 @@
             if (![value isKindOfClass:[NSDictionary class]]) {
                 if (error) {
                     NSString *message = [NSString stringWithFormat:@"Argument '%@' expects object but received %@",
-                                       argDef.name, NSStringFromClass([value class])];
+                                       argDef.mediaUrn, NSStringFromClass([value class])];
                     *error = [NSError errorWithDomain:@"CSCapCaller"
                                                  code:1008
                                              userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -221,7 +220,7 @@
         if (![value isKindOfClass:[NSArray class]]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Argument '%@' expects array but received %@",
-                                   argDef.name, NSStringFromClass([value class])];
+                                   argDef.mediaUrn, NSStringFromClass([value class])];
                 *error = [NSError errorWithDomain:@"CSCapCaller"
                                              code:1007
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -235,7 +234,7 @@
         if (![value isKindOfClass:[NSData class]] && ![value isKindOfClass:[NSString class]]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Argument '%@' expects binary data but received %@",
-                                   argDef.name, NSStringFromClass([value class])];
+                                   argDef.mediaUrn, NSStringFromClass([value class])];
                 *error = [NSError errorWithDomain:@"CSCapCaller"
                                              code:1009
                                          userInfo:@{NSLocalizedDescriptionKey: message}];

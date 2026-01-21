@@ -79,19 +79,19 @@
 
 - (BOOL)validateAgainstCap:(CSCap *)cap error:(NSError * _Nullable * _Nullable)error {
     CSCapOutput *output = [cap getOutput];
-    if (!output || !output.mediaSpec) {
+    if (!output || !output.mediaUrn) {
         // No output definition, validation passes
         return YES;
     }
 
-    // Resolve the mediaSpec to determine expected type
+    // Resolve the mediaUrn to determine expected type
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveMediaUrn(output.mediaSpec, cap.mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(output.mediaUrn, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
         // FAIL HARD on unresolvable spec ID
         if (error) {
             NSString *message = [NSString stringWithFormat:@"Cannot resolve spec ID '%@' for output: %@",
-                               output.mediaSpec, resolveError.localizedDescription];
+                               output.mediaUrn, resolveError.localizedDescription];
             *error = [NSError errorWithDomain:@"CSResponseWrapper"
                                          code:1004
                                      userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -104,7 +104,7 @@
         if (![mediaSpec isBinary]) {
             if (error) {
                 NSString *message = [NSString stringWithFormat:@"Cap %@ expects %@ output but received binary data",
-                                   [cap urnString], output.mediaSpec];
+                                   [cap urnString], output.mediaUrn];
                 *error = [NSError errorWithDomain:@"CSResponseWrapper"
                                              code:1002
                                          userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -162,7 +162,7 @@
 /// Returns error if the output spec cannot be resolved - no fallbacks.
 - (BOOL)matchesOutputTypeForCap:(CSCap *)cap error:(NSError **)error {
     CSCapOutput *outputDef = [cap getOutput];
-    if (!outputDef || !outputDef.mediaSpec) {
+    if (!outputDef || !outputDef.mediaUrn) {
         if (error) {
             NSString *message = [NSString stringWithFormat:@"Cap '%@' has no output definition", [cap urnString]];
             *error = [NSError errorWithDomain:@"CSResponseWrapper"
@@ -172,13 +172,13 @@
         return NO;
     }
 
-    // Resolve the mediaSpec - fail hard if resolution fails
+    // Resolve the mediaUrn - fail hard if resolution fails
     NSError *resolveError = nil;
-    CSMediaSpec *mediaSpec = CSResolveMediaUrn(outputDef.mediaSpec, cap.mediaSpecs, &resolveError);
+    CSMediaSpec *mediaSpec = CSResolveMediaUrn(outputDef.mediaUrn, cap.mediaSpecs, &resolveError);
     if (!mediaSpec) {
         if (error) {
             NSString *message = [NSString stringWithFormat:@"Failed to resolve output spec ID '%@' for cap '%@': %@",
-                               outputDef.mediaSpec, [cap urnString], resolveError.localizedDescription];
+                               outputDef.mediaUrn, [cap urnString], resolveError.localizedDescription];
             *error = [NSError errorWithDomain:@"CSResponseWrapper"
                                          code:1006
                                      userInfo:@{NSLocalizedDescriptionKey: message}];

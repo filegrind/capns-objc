@@ -140,13 +140,14 @@ static NSString *buildRegistryURL(NSString *urn) {
     XCTAssertNotNil(urn);
     
     CSCap *cap = [CSCap capWithUrn:urn
-                           version:@"1.0.0"
+                             title:@"Extract Metadata"
+                           command:@"extract-metadata"
                        description:nil
                           metadata:@{}
-                           command:@"extract-metadata"
-                         arguments:[CSCapArguments arguments]
+                        mediaSpecs:@{}
+                              args:@[]
                             output:nil
-                      stdinType:nil];
+                      metadataJSON:nil];
     
     XCTestExpectation *expectation = [self expectationWithDescription:@"Validate cap"];
     
