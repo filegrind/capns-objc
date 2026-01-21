@@ -215,11 +215,11 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     return self;
 }
 
-- (BOOL)validateArgument:(CSCapArgument *)argument
+- (BOOL)validateArgument:(CSCapArg *)argument
                withValue:(id)value
               mediaSpecs:(NSDictionary *)mediaSpecs
                    error:(NSError **)error {
-    // Resolve the mediaSpec to get the schema
+    // Resolve the mediaUrn to get the schema
     NSDictionary *schema = [self resolveArgumentSchema:argument mediaSpecs:mediaSpecs error:error];
     if (!schema) {
         // If there's an error, it's already set
@@ -229,7 +229,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
     return [self validateValue:value
                  againstSchema:schema
-                       context:[NSString stringWithFormat:@"argument '%@'", argument.name]
+                       context:[NSString stringWithFormat:@"argument '%@'", argument.mediaUrn]
                          error:error];
 }
 
@@ -237,7 +237,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
              withValue:(id)value
             mediaSpecs:(NSDictionary *)mediaSpecs
                  error:(NSError **)error {
-    // Resolve the mediaSpec to get the schema
+    // Resolve the mediaUrn to get the schema
     NSDictionary *schema = [self resolveOutputSchema:output mediaSpecs:mediaSpecs error:error];
     if (!schema) {
         // If there's an error, it's already set
@@ -255,19 +255,22 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
           positionalArgs:(nullable NSArray *)positionalArgs
                namedArgs:(nullable NSDictionary<NSString *, id> *)namedArgs
                    error:(NSError **)error {
-    if (!cap.arguments) {
+    NSArray<CSCapArg *> *args = [cap getArgs];
+    if (!args || args.count == 0) {
         return YES;
     }
 
     // Validate required arguments
-    for (NSUInteger i = 0; i < cap.arguments.required.count; i++) {
-        CSCapArgument *argDef = cap.arguments.required[i];
+    NSArray<CSCapArg *> *requiredArgs = [cap getRequiredArgs];
+    for (NSUInteger i = 0; i < requiredArgs.count; i++) {
+        CSCapArg *argDef = requiredArgs[i];
         id value = nil;
         BOOL found = NO;
 
         // Check positional arguments
-        if (argDef.position) {
-            NSUInteger pos = argDef.position.unsignedIntegerValue;
+        NSNumber *position = [argDef getPosition];
+        if (position) {
+            NSUInteger pos = position.unsignedIntegerValue;
             if (positionalArgs && pos < positionalArgs.count) {
                 value = positionalArgs[pos];
                 found = YES;
@@ -277,9 +280,9 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
             found = YES;
         }
 
-        // Check named arguments (takes precedence)
-        if (namedArgs && namedArgs[argDef.name]) {
-            value = namedArgs[argDef.name];
+        // Check named arguments by media_urn (takes precedence)
+        if (namedArgs && namedArgs[argDef.mediaUrn]) {
+            value = namedArgs[argDef.mediaUrn];
             found = YES;
         }
 
@@ -291,19 +294,21 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     }
 
     // Validate optional arguments if provided
-    for (CSCapArgument *argDef in cap.arguments.optional) {
+    NSArray<CSCapArg *> *optionalArgs = [cap getOptionalArgs];
+    for (CSCapArg *argDef in optionalArgs) {
         id value = nil;
         BOOL found = NO;
 
-        // Check named arguments first for optional args
-        if (namedArgs && namedArgs[argDef.name]) {
-            value = namedArgs[argDef.name];
+        // Check named arguments first for optional args (by media_urn)
+        if (namedArgs && namedArgs[argDef.mediaUrn]) {
+            value = namedArgs[argDef.mediaUrn];
             found = YES;
         }
 
         // Check positional if not found in named args
-        if (!found && argDef.position) {
-            NSUInteger pos = argDef.position.unsignedIntegerValue;
+        NSNumber *position = [argDef getPosition];
+        if (!found && position) {
+            NSUInteger pos = position.unsignedIntegerValue;
             if (positionalArgs && pos < positionalArgs.count) {
                 value = positionalArgs[pos];
                 found = YES;
@@ -322,13 +327,13 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 #pragma mark - Private Methods
 
-- (nullable NSDictionary *)resolveArgumentSchema:(CSCapArgument *)argument
+- (nullable NSDictionary *)resolveArgumentSchema:(CSCapArg *)argument
                                       mediaSpecs:(NSDictionary *)mediaSpecs
                                            error:(NSError **)error {
-    // Get the spec ID from the argument
-    NSString *specId = argument.mediaSpec;
+    // Get the media URN from the argument
+    NSString *specId = argument.mediaUrn;
     if (!specId) {
-        // No mediaSpec, no schema validation needed
+        // No mediaUrn, no schema validation needed
         return nil;
     }
 
@@ -350,10 +355,10 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 - (nullable NSDictionary *)resolveOutputSchema:(CSCapOutput *)output
                                     mediaSpecs:(NSDictionary *)mediaSpecs
                                          error:(NSError **)error {
-    // Get the spec ID from the output
-    NSString *specId = output.mediaSpec;
+    // Get the media URN from the output
+    NSString *specId = output.mediaUrn;
     if (!specId) {
-        // No mediaSpec, no schema validation needed
+        // No mediaUrn, no schema validation needed
         return nil;
     }
 

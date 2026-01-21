@@ -49,9 +49,8 @@
                  description:title
                     metadata:@{}
                   mediaSpecs:@{}
-                   arguments:[CSCapArguments arguments]
+                   args:@[]
                       output:nil
-                stdinType:nil
                 metadataJSON:nil];
 }
 
@@ -231,9 +230,8 @@
                        description:@"PDF Binary to String"
                           metadata:@{}
                         mediaSpecs:@{}
-                         arguments:[CSCapArguments arguments]
+                         args:@[]
                             output:nil
-                      stdinType:nil
                       metadataJSON:nil];
 
     [registry1 registerCapSet:@"converter1" host:host1 capabilities:@[cap1] error:nil];

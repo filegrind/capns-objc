@@ -142,12 +142,14 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
         }
 
         // Compare stdin - both nil or both equal strings
-        BOOL stdinMatches = (cap.stdinType == nil && canonicalCap.stdinType == nil) ||
-                           (cap.stdinType != nil && canonicalCap.stdinType != nil && [cap.stdinType isEqualToString:canonicalCap.stdinType]);
+        NSString *capStdinUrn = [cap getStdinMediaUrn];
+        NSString *canonicalStdinUrn = [canonicalCap getStdinMediaUrn];
+        BOOL stdinMatches = (capStdinUrn == nil && canonicalStdinUrn == nil) ||
+                           (capStdinUrn != nil && canonicalStdinUrn != nil && [capStdinUrn isEqualToString:canonicalStdinUrn]);
         if (!stdinMatches) {
             NSError *validationError = [NSError errorWithDomain:@"CSCapRegistryError"
                                                            code:1004
-                                                       userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"stdin mismatch. Local: %@, Canonical: %@", cap.stdinType ?: @"(none)", canonicalCap.stdinType ?: @"(none)"]}];
+                                                       userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"stdin mismatch. Local: %@, Canonical: %@", capStdinUrn ?: @"(none)", canonicalStdinUrn ?: @"(none)"]}];
             completion(validationError);
             return;
         }

@@ -64,9 +64,8 @@
                        description:@"Test capability"
                           metadata:@{}
                         mediaSpecs:@{}
-                         arguments:[CSCapArguments arguments]
+                         args:@[]
                             output:nil
-                      stdinType:nil
                       metadataJSON:nil];
 
     NSError *registerError = nil;
@@ -108,9 +107,8 @@
                              description:@"General generation"
                                 metadata:@{}
                               mediaSpecs:@{}
-                               arguments:[CSCapArguments arguments]
+                               args:@[]
                                   output:nil
-                            stdinType:nil
                             metadataJSON:nil];
 
     // Register specific host
@@ -122,9 +120,8 @@
                               description:@"Specific text generation"
                                  metadata:@{}
                                mediaSpecs:@{}
-                                arguments:[CSCapArguments arguments]
+                                args:@[]
                                    output:nil
-                             stdinType:nil
                              metadataJSON:nil];
 
     [self.registry registerCapSet:@"general" host:generalHost capabilities:@[generalCap] error:nil];
@@ -167,9 +164,8 @@
                        description:@"Test"
                           metadata:@{}
                         mediaSpecs:@{}
-                         arguments:[CSCapArguments arguments]
+                         args:@[]
                             output:nil
-                      stdinType:nil
                       metadataJSON:nil];
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
@@ -193,9 +189,8 @@
                        description:@"Test"
                           metadata:@{}
                         mediaSpecs:@{}
-                         arguments:[CSCapArguments arguments]
+                         args:@[]
                             output:nil
-                      stdinType:nil
                       metadataJSON:nil];
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
@@ -224,9 +219,8 @@
                        description:@"Test"
                           metadata:@{}
                         mediaSpecs:@{}
-                         arguments:[CSCapArguments arguments]
+                         args:@[]
                             output:nil
-                      stdinType:nil
                       metadataJSON:nil];
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];

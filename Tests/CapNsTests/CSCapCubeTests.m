@@ -48,9 +48,8 @@
                  description:title
                     metadata:@{}
                   mediaSpecs:@{}
-                   arguments:[CSCapArguments arguments]
+                        args:@[]
                       output:nil
-                stdinType:nil
                 metadataJSON:nil];
 }
 

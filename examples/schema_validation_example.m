@@ -76,22 +76,20 @@
     };
 
     // Create argument with spec ID
-    CSCapArgument *userArg = [CSCapArgument argumentWithName:@"user_data"
-                                                   mediaSpec:@"my:user-data.v1"
-                                               argDescription:@"User data with validation"
-                                                     cliFlag:@"--user"
-                                                    position:nil
-                                                  validation:nil
-                                                defaultValue:nil];
+    CSCapArg *userArg = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
+                                          required:YES
+                                           sources:@[[CSArgSource cliFlagSource:@"--user"]]
+                                    argDescription:@"User data with validation"
+                                        validation:nil
+                                      defaultValue:nil];
 
     // Create output with spec ID
-    CSCapOutput *output = [CSCapOutput outputWithMediaSpec:@"my:create-user-response.v1"
-                                                validation:nil
-                                         outputDescription:@"Operation response"];
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:create-user-response.v1"
+                                               validation:nil
+                                        outputDescription:@"Operation response"];
 
     // Create capability
     CSCapUrn *urn = [[[[CSCapUrnBuilder builder] tag:@"op" value:@"create"] tag:@"target" value:@"user"] build:nil];
-    CSCapArguments *arguments = [CSCapArguments argumentsWithRequired:@[userArg] optional:@[]];
 
     CSCap *cap = [CSCap capWithUrn:urn
                              title:@"Create User"
@@ -99,9 +97,8 @@
                        description:@"Create a new user with validation"
                           metadata:@{}
                         mediaSpecs:mediaSpecs
-                         arguments:arguments
+                              args:@[userArg]
                             output:output
-                      stdinType:nil
                       metadataJSON:nil];
 
     // Test with valid data
@@ -165,29 +162,26 @@
 
     // Built-in spec IDs don't need to be declared in mediaSpecs
 
-    CSCapArgument *textArg = [CSCapArgument argumentWithName:@"text"
-                                                   mediaSpec:CSSpecIdStr
-                                               argDescription:@"Text input"
-                                                     cliFlag:@"--text"
-                                                    position:nil
-                                                  validation:nil
-                                                defaultValue:nil];
+    CSCapArg *textArg = [CSCapArg argWithMediaUrn:CSSpecIdStr
+                                          required:YES
+                                           sources:@[[CSArgSource cliFlagSource:@"--text"]]
+                                    argDescription:@"Text input"
+                                        validation:nil
+                                      defaultValue:nil];
 
-    CSCapArgument *countArg = [CSCapArgument argumentWithName:@"count"
-                                                    mediaSpec:CSSpecIdInt
-                                                argDescription:@"Count value"
-                                                      cliFlag:@"--count"
-                                                     position:nil
-                                                   validation:nil
-                                                 defaultValue:nil];
+    CSCapArg *countArg = [CSCapArg argWithMediaUrn:CSSpecIdInt
+                                           required:YES
+                                            sources:@[[CSArgSource cliFlagSource:@"--count"]]
+                                     argDescription:@"Count value"
+                                         validation:nil
+                                       defaultValue:nil];
 
-    CSCapArgument *dataArg = [CSCapArgument argumentWithName:@"data"
-                                                   mediaSpec:CSSpecIdObj
-                                               argDescription:@"JSON object"
-                                                     cliFlag:@"--data"
-                                                    position:nil
-                                                  validation:nil
-                                                defaultValue:nil];
+    CSCapArg *dataArg = [CSCapArg argWithMediaUrn:CSSpecIdObj
+                                          required:YES
+                                           sources:@[[CSArgSource cliFlagSource:@"--data"]]
+                                    argDescription:@"JSON object"
+                                        validation:nil
+                                      defaultValue:nil];
 
     NSError *error = nil;
 
@@ -355,13 +349,12 @@
         }
     };
 
-    CSCapArgument *documentArg = [CSCapArgument argumentWithName:@"document"
-                                                       mediaSpec:@"my:document.v1"
-                                                   argDescription:@"Complex document structure"
-                                                         cliFlag:@"--document"
-                                                        position:nil
-                                                      validation:nil
-                                                    defaultValue:nil];
+    CSCapArg *documentArg = [CSCapArg argWithMediaUrn:@"my:document.v1"
+                                              required:YES
+                                               sources:@[[CSArgSource cliFlagSource:@"--document"]]
+                                        argDescription:@"Complex document structure"
+                                            validation:nil
+                                          defaultValue:nil];
 
     // Valid complex document
     NSDictionary *validDocument = @{
@@ -426,13 +419,12 @@
         }
     };
 
-    CSCapArgument *arg = [CSCapArgument argumentWithName:@"item"
-                                               mediaSpec:@"my:item.v1"
-                                           argDescription:@"Simple item"
-                                                 cliFlag:@"--item"
-                                                position:nil
-                                              validation:nil
-                                            defaultValue:nil];
+    CSCapArg *arg = [CSCapArg argWithMediaUrn:@"my:item.v1"
+                                      required:YES
+                                       sources:@[[CSArgSource cliFlagSource:@"--item"]]
+                                argDescription:@"Simple item"
+                                    validation:nil
+                                  defaultValue:nil];
 
     // Measure validation performance
     NSDate *startTime = [NSDate date];
