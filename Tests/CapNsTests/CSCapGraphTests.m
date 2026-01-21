@@ -24,7 +24,7 @@
 - (void)executeCap:(NSString *)cap
     positionalArgs:(NSArray *)positionalArgs
          namedArgs:(NSArray *)namedArgs
-         stdinData:(NSData * _Nullable)stdinData
+       stdinSource:(CSStdinSource * _Nullable)stdinSource
         completion:(void (^)(CSResponseWrapper * _Nullable response, NSError * _Nullable error))completion {
 
     CSResponseWrapper *response = [CSResponseWrapper textResponseWithData:

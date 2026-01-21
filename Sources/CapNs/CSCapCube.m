@@ -8,6 +8,7 @@
 #import "include/CSCapCube.h"
 #import "include/CSCapUrn.h"
 #import "include/CSCapGraph.h"
+#import "include/CSStdinSource.h"
 
 // ============================================================================
 // CSBestCapSetMatch
@@ -62,7 +63,7 @@
 - (void)executeCap:(NSString *)cap
     positionalArgs:(NSArray *)positionalArgs
          namedArgs:(NSArray *)namedArgs
-         stdinData:(NSData * _Nullable)stdinData
+       stdinSource:(CSStdinSource * _Nullable)stdinSource
         completion:(void (^)(CSResponseWrapper * _Nullable response, NSError * _Nullable error))completion {
 
     // Parse the request URN
@@ -101,7 +102,7 @@
     [bestHost executeCap:cap
           positionalArgs:positionalArgs
                namedArgs:namedArgs
-               stdinData:stdinData
+             stdinSource:stdinSource
               completion:completion];
 }
 
