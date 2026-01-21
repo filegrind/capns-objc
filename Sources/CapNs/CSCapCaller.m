@@ -7,6 +7,7 @@
 
 #import "include/CSCapCaller.h"
 #import "include/CSMediaSpec.h"
+#import "include/CSStdinSource.h"
 
 @interface CSCapCaller ()
 @property (nonatomic, strong) NSString *cap;
@@ -28,7 +29,7 @@
 
 - (void)callWithPositionalArgs:(NSArray *)positionalArgs
                      namedArgs:(NSArray *)namedArgs
-                     stdinData:(NSData * _Nullable)stdinData
+                   stdinSource:(CSStdinSource * _Nullable)stdinSource
                     completion:(void (^)(CSResponseWrapper * _Nullable response, NSError * _Nullable error))completion {
 
     // Validate inputs against cap definition
@@ -44,7 +45,7 @@
     [self.capSet executeCap:self.cap
               positionalArgs:positionalArgs
                    namedArgs:namedArgs
-                   stdinData:stdinData
+                 stdinSource:stdinSource
                   completion:^(CSResponseWrapper * _Nullable response, NSError * _Nullable error) {
 
         if (error) {

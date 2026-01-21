@@ -8,23 +8,24 @@
 #import <Foundation/Foundation.h>
 #import "CSCap.h"
 #import "CSResponseWrapper.h"
+#import "CSStdinSource.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @protocol CSCapSet <NSObject>
 
 /**
- * Execute a capability with arguments and optional stdin data
+ * Execute a capability with arguments and optional stdin source
  * @param cap The capability URN string
  * @param positionalArgs Array of positional arguments
  * @param namedArgs Array of named arguments
- * @param stdinData Optional stdin data
+ * @param stdinSource Optional stdin source (either raw data or file reference)
  * @param completion Completion handler with response or error
  */
 - (void)executeCap:(NSString *)cap
     positionalArgs:(NSArray *)positionalArgs
          namedArgs:(NSArray *)namedArgs
-         stdinData:(NSData * _Nullable)stdinData
+       stdinSource:(CSStdinSource * _Nullable)stdinSource
         completion:(void (^)(CSResponseWrapper * _Nullable response, NSError * _Nullable error))completion;
 
 @end
@@ -50,16 +51,16 @@ NS_ASSUME_NONNULL_BEGIN
                 capDefinition:(CSCap *)capDefinition;
 
 /**
- * Call the cap with structured arguments and optional stdin data
+ * Call the cap with structured arguments and optional stdin source
  * Validates inputs against cap definition before execution
  * @param positionalArgs Array of positional arguments
- * @param namedArgs Array of named arguments  
- * @param stdinData Optional stdin data
+ * @param namedArgs Array of named arguments
+ * @param stdinSource Optional stdin source (either raw data or file reference)
  * @param completion Completion handler with validated response or error
  */
 - (void)callWithPositionalArgs:(NSArray *)positionalArgs
                      namedArgs:(NSArray *)namedArgs
-                     stdinData:(NSData * _Nullable)stdinData
+                   stdinSource:(CSStdinSource * _Nullable)stdinSource
                     completion:(void (^)(CSResponseWrapper * _Nullable response, NSError * _Nullable error))completion;
 
 @end
