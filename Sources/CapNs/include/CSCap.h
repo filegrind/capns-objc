@@ -7,7 +7,7 @@
 //  and do not assume any specific domain like files or documents.
 //
 //  NOTE: All type information is conveyed via mediaSpec fields that
-//  contain spec IDs (e.g., "media:type=string;v=1") which resolve to
+//  contain spec IDs (e.g., "media:string") which resolve to
 //  MediaSpec definitions via the mediaSpecs table.
 //
 
@@ -260,7 +260,7 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 
 /**
  * Create an output with media URN
- * @param mediaUrn Media URN (e.g., "media:type=object;v=1")
+ * @param mediaUrn Media URN (e.g., "media:object")
  * @param validation Optional validation rules
  * @param outputDescription Description of the output
  * @return A new CSCapOutput instance
@@ -554,7 +554,7 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 
 /**
  * Resolve a spec ID to a MediaSpec using this cap's mediaSpecs table
- * @param specId The spec ID (e.g., "media:type=string;v=1")
+ * @param specId The spec ID (e.g., "media:string")
  * @param error Error if spec ID cannot be resolved
  * @return The resolved MediaSpec or nil on error
  */

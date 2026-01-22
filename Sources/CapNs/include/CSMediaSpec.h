@@ -35,35 +35,35 @@ typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
 // ============================================================================
 
 /// Well-known built-in media URNs with coercion tags - these do not need to be declared in mediaSpecs
-FOUNDATION_EXPORT NSString * const CSMediaString;       // media:type=string;v=1;textable;scalar
-FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:type=integer;v=1;textable;numeric;scalar
-FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:type=number;v=1;textable;numeric;scalar
-FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:type=boolean;v=1;textable;scalar
-FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:type=object;v=1;textable;keyed
-FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:type=string-array;v=1;textable;sequence
-FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:type=integer-array;v=1;textable;numeric;sequence
-FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:type=number-array;v=1;textable;numeric;sequence
-FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:type=boolean-array;v=1;textable;sequence
-FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:type=object-array;v=1;textable;keyed;sequence
-FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:type=raw;v=1;binary
-FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:type=void;v=1
+FOUNDATION_EXPORT NSString * const CSMediaString;       // media:string;textable;scalar
+FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:integer;textable;numeric;scalar
+FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:number;textable;numeric;scalar
+FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:boolean;textable;scalar
+FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:object;textable;keyed
+FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:string-array;textable;sequence
+FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer-array;textable;numeric;sequence
+FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:number-array;textable;numeric;sequence
+FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:boolean-array;textable;sequence
+FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:object-array;textable;keyed;sequence
+FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:raw;binary
+FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
-FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:type=png;v=1;binary
-FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:type=wav;audio;binary;v=1;
-FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:type=video;v=1;binary
-FOUNDATION_EXPORT NSString * const CSMediaText;         // media:type=text;v=1;textable
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:png;binary
+FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;binary;
+FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;binary
+FOUNDATION_EXPORT NSString * const CSMediaText;         // media:text;textable
 // Document types (PRIMARY naming - type IS the format)
-FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:type=pdf;v=1;binary
-FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:type=epub;v=1;binary
+FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;binary
+FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub;binary
 // Text format types (PRIMARY naming - type IS the format)
-FOUNDATION_EXPORT NSString * const CSMediaMd;           // media:type=md;v=1;textable
-FOUNDATION_EXPORT NSString * const CSMediaTxt;          // media:type=txt;v=1;textable
-FOUNDATION_EXPORT NSString * const CSMediaRst;          // media:type=rst;v=1;textable
-FOUNDATION_EXPORT NSString * const CSMediaLog;          // media:type=log;v=1;textable
-FOUNDATION_EXPORT NSString * const CSMediaHtml;         // media:type=html;v=1;textable
-FOUNDATION_EXPORT NSString * const CSMediaXml;          // media:type=xml;v=1;textable
-FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:type=json;v=1;textable;keyed
-FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:type=yaml;v=1;textable;keyed
+FOUNDATION_EXPORT NSString * const CSMediaMd;           // media:md;textable
+FOUNDATION_EXPORT NSString * const CSMediaTxt;          // media:txt;textable
+FOUNDATION_EXPORT NSString * const CSMediaRst;          // media:rst;textable
+FOUNDATION_EXPORT NSString * const CSMediaLog;          // media:log;textable
+FOUNDATION_EXPORT NSString * const CSMediaHtml;         // media:html;textable
+FOUNDATION_EXPORT NSString * const CSMediaXml;          // media:xml;textable
+FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:json;textable;keyed
+FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;keyed
 
 /**
  * A parsed MediaSpec value
@@ -164,10 +164,10 @@ FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:type=yaml;v=1;t
  *
  * Resolution algorithm:
  * 1. Look up media URN in mediaSpecs table
- * 2. If not found AND media URN is a known built-in (media:type=*): use built-in definition
+ * 2. If not found AND media URN is a known built-in (media:*): use built-in definition
  * 3. If not found and not a built-in: FAIL HARD
  *
- * @param mediaUrn The media URN (e.g., "media:type=string;v=1")
+ * @param mediaUrn The media URN (e.g., "media:string")
  * @param mediaSpecs The mediaSpecs lookup table (can be nil)
  * @param error Error if media URN cannot be resolved
  * @return The resolved MediaSpec or nil on error
