@@ -17,10 +17,10 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface CSCapGraphEdge : NSObject
 
-/** The input MediaSpec ID (e.g., "media:type=binary;v=1") */
+/** The input MediaSpec ID (e.g., "media:binary") */
 @property (nonatomic, strong, readonly) NSString *fromSpec;
 
-/** The output MediaSpec ID (e.g., "media:type=string;v=1") */
+/** The output MediaSpec ID (e.g., "media:string") */
 @property (nonatomic, strong, readonly) NSString *toSpec;
 
 /** The capability that performs this conversion */

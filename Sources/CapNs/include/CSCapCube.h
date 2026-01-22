@@ -138,7 +138,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Build a directed graph from all capabilities across all registries.
  * The graph represents all possible conversions where:
- * - Nodes are MediaSpec IDs (e.g., "media:type=string;v=1", "media:type=binary;v=1")
+ * - Nodes are MediaSpec IDs (e.g., "media:string", "media:binary")
  * - Edges are capabilities that convert from one spec to another
  * This enables discovering conversion paths between different media formats.
  * @return A CSCapGraph instance

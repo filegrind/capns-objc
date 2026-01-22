@@ -21,24 +21,24 @@ NS_ASSUME_NONNULL_BEGIN
  * A cap URN with required direction (in→out) and optional tags
  *
  * Direction is integral to a cap's identity. Every cap MUST specify:
- * - inSpec: What type of input it accepts (use "media:type=void;v=1" for no input)
+ * - inSpec: What type of input it accepts (use "media:void" for no input)
  * - outSpec: What type of output it produces
  *
  * The 'in' and 'out' values must be either:
- * - A valid media URN starting with "media:" (e.g., "media:type=string;v=1")
+ * - A valid media URN starting with "media:" (e.g., "media:string")
  * - A wildcard "*" for pattern matching
  *
  * Examples:
- * - cap:in="media:type=void;v=1";op=generate;out="media:type=binary;v=1";target=thumbnail
- * - cap:in="media:type=binary;v=1";op=extract;out="media:type=object;v=1";target=metadata
- * - cap:in="media:type=string;v=1";op=embed;out="media:type=number-array;v=1"
+ * - cap:in="media:void";op=generate;out="media:binary";target=thumbnail
+ * - cap:in="media:binary";op=extract;out="media:object";target=metadata
+ * - cap:in="media:string";op=embed;out="media:number-array"
  */
 @interface CSCapUrn : NSObject <NSCopying, NSSecureCoding>
 
-/// The input media URN (required) - e.g., "media:type=void;v=1", "media:type=string;v=1", or "*"
+/// The input media URN (required) - e.g., "media:void", "media:string", or "*"
 @property (nonatomic, readonly) NSString *inSpec;
 
-/// The output media URN (required) - e.g., "media:type=object;v=1", "media:type=binary;v=1", or "*"
+/// The output media URN (required) - e.g., "media:object", "media:binary", or "*"
 @property (nonatomic, readonly) NSString *outSpec;
 
 /// Other tags that define this cap (excludes in/out)
@@ -51,7 +51,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * Uses CSTaggedUrn for parsing to ensure consistency with tagged-urn library.
  *
- * @param string The cap URN string (e.g., "cap:in=\"media:type=void;v=1\";op=generate;out=\"media:type=object;v=1\"")
+ * @param string The cap URN string (e.g., "cap:in=\"media:void\";op=generate;out=\"media:object\"")
  * @param error Error if the string format is invalid or in/out missing/invalid
  * @return A new CSCapUrn instance or nil if invalid
  */
@@ -238,14 +238,14 @@ typedef NS_ERROR_ENUM(CSCapUrnErrorDomain, CSCapUrnError) {
 
 /**
  * Set the input media URN (required)
- * @param spec The input media URN (e.g., "media:type=void;v=1") or "*" for wildcard
+ * @param spec The input media URN (e.g., "media:void") or "*" for wildcard
  * @return This builder instance for chaining
  */
 - (CSCapUrnBuilder * _Nonnull)inSpec:(NSString * _Nonnull)spec;
 
 /**
  * Set the output media URN (required)
- * @param spec The output media URN (e.g., "media:type=object;v=1") or "*" for wildcard
+ * @param spec The output media URN (e.g., "media:object") or "*" for wildcard
  * @return This builder instance for chaining
  */
 - (CSCapUrnBuilder * _Nonnull)outSpec:(NSString * _Nonnull)spec;

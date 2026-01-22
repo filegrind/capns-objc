@@ -13,35 +13,35 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 // BUILT-IN MEDIA URN CONSTANTS
 // ============================================================================
 
-NSString * const CSMediaString = @"media:type=string;v=1;textable;scalar";
-NSString * const CSMediaInteger = @"media:type=integer;v=1;textable;numeric;scalar";
-NSString * const CSMediaNumber = @"media:type=number;v=1;textable;numeric;scalar";
-NSString * const CSMediaBoolean = @"media:type=boolean;v=1;textable;scalar";
-NSString * const CSMediaObject = @"media:type=object;v=1;textable;keyed";
-NSString * const CSMediaStringArray = @"media:type=string-array;v=1;textable;sequence";
-NSString * const CSMediaIntegerArray = @"media:type=integer-array;v=1;textable;numeric;sequence";
-NSString * const CSMediaNumberArray = @"media:type=number-array;v=1;textable;numeric;sequence";
-NSString * const CSMediaBooleanArray = @"media:type=boolean-array;v=1;textable;sequence";
-NSString * const CSMediaObjectArray = @"media:type=object-array;v=1;textable;keyed;sequence";
-NSString * const CSMediaBinary = @"media:type=raw;v=1;binary";
-NSString * const CSMediaVoid = @"media:type=void;v=1";
+NSString * const CSMediaString = @"media:string;textable;scalar";
+NSString * const CSMediaInteger = @"media:integer;textable;numeric;scalar";
+NSString * const CSMediaNumber = @"media:number;textable;numeric;scalar";
+NSString * const CSMediaBoolean = @"media:boolean;textable;scalar";
+NSString * const CSMediaObject = @"media:object;textable;keyed";
+NSString * const CSMediaStringArray = @"media:string-array;textable;sequence";
+NSString * const CSMediaIntegerArray = @"media:integer-array;textable;numeric;sequence";
+NSString * const CSMediaNumberArray = @"media:number-array;textable;numeric;sequence";
+NSString * const CSMediaBooleanArray = @"media:boolean-array;textable;sequence";
+NSString * const CSMediaObjectArray = @"media:object-array;textable;keyed;sequence";
+NSString * const CSMediaBinary = @"media:raw;binary";
+NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
-NSString * const CSMediaImage = @"media:type=png;v=1;binary";
-NSString * const CSMediaAudio = @"media:type=wav;audio;binary;v=1;";
-NSString * const CSMediaVideo = @"media:type=video;v=1;binary";
-NSString * const CSMediaText = @"media:type=text;v=1;textable";
+NSString * const CSMediaImage = @"media:png;binary";
+NSString * const CSMediaAudio = @"media:wav;audio;binary;";
+NSString * const CSMediaVideo = @"media:video;binary";
+NSString * const CSMediaText = @"media:text;textable";
 // Document types (PRIMARY naming - type IS the format)
-NSString * const CSMediaPdf = @"media:type=pdf;v=1;binary";
-NSString * const CSMediaEpub = @"media:type=epub;v=1;binary";
+NSString * const CSMediaPdf = @"media:pdf;binary";
+NSString * const CSMediaEpub = @"media:epub;binary";
 // Text format types (PRIMARY naming - type IS the format)
-NSString * const CSMediaMd = @"media:type=md;v=1;textable";
-NSString * const CSMediaTxt = @"media:type=txt;v=1;textable";
-NSString * const CSMediaRst = @"media:type=rst;v=1;textable";
-NSString * const CSMediaLog = @"media:type=log;v=1;textable";
-NSString * const CSMediaHtml = @"media:type=html;v=1;textable";
-NSString * const CSMediaXml = @"media:type=xml;v=1;textable";
-NSString * const CSMediaJson = @"media:type=json;v=1;textable;keyed";
-NSString * const CSMediaYaml = @"media:type=yaml;v=1;textable;keyed";
+NSString * const CSMediaMd = @"media:md;textable";
+NSString * const CSMediaTxt = @"media:txt;textable";
+NSString * const CSMediaRst = @"media:rst;textable";
+NSString * const CSMediaLog = @"media:log;textable";
+NSString * const CSMediaHtml = @"media:html;textable";
+NSString * const CSMediaXml = @"media:xml;textable";
+NSString * const CSMediaJson = @"media:json;textable;keyed";
+NSString * const CSMediaYaml = @"media:yaml;textable;keyed";
 
 // Built-in media URN definitions - maps media URN to canonical media spec string
 static NSDictionary<NSString *, NSString *> *_builtinMediaUrns = nil;
@@ -325,7 +325,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
 
 /// Helper to extract a tag value from a media URN string
 static NSString * _Nullable CSExtractMediaUrnTag(NSString *mediaUrn, NSString *tagName) {
-    // Media URN format: media:type=X;ext=Y;v=1;...
+    // Media URN format: media:X;ext=Y;...
     NSString *prefix = [NSString stringWithFormat:@"%@=", tagName];
     NSRange range = [mediaUrn rangeOfString:prefix];
     if (range.location == NSNotFound) {
