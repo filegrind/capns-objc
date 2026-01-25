@@ -56,9 +56,9 @@
 // Helper for test URNs
 - (NSString *)testUrnWithTags:(NSString *)tags {
     if (tags.length == 0) {
-        return @"cap:in=\"media:void\";out=\"media:object\"";
+        return @"cap:in=media:void;out=media:object";
     }
-    return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:object\";%@", tags];
+    return [NSString stringWithFormat:@"cap:in=media:void;out=media:object;%@", tags];
 }
 
 - (void)testCapCubeMoreSpecificWins {
@@ -70,13 +70,13 @@
 
     // Provider: less specific cap (no ext tag)
     MockCapSetForCube *providerHost = [[MockCapSetForCube alloc] initWithName:@"provider"];
-    CSCap *providerCap = [self makeCapWithUrn:@"cap:in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\""
+    CSCap *providerCap = [self makeCapWithUrn:@"cap:in=media:binary;op=generate_thumbnail;out=media:binary"
                                        title:@"Provider Thumbnail Generator (generic)"];
     [providerRegistry registerCapSet:@"provider" host:providerHost capabilities:@[providerCap] error:nil];
 
     // Plugin: more specific cap (has ext=pdf)
     MockCapSetForCube *pluginHost = [[MockCapSetForCube alloc] initWithName:@"plugin"];
-    CSCap *pluginCap = [self makeCapWithUrn:@"cap:ext=pdf;in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\""
+    CSCap *pluginCap = [self makeCapWithUrn:@"cap:ext=pdf;in=media:binary;op=generate_thumbnail;out=media:binary"
                                      title:@"Plugin PDF Thumbnail Generator (specific)"];
     [pluginRegistry registerCapSet:@"plugin" host:pluginHost capabilities:@[pluginCap] error:nil];
 
@@ -86,7 +86,7 @@
     [composite addRegistry:@"plugins" registry:pluginRegistry];
 
     // Request for PDF thumbnails - plugin's more specific cap should win
-    NSString *request = @"cap:ext=pdf;in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\"";
+    NSString *request = @"cap:ext=pdf;in=media:binary;op=generate_thumbnail;out=media:binary";
     NSError *error = nil;
     CSBestCapSetMatch *best = [composite findBestCapSet:request error:&error];
 
@@ -199,13 +199,13 @@
 
     // Provider with generic fallback (can handle any file type)
     MockCapSetForCube *providerHost = [[MockCapSetForCube alloc] initWithName:@"provider_fallback"];
-    CSCap *providerCap = [self makeCapWithUrn:@"cap:in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\""
+    CSCap *providerCap = [self makeCapWithUrn:@"cap:in=media:binary;op=generate_thumbnail;out=media:binary"
                                        title:@"Generic Thumbnail Provider"];
     [providerRegistry registerCapSet:@"provider_fallback" host:providerHost capabilities:@[providerCap] error:nil];
 
     // Plugin with PDF-specific handler
     MockCapSetForCube *pluginHost = [[MockCapSetForCube alloc] initWithName:@"pdf_plugin"];
-    CSCap *pluginCap = [self makeCapWithUrn:@"cap:ext=pdf;in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\""
+    CSCap *pluginCap = [self makeCapWithUrn:@"cap:ext=pdf;in=media:binary;op=generate_thumbnail;out=media:binary"
                                      title:@"PDF Thumbnail Plugin"];
     [pluginRegistry registerCapSet:@"pdf_plugin" host:pluginHost capabilities:@[pluginCap] error:nil];
 
@@ -215,7 +215,7 @@
     [composite addRegistry:@"plugins" registry:pluginRegistry];
 
     // Request for PDF thumbnail
-    NSString *request = @"cap:ext=pdf;in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\"";
+    NSString *request = @"cap:ext=pdf;in=media:binary;op=generate_thumbnail;out=media:binary";
     NSError *error = nil;
     CSBestCapSetMatch *best = [composite findBestCapSet:request error:&error];
 
@@ -228,7 +228,7 @@
     XCTAssertEqual(best.specificity, 4, @"Plugin has specificity 4");
 
     // Also test that for a different file type, provider wins
-    NSString *requestWav = @"cap:ext=wav;in=\"media:binary\";op=generate_thumbnail;out=\"media:binary\"";
+    NSString *requestWav = @"cap:ext=wav;in=media:binary;op=generate_thumbnail;out=media:binary";
     CSBestCapSetMatch *bestWav = [composite findBestCapSet:requestWav error:&error];
 
     XCTAssertNotNil(bestWav, @"Should find best cap set for wav");

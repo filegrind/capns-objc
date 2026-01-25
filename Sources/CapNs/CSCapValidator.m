@@ -114,6 +114,24 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
++ (instancetype)mediaSpecValidationFailedError:(NSString *)capUrn
+                                  argumentName:(NSString *)argumentName
+                                      mediaUrn:(NSString *)mediaUrn
+                                validationRule:(NSString *)validationRule
+                                   actualValue:(id)actualValue {
+    NSString *description = [NSString stringWithFormat:@"Cap '%@' argument '%@' failed media spec '%@' validation rule '%@' with value: %@",
+                            capUrn, argumentName, mediaUrn, validationRule, actualValue];
+    return [[self alloc] initWithType:CSValidationErrorTypeMediaSpecValidationFailed
+                         capUrn:capUrn
+                          description:description
+                             userInfo:@{
+                                 NSLocalizedDescriptionKey: description,
+                                 CSValidationErrorArgumentNameKey: argumentName,
+                                 CSValidationErrorValidationRuleKey: validationRule,
+                                 CSValidationErrorActualValueKey: actualValue ?: [NSNull null]
+                             }];
+}
+
 + (instancetype)invalidOutputTypeError:(NSString *)capUrn
                           expectedType:(NSString *)expectedType
                             actualType:(NSString *)actualType
@@ -137,6 +155,22 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     NSString *description = [NSString stringWithFormat:@"Cap '%@' output failed validation rule '%@' with value: %@",
                             capUrn, validationRule, actualValue];
     return [[self alloc] initWithType:CSValidationErrorTypeOutputValidationFailed
+                         capUrn:capUrn
+                          description:description
+                             userInfo:@{
+                                 NSLocalizedDescriptionKey: description,
+                                 CSValidationErrorValidationRuleKey: validationRule,
+                                 CSValidationErrorActualValueKey: actualValue ?: [NSNull null]
+                             }];
+}
+
++ (instancetype)outputMediaSpecValidationFailedError:(NSString *)capUrn
+                                            mediaUrn:(NSString *)mediaUrn
+                                      validationRule:(NSString *)validationRule
+                                         actualValue:(id)actualValue {
+    NSString *description = [NSString stringWithFormat:@"Cap '%@' output failed media spec '%@' validation rule '%@' with value: %@",
+                            capUrn, mediaUrn, validationRule, actualValue];
+    return [[self alloc] initWithType:CSValidationErrorTypeOutputMediaSpecValidationFailed
                          capUrn:capUrn
                           description:description
                              userInfo:@{
@@ -207,6 +241,11 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                        value:(id)value
                   cap:(CSCap *)cap
                        error:(NSError **)error;
++ (BOOL)validateMediaSpecRules:(CSCapArg *)argDef
+                     mediaSpec:(CSMediaSpec *)mediaSpec
+                         value:(id)value
+                    cap:(CSCap *)cap
+                         error:(NSError **)error;
 + (BOOL)validateArgumentRules:(CSCapArg *)argDef
                         value:(id)value
                    cap:(CSCap *)cap
@@ -282,33 +321,53 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                          value:(id)value
                     cap:(CSCap *)cap
                          error:(NSError **)error {
+    // Resolve mediaSpec first - needed for type validation and media spec validation
+    CSMediaSpec *mediaSpec = nil;
+    if (argDef.mediaUrn) {
+        NSError *resolveError = nil;
+        mediaSpec = CSResolveMediaUrn(argDef.mediaUrn, cap.mediaSpecs, &resolveError);
+        if (!mediaSpec) {
+            // FAIL HARD on unresolvable spec ID
+            if (error) {
+                NSString *capUrn = [cap urnString];
+                *error = [CSValidationError invalidCapSchemaError:capUrn
+                                                            issue:[NSString stringWithFormat:@"Cannot resolve spec ID '%@' for argument '%@': %@",
+                                                                   argDef.mediaUrn, argDef.mediaUrn, resolveError.localizedDescription]];
+            }
+            return NO;
+        }
+    }
+
     // Type validation
     if (![self validateArgumentType:argDef value:value cap:cap error:error]) {
         return NO;
     }
 
-    // Validation rules
+    // FIRST PASS: Media spec validation rules (inherent to the semantic type)
+    if (mediaSpec && mediaSpec.validation) {
+        if (![self validateMediaSpecRules:argDef mediaSpec:mediaSpec value:value cap:cap error:error]) {
+            return NO;
+        }
+    }
+
+    // SECOND PASS: Arg-level validation rules (context-specific)
     if (![self validateArgumentRules:argDef value:value cap:cap error:error]) {
         return NO;
     }
 
-    // Schema validation - resolve mediaSpec and check for schema
-    if (argDef.mediaUrn) {
-        NSError *resolveError = nil;
-        CSMediaSpec *mediaSpec = CSResolveMediaUrn(argDef.mediaUrn, cap.mediaSpecs, &resolveError);
-        if (mediaSpec && mediaSpec.schema) {
-            CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
-            NSError *schemaError = nil;
+    // Schema validation
+    if (mediaSpec && mediaSpec.schema) {
+        CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
+        NSError *schemaError = nil;
 
-            if (![schemaValidator validateArgument:argDef withValue:value mediaSpecs:cap.mediaSpecs error:&schemaError]) {
-                if (error) {
-                    NSString *capUrn = [cap urnString];
-                    *error = [CSValidationError schemaValidationFailedError:capUrn
-                                                               argumentName:argDef.mediaUrn
-                                                            underlyingError:schemaError];
-                }
-                return NO;
+        if (![schemaValidator validateArgument:argDef withValue:value mediaSpecs:cap.mediaSpecs error:&schemaError]) {
+            if (error) {
+                NSString *capUrn = [cap urnString];
+                *error = [CSValidationError schemaValidationFailedError:capUrn
+                                                           argumentName:argDef.mediaUrn
+                                                        underlyingError:schemaError];
             }
+            return NO;
         }
     }
 
@@ -389,6 +448,124 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                                                      actualValue:value];
         }
         return NO;
+    }
+
+    return YES;
+}
+
++ (BOOL)validateMediaSpecRules:(CSCapArg *)argDef
+                     mediaSpec:(CSMediaSpec *)mediaSpec
+                         value:(id)value
+                    cap:(CSCap *)cap
+                         error:(NSError **)error {
+    NSString *capUrn = [cap urnString];
+    CSArgumentValidation *validation = mediaSpec.validation;
+    NSString *mediaUrn = mediaSpec.mediaUrn ?: argDef.mediaUrn;
+
+    if (!validation) {
+        return YES;
+    }
+
+    // Numeric validation
+    if (validation.min) {
+        NSNumber *numValue = [self getNumericValue:value];
+        if (numValue && [numValue doubleValue] < [validation.min doubleValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"minimum value %@", validation.min];
+                *error = [CSValidationError mediaSpecValidationFailedError:capUrn
+                                                              argumentName:argDef.mediaUrn
+                                                                  mediaUrn:mediaUrn
+                                                            validationRule:rule
+                                                               actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    if (validation.max) {
+        NSNumber *numValue = [self getNumericValue:value];
+        if (numValue && [numValue doubleValue] > [validation.max doubleValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"maximum value %@", validation.max];
+                *error = [CSValidationError mediaSpecValidationFailedError:capUrn
+                                                              argumentName:argDef.mediaUrn
+                                                                  mediaUrn:mediaUrn
+                                                            validationRule:rule
+                                                               actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    // String length validation
+    if (validation.minLength && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        if (stringValue.length < [validation.minLength integerValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"minimum length %@", validation.minLength];
+                *error = [CSValidationError mediaSpecValidationFailedError:capUrn
+                                                              argumentName:argDef.mediaUrn
+                                                                  mediaUrn:mediaUrn
+                                                            validationRule:rule
+                                                               actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    if (validation.maxLength && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        if (stringValue.length > [validation.maxLength integerValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"maximum length %@", validation.maxLength];
+                *error = [CSValidationError mediaSpecValidationFailedError:capUrn
+                                                              argumentName:argDef.mediaUrn
+                                                                  mediaUrn:mediaUrn
+                                                            validationRule:rule
+                                                               actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    // Pattern validation
+    if (validation.pattern && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        NSError *regexError = nil;
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:validation.pattern
+                                                                               options:0
+                                                                                 error:&regexError];
+        if (regex) {
+            NSRange range = NSMakeRange(0, stringValue.length);
+            NSTextCheckingResult *match = [regex firstMatchInString:stringValue options:0 range:range];
+            if (!match) {
+                if (error) {
+                    NSString *rule = [NSString stringWithFormat:@"pattern '%@'", validation.pattern];
+                    *error = [CSValidationError mediaSpecValidationFailedError:capUrn
+                                                                  argumentName:argDef.mediaUrn
+                                                                      mediaUrn:mediaUrn
+                                                                validationRule:rule
+                                                                   actualValue:value];
+                }
+                return NO;
+            }
+        }
+    }
+
+    // Allowed values validation
+    if (validation.allowedValues.count > 0 && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        if (![validation.allowedValues containsObject:stringValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"allowed values: %@", validation.allowedValues];
+                *error = [CSValidationError mediaSpecValidationFailedError:capUrn
+                                                              argumentName:argDef.mediaUrn
+                                                                  mediaUrn:mediaUrn
+                                                            validationRule:rule
+                                                               actualValue:value];
+            }
+            return NO;
+        }
     }
 
     return YES;
@@ -541,6 +718,11 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                      value:(id)value
                 cap:(CSCap *)cap
                      error:(NSError **)error;
++ (BOOL)validateOutputMediaSpecRules:(CSCapOutput *)outputDef
+                           mediaSpec:(CSMediaSpec *)mediaSpec
+                               value:(id)value
+                          cap:(CSCap *)cap
+                               error:(NSError **)error;
 + (BOOL)validateOutputRules:(CSCapOutput *)outputDef
                       value:(id)value
                  cap:(CSCap *)cap
@@ -560,32 +742,51 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         return YES;
     }
 
+    // Resolve mediaSpec first - needed for type validation and media spec validation
+    CSMediaSpec *mediaSpec = nil;
+    if (outputDef.mediaUrn) {
+        NSError *resolveError = nil;
+        mediaSpec = CSResolveMediaUrn(outputDef.mediaUrn, cap.mediaSpecs, &resolveError);
+        if (!mediaSpec) {
+            // FAIL HARD on unresolvable spec ID
+            if (error) {
+                *error = [CSValidationError invalidCapSchemaError:capUrn
+                                                            issue:[NSString stringWithFormat:@"Cannot resolve spec ID '%@' for output: %@",
+                                                                   outputDef.mediaUrn, resolveError.localizedDescription]];
+            }
+            return NO;
+        }
+    }
+
     // Type validation
     if (![self validateOutputType:outputDef value:output cap:cap error:error]) {
         return NO;
     }
 
-    // Validation rules
+    // FIRST PASS: Media spec validation rules (inherent to the semantic type)
+    if (mediaSpec && mediaSpec.validation) {
+        if (![self validateOutputMediaSpecRules:outputDef mediaSpec:mediaSpec value:output cap:cap error:error]) {
+            return NO;
+        }
+    }
+
+    // SECOND PASS: Output-level validation rules (context-specific)
     if (![self validateOutputRules:outputDef value:output cap:cap error:error]) {
         return NO;
     }
 
-    // Schema validation - resolve mediaSpec and check for schema
-    if (outputDef.mediaUrn) {
-        NSError *resolveError = nil;
-        CSMediaSpec *mediaSpec = CSResolveMediaUrn(outputDef.mediaUrn, cap.mediaSpecs, &resolveError);
-        if (mediaSpec && mediaSpec.schema) {
-            CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
-            NSError *schemaError = nil;
+    // Schema validation
+    if (mediaSpec && mediaSpec.schema) {
+        CSJSONSchemaValidator *schemaValidator = [CSJSONSchemaValidator validator];
+        NSError *schemaError = nil;
 
-            if (![schemaValidator validateOutput:outputDef withValue:output mediaSpecs:cap.mediaSpecs error:&schemaError]) {
-                if (error) {
-                    *error = [CSValidationError schemaValidationFailedError:capUrn
-                                                               argumentName:nil
-                                                            underlyingError:schemaError];
-                }
-                return NO;
+        if (![schemaValidator validateOutput:outputDef withValue:output mediaSpecs:cap.mediaSpecs error:&schemaError]) {
+            if (error) {
+                *error = [CSValidationError schemaValidationFailedError:capUrn
+                                                           argumentName:nil
+                                                        underlyingError:schemaError];
             }
+            return NO;
         }
     }
 
@@ -665,6 +866,118 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                                                    actualValue:value];
         }
         return NO;
+    }
+
+    return YES;
+}
+
++ (BOOL)validateOutputMediaSpecRules:(CSCapOutput *)outputDef
+                           mediaSpec:(CSMediaSpec *)mediaSpec
+                               value:(id)value
+                          cap:(CSCap *)cap
+                               error:(NSError **)error {
+    NSString *capUrn = [cap urnString];
+    CSArgumentValidation *validation = mediaSpec.validation;
+    NSString *mediaUrn = mediaSpec.mediaUrn ?: outputDef.mediaUrn;
+
+    if (!validation) {
+        return YES;
+    }
+
+    // Numeric validation
+    if (validation.min) {
+        NSNumber *numValue = [CSInputValidator getNumericValue:value];
+        if (numValue && [numValue doubleValue] < [validation.min doubleValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"minimum value %@", validation.min];
+                *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                        mediaUrn:mediaUrn
+                                                                  validationRule:rule
+                                                                     actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    if (validation.max) {
+        NSNumber *numValue = [CSInputValidator getNumericValue:value];
+        if (numValue && [numValue doubleValue] > [validation.max doubleValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"maximum value %@", validation.max];
+                *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                        mediaUrn:mediaUrn
+                                                                  validationRule:rule
+                                                                     actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    // String length validation
+    if (validation.minLength && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        if (stringValue.length < [validation.minLength integerValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"minimum length %@", validation.minLength];
+                *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                        mediaUrn:mediaUrn
+                                                                  validationRule:rule
+                                                                     actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    if (validation.maxLength && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        if (stringValue.length > [validation.maxLength integerValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"maximum length %@", validation.maxLength];
+                *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                        mediaUrn:mediaUrn
+                                                                  validationRule:rule
+                                                                     actualValue:value];
+            }
+            return NO;
+        }
+    }
+
+    // Pattern validation
+    if (validation.pattern && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        NSError *regexError = nil;
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:validation.pattern
+                                                                               options:0
+                                                                                 error:&regexError];
+        if (regex) {
+            NSRange range = NSMakeRange(0, stringValue.length);
+            NSTextCheckingResult *match = [regex firstMatchInString:stringValue options:0 range:range];
+            if (!match) {
+                if (error) {
+                    NSString *rule = [NSString stringWithFormat:@"pattern '%@'", validation.pattern];
+                    *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                            mediaUrn:mediaUrn
+                                                                      validationRule:rule
+                                                                         actualValue:value];
+                }
+                return NO;
+            }
+        }
+    }
+
+    // Allowed values validation
+    if (validation.allowedValues.count > 0 && [value isKindOfClass:[NSString class]]) {
+        NSString *stringValue = (NSString *)value;
+        if (![validation.allowedValues containsObject:stringValue]) {
+            if (error) {
+                NSString *rule = [NSString stringWithFormat:@"allowed values: %@", validation.allowedValues];
+                *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                        mediaUrn:mediaUrn
+                                                                  validationRule:rule
+                                                                     actualValue:value];
+            }
+            return NO;
+        }
     }
 
     return YES;
