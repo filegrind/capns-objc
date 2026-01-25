@@ -66,6 +66,32 @@ FOUNDATION_EXPORT NSString * const CSMediaXml;          // media:xml;textable
 FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:json;textable;keyed
 FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;keyed
 
+// ============================================================================
+// SCHEMA URL CONFIGURATION
+// ============================================================================
+
+/**
+ * Get the schema base URL from environment variables or default
+ *
+ * Checks in order:
+ * 1. CAPNS_SCHEMA_BASE_URL environment variable
+ * 2. CAPNS_REGISTRY_URL environment variable + "/schema"
+ * 3. Default: "https://capns.org/schema"
+ */
+FOUNDATION_EXPORT NSString *CSGetSchemaBaseURL(void);
+
+/**
+ * Get a profile URL for the given profile name
+ *
+ * @param profileName The profile name (e.g., "string", "integer")
+ * @return The full profile URL
+ */
+FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
+
+// ============================================================================
+// MEDIA SPEC PARSING
+// ============================================================================
+
 /**
  * A parsed MediaSpec value
  */

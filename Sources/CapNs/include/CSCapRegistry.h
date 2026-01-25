@@ -12,15 +12,65 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
+ * CSCapRegistryConfig holds configuration for the registry client
+ */
+@interface CSCapRegistryConfig : NSObject
+
+/** Base URL for the registry API (e.g., "https://capns.org") */
+@property (nonatomic, copy) NSString *registryBaseURL;
+
+/** Base URL for schema profiles (defaults to {registryBaseURL}/schema) */
+@property (nonatomic, copy) NSString *schemaBaseURL;
+
+/**
+ * Create a config with values from environment variables or defaults
+ *
+ * Environment variables:
+ * - CAPNS_REGISTRY_URL: Base URL for the registry (default: https://capns.org)
+ * - CAPNS_SCHEMA_BASE_URL: Base URL for schemas (default: {registry_url}/schema)
+ */
++ (instancetype)defaultConfig;
+
+/**
+ * Create a config with a custom registry URL
+ * Schema URL will be set to {registryURL}/schema
+ */
++ (instancetype)configWithRegistryURL:(NSString *)registryURL;
+
+/**
+ * Create a config with custom registry and schema URLs
+ */
++ (instancetype)configWithRegistryURL:(NSString *)registryURL schemaURL:(NSString *)schemaURL;
+
+@end
+
+/**
  * CSCapRegistry provides access to canonical cap definitions from capns.org
  * with local caching for performance.
  */
 @interface CSCapRegistry : NSObject
 
+/** The current registry configuration */
+@property (nonatomic, readonly) CSCapRegistryConfig *config;
+
 /**
  * Initialize a new registry client with default configuration
+ *
+ * Uses configuration from environment variables or defaults:
+ * - CAPNS_REGISTRY_URL: Base URL for the registry (default: https://capns.org)
+ * - CAPNS_SCHEMA_BASE_URL: Base URL for schemas (default: {registry_url}/schema)
  */
 - (instancetype)init;
+
+/**
+ * Initialize a new registry client with custom configuration
+ */
+- (instancetype)initWithConfig:(CSCapRegistryConfig *)config;
+
+/**
+ * Initialize a new registry client with a custom registry URL
+ */
+- (instancetype)initWithRegistryURL:(NSString *)registryURL;
 
 /**
  * Get a cap from registry or cache. Never returns nil - completion called with Cap or error.
