@@ -10,9 +10,43 @@
 #import "CSCapUrn.h"
 #import <CommonCrypto/CommonDigest.h>
 
-static NSString * const REGISTRY_BASE_URL = @"https://capns.org";
+static NSString * const DEFAULT_REGISTRY_BASE_URL = @"https://capns.org";
 static const NSTimeInterval CACHE_DURATION_HOURS = 24.0;
 static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
+
+// MARK: - CSCapRegistryConfig
+
+@implementation CSCapRegistryConfig
+
++ (instancetype)defaultConfig {
+    CSCapRegistryConfig *config = [[CSCapRegistryConfig alloc] init];
+
+    // Check environment variables
+    NSDictionary *env = [[NSProcessInfo processInfo] environment];
+    NSString *registryURL = env[@"CAPNS_REGISTRY_URL"];
+    NSString *schemaURL = env[@"CAPNS_SCHEMA_BASE_URL"];
+
+    config.registryBaseURL = registryURL ?: DEFAULT_REGISTRY_BASE_URL;
+    config.schemaBaseURL = schemaURL ?: [config.registryBaseURL stringByAppendingString:@"/schema"];
+
+    return config;
+}
+
++ (instancetype)configWithRegistryURL:(NSString *)registryURL {
+    CSCapRegistryConfig *config = [[CSCapRegistryConfig alloc] init];
+    config.registryBaseURL = registryURL;
+    config.schemaBaseURL = [registryURL stringByAppendingString:@"/schema"];
+    return config;
+}
+
++ (instancetype)configWithRegistryURL:(NSString *)registryURL schemaURL:(NSString *)schemaURL {
+    CSCapRegistryConfig *config = [[CSCapRegistryConfig alloc] init];
+    config.registryBaseURL = registryURL;
+    config.schemaBaseURL = schemaURL;
+    return config;
+}
+
+@end
 
 // MARK: - Cache Entry
 
@@ -39,33 +73,44 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
 @property (nonatomic, strong) NSString *cacheDirectory;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CSCap *> *cachedCaps;
 @property (nonatomic, strong) NSLock *cacheLock;
+@property (nonatomic, strong, readwrite) CSCapRegistryConfig *config;
 @end
 
 @implementation CSCapRegistry
 
 - (instancetype)init {
+    return [self initWithConfig:[CSCapRegistryConfig defaultConfig]];
+}
+
+- (instancetype)initWithRegistryURL:(NSString *)registryURL {
+    return [self initWithConfig:[CSCapRegistryConfig configWithRegistryURL:registryURL]];
+}
+
+- (instancetype)initWithConfig:(CSCapRegistryConfig *)config {
     self = [super init];
     if (self) {
-        NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-        config.timeoutIntervalForRequest = HTTP_TIMEOUT_SECONDS;
-        config.timeoutIntervalForResource = HTTP_TIMEOUT_SECONDS;
-        _session = [NSURLSession sessionWithConfiguration:config];
-        
+        _config = config;
+
+        NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
+        sessionConfig.timeoutIntervalForRequest = HTTP_TIMEOUT_SECONDS;
+        sessionConfig.timeoutIntervalForResource = HTTP_TIMEOUT_SECONDS;
+        _session = [NSURLSession sessionWithConfiguration:sessionConfig];
+
         // Setup cache directory
         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
         NSString *cacheDir = [paths firstObject];
         _cacheDirectory = [cacheDir stringByAppendingPathComponent:@"capns"];
-        
+
         // Create cache directory
         [[NSFileManager defaultManager] createDirectoryAtPath:_cacheDirectory
                                   withIntermediateDirectories:YES
                                                    attributes:nil
                                                         error:nil];
-        
+
         // Initialize in-memory cache
         _cachedCaps = [[NSMutableDictionary alloc] init];
         _cacheLock = [[NSLock alloc] init];
-        
+
         // Load all cached caps into memory
         [self loadAllCachedCaps];
     }
@@ -285,7 +330,7 @@ static const NSTimeInterval HTTP_TIMEOUT_SECONDS = 10.0;
         tagsPart = [normalizedUrn substringFromIndex:4];
     }
     NSString *encodedTags = [tagsPart stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet alphanumericCharacterSet]];
-    NSString *urlString = [NSString stringWithFormat:@"%@/cap:%@", REGISTRY_BASE_URL, encodedTags];
+    NSString *urlString = [NSString stringWithFormat:@"%@/cap:%@", self.config.registryBaseURL, encodedTags];
     NSURL *url = [NSURL URLWithString:urlString];
     
     NSURLSessionDataTask *task = [self.session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {

@@ -44,12 +44,58 @@ NSString * const CSMediaXml = @"media:xml;textable";
 NSString * const CSMediaJson = @"media:json;textable;keyed";
 NSString * const CSMediaYaml = @"media:yaml;textable;keyed";
 
+// ============================================================================
+// SCHEMA URL CONFIGURATION
+// ============================================================================
+
+static NSString * const CSDefaultSchemaBase = @"https://capns.org/schema";
+
+/**
+ * Get the schema base URL from environment variables or default
+ *
+ * Checks in order:
+ * 1. CAPNS_SCHEMA_BASE_URL environment variable
+ * 2. CAPNS_REGISTRY_URL environment variable + "/schema"
+ * 3. Default: "https://capns.org/schema"
+ */
+NSString *CSGetSchemaBaseURL(void) {
+    NSDictionary *env = [[NSProcessInfo processInfo] environment];
+
+    NSString *schemaURL = env[@"CAPNS_SCHEMA_BASE_URL"];
+    if (schemaURL.length > 0) {
+        return schemaURL;
+    }
+
+    NSString *registryURL = env[@"CAPNS_REGISTRY_URL"];
+    if (registryURL.length > 0) {
+        return [registryURL stringByAppendingString:@"/schema"];
+    }
+
+    return CSDefaultSchemaBase;
+}
+
+/**
+ * Get a profile URL for the given profile name
+ *
+ * @param profileName The profile name (e.g., "string", "integer")
+ * @return The full profile URL
+ */
+NSString *CSGetProfileURL(NSString *profileName) {
+    return [NSString stringWithFormat:@"%@/%@", CSGetSchemaBaseURL(), profileName];
+}
+
+// ============================================================================
+// BUILTIN MEDIA URN DEFINITIONS
+// ============================================================================
+
 // Built-in media URN definitions - maps media URN to canonical media spec string
 static NSDictionary<NSString *, NSString *> *_builtinMediaUrns = nil;
 
 static NSDictionary<NSString *, NSString *> *CSGetBuiltinMediaUrns(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        // Note: These use hardcoded URLs for static initialization.
+        // Use CSGetSchemaBaseURL() and CSGetProfileURL() for dynamic resolution.
         _builtinMediaUrns = @{
             CSMediaString: @"text/plain; profile=https://capns.org/schema/string",
             CSMediaInteger: @"text/plain; profile=https://capns.org/schema/integer",
