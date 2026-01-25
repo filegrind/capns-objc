@@ -115,6 +115,9 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 /// Optional validation rules (inherent to the semantic type)
 @property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 
+/// Optional metadata (arbitrary key-value pairs for display/categorization)
+@property (nonatomic, readonly, nullable) NSDictionary *metadata;
+
 /// The media URN this spec was resolved from (if resolved via CSResolveMediaUrn)
 @property (nonatomic, readonly, nullable) NSString *mediaUrn;
 
@@ -129,6 +132,25 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
  * @return A new CSMediaSpec instance or nil if invalid
  */
 + (nullable instancetype)parse:(NSString *)string error:(NSError * _Nullable * _Nullable)error;
+
+/**
+ * Create a MediaSpec with all properties
+ * @param contentType The MIME content type
+ * @param profile Optional profile URL
+ * @param schema Optional JSON Schema for local validation
+ * @param title Optional display-friendly title
+ * @param descriptionText Optional description
+ * @param validation Optional validation rules
+ * @param metadata Optional metadata dictionary
+ * @return A new CSMediaSpec instance
+ */
++ (instancetype)withContentType:(NSString *)contentType
+                        profile:(nullable NSString *)profile
+                         schema:(nullable NSDictionary *)schema
+                          title:(nullable NSString *)title
+                descriptionText:(nullable NSString *)descriptionText
+                     validation:(nullable CSArgumentValidation *)validation
+                       metadata:(nullable NSDictionary *)metadata;
 
 /**
  * Create a MediaSpec from content type, optional profile, and optional schema
