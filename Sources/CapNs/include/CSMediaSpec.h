@@ -16,6 +16,7 @@
 #import <Foundation/Foundation.h>
 
 @class CSCapUrn;
+@class CSArgumentValidation;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -84,6 +85,12 @@ FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;k
 
 /// Optional description
 @property (nonatomic, readonly, nullable) NSString *descriptionText;
+
+/// Optional validation rules (inherent to the semantic type)
+@property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
+
+/// The media URN this spec was resolved from (if resolved via CSResolveMediaUrn)
+@property (nonatomic, readonly, nullable) NSString *mediaUrn;
 
 /**
  * Parse a media_spec string in canonical format

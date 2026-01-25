@@ -21,8 +21,10 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
     CSValidationErrorTypeUnknownArgument,
     CSValidationErrorTypeInvalidArgumentType,
     CSValidationErrorTypeArgumentValidationFailed,
+    CSValidationErrorTypeMediaSpecValidationFailed,
     CSValidationErrorTypeInvalidOutputType,
     CSValidationErrorTypeOutputValidationFailed,
+    CSValidationErrorTypeOutputMediaSpecValidationFailed,
     CSValidationErrorTypeInvalidCapSchema,
     CSValidationErrorTypeTooManyArguments,
     CSValidationErrorTypeJSONParseError,
@@ -52,13 +54,22 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
                                  argumentName:(NSString *)argumentName
                                validationRule:(NSString *)validationRule
                                   actualValue:(id)actualValue;
++ (instancetype)mediaSpecValidationFailedError:(NSString *)capUrn
+                                  argumentName:(NSString *)argumentName
+                                      mediaUrn:(NSString *)mediaUrn
+                                validationRule:(NSString *)validationRule
+                                   actualValue:(id)actualValue;
 + (instancetype)invalidOutputTypeError:(NSString *)capUrn
                           expectedType:(NSString *)expectedType
                             actualType:(NSString *)actualType
                            actualValue:(id)actualValue;
-+ (instancetype)outputValidationFailedError:(NSString *)capUrn 
-                             validationRule:(NSString *)validationRule 
++ (instancetype)outputValidationFailedError:(NSString *)capUrn
+                             validationRule:(NSString *)validationRule
                                 actualValue:(id)actualValue;
++ (instancetype)outputMediaSpecValidationFailedError:(NSString *)capUrn
+                                            mediaUrn:(NSString *)mediaUrn
+                                      validationRule:(NSString *)validationRule
+                                         actualValue:(id)actualValue;
 + (instancetype)invalidCapSchemaError:(NSString *)capUrn issue:(NSString *)issue;
 + (instancetype)tooManyArgumentsError:(NSString *)capUrn 
                           maxExpected:(NSInteger)maxExpected 

@@ -5,6 +5,7 @@
 
 #import "include/CSMediaSpec.h"
 #import "include/CSCapUrn.h"
+#import "include/CSCap.h"
 @import TaggedUrn;
 
 NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
@@ -103,6 +104,7 @@ NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
 @property (nonatomic, readwrite, nullable) NSString *title;
 @property (nonatomic, readwrite, nullable) NSString *descriptionText;
 @property (nonatomic, readwrite, nullable) NSString *mediaUrn;
+@property (nonatomic, readwrite, nullable) CSArgumentValidation *validation;
 @end
 
 /// Helper to check if a media URN has a marker tag using CSTaggedUrn
@@ -210,12 +212,22 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
                          schema:(nullable NSDictionary *)schema
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText {
+    return [self withContentType:contentType profile:profile schema:schema title:title descriptionText:descriptionText validation:nil];
+}
+
++ (instancetype)withContentType:(NSString *)contentType
+                        profile:(nullable NSString *)profile
+                         schema:(nullable NSDictionary *)schema
+                          title:(nullable NSString *)title
+                descriptionText:(nullable NSString *)descriptionText
+                     validation:(nullable CSArgumentValidation *)validation {
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
     spec.profile = profile;
     spec.schema = schema;
     spec.title = title;
     spec.descriptionText = descriptionText;
+    spec.validation = validation;
     return spec;
 }
 
@@ -279,13 +291,22 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
             if (spec) spec.mediaUrn = mediaUrn;
             return spec;
         } else if ([def isKindOfClass:[NSDictionary class]]) {
-            // Object form: { media_type, profile_uri, schema?, title?, description? }
+            // Object form: { media_type, profile_uri, schema?, title?, description?, validation? }
             NSDictionary *objDef = (NSDictionary *)def;
             NSString *mediaType = objDef[@"media_type"] ?: objDef[@"mediaType"];
             NSString *profileUri = objDef[@"profile_uri"] ?: objDef[@"profileUri"];
             NSDictionary *schema = objDef[@"schema"];
             NSString *title = objDef[@"title"];
             NSString *descriptionText = objDef[@"description"];
+
+            // Parse validation if present
+            CSArgumentValidation *validation = nil;
+            NSDictionary *validationDict = objDef[@"validation"];
+            if (validationDict && [validationDict isKindOfClass:[NSDictionary class]]) {
+                NSError *validationError = nil;
+                validation = [CSArgumentValidation validationWithDictionary:validationDict error:&validationError];
+                // Ignore validation parse errors - validation is optional
+            }
 
             if (!mediaType) {
                 if (error) {
@@ -296,7 +317,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                 return nil;
             }
 
-            CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText];
+            CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation];
             spec.mediaUrn = mediaUrn;
             return spec;
         }
