@@ -2,11 +2,19 @@
 //  CSCapUrn.h
 //  Flat Tag-Based Cap Identifier System with Required Direction
 //
-//  This provides a flat, tag-based cap URN system with required direction (in→out).
-//  Direction is now a REQUIRED first-class field:
-//  - inSpec: The input media URN (required, must start with "media:" or be "*")
-//  - outSpec: The output media URN (required, must start with "media:" or be "*")
-//  - tags: Other optional tags (no longer contains in/out)
+//  This provides a flat, tag-based cap URN system with required direction (in→out),
+//  pattern matching, and graded specificity comparison.
+//
+//  Direction is REQUIRED:
+//  - inSpec: The input media URN (must start with "media:" or be "*")
+//  - outSpec: The output media URN (must start with "media:" or be "*")
+//
+//  Special pattern values (from tagged-urn):
+//    K=v  - Must have key K with exact value v
+//    K=*  - Must have key K with any value (presence required)
+//    K=!  - Must NOT have key K (absence required)
+//    K=?  - No constraint on key K
+//    (missing) - Same as K=? - no constraint
 //
 //  Uses CSTaggedUrn for parsing to ensure consistency across implementations.
 //
@@ -136,8 +144,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (CSCapUrn * _Nonnull)withoutTag:(NSString * _Nonnull)key;
 
 /**
- * Check if this cap matches another based on direction and tag compatibility
- * Direction (inSpec/outSpec) is checked FIRST, then other tags.
+ * Check if this cap (instance) matches a pattern based on tag compatibility
+ *
+ * Per-tag matching semantics:
+ *   Pattern (missing) or K=?  → always matches
+ *   Pattern K=!               → instance must NOT have K
+ *   Pattern K=*               → instance must have K with any value
+ *   Pattern K=v               → instance must have K with exact value v
+ *
+ * Direction specs (in/out) follow the same matching rules.
  *
  * @param pattern The pattern cap to match against
  * @return YES if this cap matches the pattern
@@ -152,10 +167,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)canHandle:(CSCapUrn * _Nonnull)request;
 
 /**
- * Get the specificity score for cap matching
- * Counts non-wildcard inSpec + outSpec + tags
+ * Get the specificity score for cap matching using graded scoring:
+ *   K=v (exact value): 3 points (most specific)
+ *   K=* (must-have-any): 2 points
+ *   K=! (must-not-have): 1 point
+ *   K=? (unspecified) or missing: 0 points (least specific)
  *
- * @return The number of non-wildcard direction specs and tags
+ * Includes direction specs (in/out) in the score.
+ *
+ * @return The total specificity score
  */
 - (NSUInteger)specificity;
 
