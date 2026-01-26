@@ -5,8 +5,7 @@
 //  Demonstrates comprehensive schema validation with schemas stored in mediaSpecs,
 //  spec ID resolution, and integration with cap validation system.
 //
-//  NOTE: All ArgumentType/OutputType enums have been REMOVED.
-//  Schemas are now stored in the mediaSpecs table and resolved via spec IDs.
+//  Schemas are stored in the mediaSpecs table and resolved via spec IDs.
 //
 
 #import "CapNs.h"

@@ -5,8 +5,7 @@
 //  Tests schema validation for both arguments and outputs with schemas stored
 //  in the mediaSpecs table, and integration with existing validation system.
 //
-//  NOTE: All ArgumentType/OutputType enums have been REMOVED.
-//  Schemas are now stored in the mediaSpecs table and resolved via spec IDs.
+//  Schemas are stored in the mediaSpecs table and resolved via spec IDs.
 //
 
 #import <XCTest/XCTest.h>

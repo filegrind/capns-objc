@@ -8,6 +8,7 @@
 #import "include/CSCapGraph.h"
 #import "include/CSCapUrn.h"
 #import "include/CSMediaSpec.h"
+@import TaggedUrn;
 
 // ============================================================================
 // CSCapGraphEdge
@@ -123,13 +124,29 @@
 }
 
 - (NSArray<CSCapGraphEdge *> *)getOutgoing:(NSString *)spec {
-    // Use satisfies-based matching: find all edges where the provided spec
+    // Use TaggedUrn matching: find all edges where the provided spec
     // satisfies the edge's input requirement (fromSpec)
     NSMutableArray<CSCapGraphEdge *> *result = [[NSMutableArray alloc] init];
 
+    // Parse the provided spec
+    NSError *parseError = nil;
+    CSTaggedUrn *providedUrn = [CSTaggedUrn fromString:spec error:&parseError];
+    if (parseError || !providedUrn) {
+        return @[]; // Invalid URN, return empty
+    }
+
     for (CSCapGraphEdge *edge in self.edges) {
-        // Check if the provided spec satisfies the edge's input requirement
-        if (CSMediaUrnSatisfies(spec, edge.fromSpec)) {
+        // Parse the requirement URN
+        NSError *reqError = nil;
+        CSTaggedUrn *requirementUrn = [CSTaggedUrn fromString:edge.fromSpec error:&reqError];
+        if (reqError || !requirementUrn) {
+            continue; // Invalid requirement URN, skip
+        }
+
+        // Use proper TaggedUrn matching
+        NSError *matchError = nil;
+        BOOL matches = [providedUrn matches:requirementUrn error:&matchError];
+        if (!matchError && matches) {
             [result addObject:edge];
         }
     }

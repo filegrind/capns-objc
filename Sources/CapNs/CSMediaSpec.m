@@ -406,65 +406,6 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
 }
 
 // ============================================================================
-// MEDIA URN SATISFIES
-// ============================================================================
-
-/// Helper to extract a tag value from a media URN string
-static NSString * _Nullable CSExtractMediaUrnTag(NSString *mediaUrn, NSString *tagName) {
-    // Media URN format: media:X;ext=Y;...
-    NSString *prefix = [NSString stringWithFormat:@"%@=", tagName];
-    NSRange range = [mediaUrn rangeOfString:prefix];
-    if (range.location == NSNotFound) {
-        return nil;
-    }
-
-    NSUInteger start = range.location + range.length;
-    NSRange semicolonRange = [mediaUrn rangeOfString:@";" options:0 range:NSMakeRange(start, mediaUrn.length - start)];
-
-    if (semicolonRange.location == NSNotFound) {
-        return [mediaUrn substringFromIndex:start];
-    }
-    return [mediaUrn substringWithRange:NSMakeRange(start, semicolonRange.location - start)];
-}
-
-BOOL CSMediaUrnSatisfies(NSString *providedUrn, NSString *requirementUrn) {
-    if (!providedUrn || !requirementUrn) {
-        return NO;
-    }
-
-    // Extract type from both URNs
-    NSString *providedType = CSExtractMediaUrnTag(providedUrn, @"type");
-    NSString *requiredType = CSExtractMediaUrnTag(requirementUrn, @"type");
-
-    // Type must match if required
-    if (requiredType) {
-        if (!providedType || ![providedType isEqualToString:requiredType]) {
-            return NO;
-        }
-    }
-
-    // Extension must match if specified in requirement
-    NSString *requiredExt = CSExtractMediaUrnTag(requirementUrn, @"ext");
-    if (requiredExt) {
-        NSString *providedExt = CSExtractMediaUrnTag(providedUrn, @"ext");
-        if (!providedExt || ![providedExt isEqualToString:requiredExt]) {
-            return NO;
-        }
-    }
-
-    // Version must match if specified in requirement
-    NSString *requiredVersion = CSExtractMediaUrnTag(requirementUrn, @"v");
-    if (requiredVersion) {
-        NSString *providedVersion = CSExtractMediaUrnTag(providedUrn, @"v");
-        if (!providedVersion || ![providedVersion isEqualToString:requiredVersion]) {
-            return NO;
-        }
-    }
-
-    return YES;
-}
-
-// ============================================================================
 // CAP URN EXTENSION
 // ============================================================================
 

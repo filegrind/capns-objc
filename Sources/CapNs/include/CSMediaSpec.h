@@ -246,21 +246,6 @@ BOOL CSIsBuiltinMediaUrn(NSString *mediaUrn);
 NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn);
 
 /**
- * Check if a media URN satisfies another media URN's requirements.
- * Used for cap matching - checks if a provided media type can satisfy a cap's input requirement.
- *
- * Matching rules:
- * - Type must match (e.g., "image" != "binary")
- * - Extension must match if specified in requirement
- * - Version must match if specified in requirement
- *
- * @param providedUrn The media URN being provided (e.g., from a listing)
- * @param requirementUrn The media URN required (e.g., from a cap's input spec)
- * @return YES if providedUrn satisfies requirementUrn
- */
-BOOL CSMediaUrnSatisfies(NSString *providedUrn, NSString *requirementUrn);
-
-/**
  * Helper functions for working with MediaSpec in CapUrn
  */
 @interface CSMediaSpec (CapUrn)
