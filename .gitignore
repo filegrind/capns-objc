@@ -49,3 +49,4 @@ fastlane/screenshots
 *.swo
 .idea/
 .vscode/
+.ws/
