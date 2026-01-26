@@ -306,7 +306,6 @@
                         required:required
                          sources:sources
                   argDescription:nil
-                      validation:nil
                     defaultValue:nil];
 }
 
@@ -314,14 +313,12 @@
                        required:(BOOL)required
                         sources:(NSArray<CSArgSource *> *)sources
                  argDescription:(nullable NSString *)argDescription
-                     validation:(nullable CSArgumentValidation *)validation
                    defaultValue:(nullable id)defaultValue {
     CSCapArg *arg = [[CSCapArg alloc] init];
     arg->_mediaUrn = [mediaUrn copy];
     arg->_required = required;
     arg->_sources = [sources copy];
     arg->_argDescription = [argDescription copy];
-    arg->_validation = validation;
     arg->_defaultValue = defaultValue;
     arg->_metadata = nil;
     return arg;
@@ -376,22 +373,11 @@
     id defaultValue = dictionary[@"default_value"];
     NSDictionary *metadata = dictionary[@"metadata"];
 
-    // Parse validation if present
-    CSArgumentValidation *validation = nil;
-    NSDictionary *validationDict = dictionary[@"validation"];
-    if (validationDict) {
-        validation = [CSArgumentValidation validationWithDictionary:validationDict error:error];
-        if (!validation && error && *error) {
-            return nil;
-        }
-    }
-
     CSCapArg *arg = [[CSCapArg alloc] init];
     arg->_mediaUrn = [mediaUrn copy];
     arg->_required = required;
     arg->_sources = [sources copy];
     arg->_argDescription = [argDescription copy];
-    arg->_validation = validation;
     arg->_defaultValue = defaultValue;
     arg->_metadata = [metadata copy];
 
@@ -411,7 +397,6 @@
     dict[@"sources"] = sourceDicts;
 
     if (self.argDescription) dict[@"arg_description"] = self.argDescription;
-    if (self.validation) dict[@"validation"] = [self.validation toDictionary];
     if (self.defaultValue) dict[@"default_value"] = self.defaultValue;
     if (self.metadata) dict[@"metadata"] = self.metadata;
 
@@ -490,7 +475,6 @@
     copy->_required = self.required;
     copy->_sources = [[NSArray alloc] initWithArray:self.sources copyItems:YES];
     copy->_argDescription = [self.argDescription copy];
-    copy->_validation = [self.validation copy];
     copy->_defaultValue = self.defaultValue;
     copy->_metadata = [self.metadata copy];
     return copy;
@@ -501,7 +485,6 @@
     [coder encodeBool:self.required forKey:@"required"];
     [coder encodeObject:self.sources forKey:@"sources"];
     [coder encodeObject:self.argDescription forKey:@"argDescription"];
-    [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.defaultValue forKey:@"defaultValue"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
 }
@@ -520,7 +503,6 @@
         _required = [coder decodeBoolForKey:@"required"];
         _sources = [coder decodeObjectOfClasses:[NSSet setWithObjects:[NSArray class], [CSArgSource class], nil] forKey:@"sources"];
         _argDescription = [coder decodeObjectOfClass:[NSString class] forKey:@"argDescription"];
-        _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _defaultValue = [coder decodeObjectForKey:@"defaultValue"];
         _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     }
@@ -544,9 +526,6 @@
     if ((self.argDescription == nil) != (other.argDescription == nil)) return NO;
     if (self.argDescription && ![self.argDescription isEqualToString:other.argDescription]) return NO;
 
-    if ((self.validation == nil) != (other.validation == nil)) return NO;
-    if (self.validation && ![self.validation isEqual:other.validation]) return NO;
-
     if ((self.defaultValue == nil) != (other.defaultValue == nil)) return NO;
     if (self.defaultValue && ![self.defaultValue isEqual:other.defaultValue]) return NO;
 
@@ -558,8 +537,7 @@
 
 - (NSUInteger)hash {
     return [self.mediaUrn hash] ^ (self.required ? 1 : 0) ^ [self.sources hash] ^
-           [self.argDescription hash] ^ [self.validation hash] ^
-           [self.defaultValue hash] ^ [self.metadata hash];
+           [self.argDescription hash] ^ [self.defaultValue hash] ^ [self.metadata hash];
 }
 
 @end
@@ -569,11 +547,9 @@
 @implementation CSCapOutput
 
 + (instancetype)outputWithMediaUrn:(NSString *)mediaUrn
-                        validation:(nullable CSArgumentValidation *)validation
                  outputDescription:(NSString *)outputDescription {
     CSCapOutput *output = [[CSCapOutput alloc] init];
     output->_mediaUrn = [mediaUrn copy];
-    output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
     output->_metadata = nil;
     return output;
@@ -603,19 +579,8 @@
         return nil;
     }
 
-    // Parse validation if present
-    CSArgumentValidation *validation = nil;
-    NSDictionary *validationDict = dictionary[@"validation"];
-    if (validationDict) {
-        validation = [CSArgumentValidation validationWithDictionary:validationDict error:error];
-        if (!validation && error && *error) {
-            return nil;
-        }
-    }
-
     CSCapOutput *output = [[CSCapOutput alloc] init];
     output->_mediaUrn = [mediaUrn copy];
-    output->_validation = validation;
     output->_outputDescription = [outputDescription copy];
     output->_metadata = [metadata copy];
 
@@ -625,7 +590,6 @@
 - (id)copyWithZone:(NSZone *)zone {
     CSCapOutput *copy = [[CSCapOutput alloc] init];
     copy->_mediaUrn = [self.mediaUrn copy];
-    copy->_validation = [self.validation copy];
     copy->_outputDescription = [self.outputDescription copy];
     copy->_metadata = [self.metadata copy];
     return copy;
@@ -633,7 +597,6 @@
 
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeObject:self.mediaUrn forKey:@"mediaUrn"];
-    [coder encodeObject:self.validation forKey:@"validation"];
     [coder encodeObject:self.outputDescription forKey:@"outputDescription"];
     [coder encodeObject:self.metadata forKey:@"metadata"];
 }
@@ -650,7 +613,6 @@
     self = [super init];
     if (self) {
         _mediaUrn = mediaUrn;
-        _validation = [coder decodeObjectOfClass:[CSArgumentValidation class] forKey:@"validation"];
         _outputDescription = outputDescription;
         _metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
     }
@@ -663,7 +625,6 @@
     dict[@"media_urn"] = self.mediaUrn;
     dict[@"output_description"] = self.outputDescription;
 
-    if (self.validation) dict[@"validation"] = [self.validation toDictionary];
     if (self.metadata) dict[@"metadata"] = self.metadata;
 
     return [dict copy];
@@ -692,10 +653,6 @@
     CSCapOutput *other = (CSCapOutput *)object;
 
     if (![self.mediaUrn isEqualToString:other.mediaUrn]) return NO;
-
-    if ((self.validation == nil) != (other.validation == nil)) return NO;
-    if (self.validation && ![self.validation isEqual:other.validation]) return NO;
-
     if (![self.outputDescription isEqualToString:other.outputDescription]) return NO;
 
     if ((self.metadata == nil) != (other.metadata == nil)) return NO;
@@ -705,7 +662,7 @@
 }
 
 - (NSUInteger)hash {
-    return [self.mediaUrn hash] ^ [self.validation hash] ^ [self.outputDescription hash] ^ [self.metadata hash];
+    return [self.mediaUrn hash] ^ [self.outputDescription hash] ^ [self.metadata hash];
 }
 
 @end

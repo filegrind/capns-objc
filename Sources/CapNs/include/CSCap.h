@@ -143,9 +143,6 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 /// Optional description
 @property (nonatomic, readonly, nullable) NSString *argDescription;
 
-/// Optional validation rules
-@property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
-
 /// Optional default value
 @property (nonatomic, readonly, nullable) id defaultValue;
 
@@ -169,7 +166,6 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
  * @param required Whether this argument is required
  * @param sources Array of sources
  * @param argDescription Optional description
- * @param validation Optional validation rules
  * @param defaultValue Optional default value
  * @return A new CSCapArg instance
  */
@@ -177,7 +173,6 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
                        required:(BOOL)required
                         sources:(NSArray<CSArgSource *> *)sources
                  argDescription:(nullable NSString *)argDescription
-                     validation:(nullable CSArgumentValidation *)validation
                    defaultValue:(nullable id)defaultValue;
 
 /**
@@ -254,19 +249,16 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 @interface CSCapOutput : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly) NSString *mediaUrn;
-@property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
 @property (nonatomic, readonly) NSString *outputDescription;
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
 /**
  * Create an output with media URN
  * @param mediaUrn Media URN (e.g., "media:object")
- * @param validation Optional validation rules
  * @param outputDescription Description of the output
  * @return A new CSCapOutput instance
  */
 + (instancetype)outputWithMediaUrn:(NSString * _Nonnull)mediaUrn
-                        validation:(nullable CSArgumentValidation *)validation
                  outputDescription:(NSString * _Nonnull)outputDescription;
 
 + (instancetype)outputWithDictionary:(NSDictionary * _Nonnull)dictionary error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NAME(init(dictionary:error:));

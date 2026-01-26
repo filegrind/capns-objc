@@ -340,12 +340,9 @@
 
     CSCapArg *requiredArg = [cap getRequiredArgs].firstObject;
     XCTAssertEqualObjects(requiredArg.mediaUrn, CSMediaString);
-    XCTAssertEqualObjects(requiredArg.validation.minLength, @1);
-    XCTAssertEqualObjects(requiredArg.validation.maxLength, @1000);
 
     CSCapArg *optionalArg = [cap getOptionalArgs].firstObject;
     XCTAssertEqualObjects(optionalArg.mediaUrn, CSMediaString);
-    XCTAssertTrue([optionalArg.validation.allowedValues containsObject:@"json"]);
 
     // Verify output
     XCTAssertNotNil(cap.output);
@@ -701,7 +698,6 @@
                                            required:YES
                                             sources:@[positionSource, cliFlagSource]
                                      argDescription:@"Input text"
-                                         validation:nil
                                        defaultValue:nil];
 
     XCTAssertNotNil(stringArg);
@@ -714,7 +710,6 @@
                                         required:NO
                                          sources:@[[CSArgSource cliFlagSource:@"--count"]]
                                   argDescription:@"Count value"
-                                      validation:nil
                                     defaultValue:@10];
 
     XCTAssertNotNil(intArg);
@@ -726,7 +721,6 @@
                                         required:YES
                                          sources:@[[CSArgSource cliFlagSource:@"--data"]]
                                   argDescription:@"JSON data"
-                                      validation:nil
                                     defaultValue:nil];
 
     XCTAssertNotNil(objArg);
@@ -736,7 +730,6 @@
 - (void)testOutputCreationWithNewAPI {
     // Test creating output with the new mediaUrn API
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:CSMediaObject
-                                               validation:nil
                                         outputDescription:@"JSON output"];
 
     XCTAssertNotNil(output);
@@ -745,7 +738,6 @@
 
     // Test with custom spec ID
     CSCapOutput *customOutput = [CSCapOutput outputWithMediaUrn:@"my:custom-output.v1"
-                                                     validation:nil
                                               outputDescription:@"Custom output"];
 
     XCTAssertNotNil(customOutput);

@@ -246,10 +246,6 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                          value:(id)value
                     cap:(CSCap *)cap
                          error:(NSError **)error;
-+ (BOOL)validateArgumentRules:(CSCapArg *)argDef
-                        value:(id)value
-                   cap:(CSCap *)cap
-                        error:(NSError **)error;
 @end
 
 @implementation CSInputValidator
@@ -343,16 +339,11 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         return NO;
     }
 
-    // FIRST PASS: Media spec validation rules (inherent to the semantic type)
+    // Media spec validation rules (inherent to the semantic type)
     if (mediaSpec && mediaSpec.validation) {
         if (![self validateMediaSpecRules:argDef mediaSpec:mediaSpec value:value cap:cap error:error]) {
             return NO;
         }
-    }
-
-    // SECOND PASS: Arg-level validation rules (context-specific)
-    if (![self validateArgumentRules:argDef value:value cap:cap error:error]) {
-        return NO;
     }
 
     // Schema validation
@@ -571,116 +562,6 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     return YES;
 }
 
-+ (BOOL)validateArgumentRules:(CSCapArg *)argDef
-                        value:(id)value
-                   cap:(CSCap *)cap
-                        error:(NSError **)error {
-    NSString *capUrn = [cap urnString];
-    CSArgumentValidation *validation = argDef.validation;
-
-    if (!validation) {
-        return YES;
-    }
-
-    // Numeric validation
-    if (validation.min) {
-        NSNumber *numValue = [self getNumericValue:value];
-        if (numValue && [numValue doubleValue] < [validation.min doubleValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"minimum value %@", validation.min];
-                *error = [CSValidationError argumentValidationFailedError:capUrn
-                                                             argumentName:argDef.mediaUrn
-                                                           validationRule:rule
-                                                              actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    if (validation.max) {
-        NSNumber *numValue = [self getNumericValue:value];
-        if (numValue && [numValue doubleValue] > [validation.max doubleValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"maximum value %@", validation.max];
-                *error = [CSValidationError argumentValidationFailedError:capUrn
-                                                             argumentName:argDef.mediaUrn
-                                                           validationRule:rule
-                                                              actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    // String length validation
-    if (validation.minLength && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        if (stringValue.length < [validation.minLength integerValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"minimum length %@", validation.minLength];
-                *error = [CSValidationError argumentValidationFailedError:capUrn
-                                                             argumentName:argDef.mediaUrn
-                                                           validationRule:rule
-                                                              actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    if (validation.maxLength && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        if (stringValue.length > [validation.maxLength integerValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"maximum length %@", validation.maxLength];
-                *error = [CSValidationError argumentValidationFailedError:capUrn
-                                                             argumentName:argDef.mediaUrn
-                                                           validationRule:rule
-                                                              actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    // Pattern validation
-    if (validation.pattern && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        NSError *regexError = nil;
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:validation.pattern
-                                                                               options:0
-                                                                                 error:&regexError];
-        if (regex) {
-            NSRange range = NSMakeRange(0, stringValue.length);
-            NSTextCheckingResult *match = [regex firstMatchInString:stringValue options:0 range:range];
-            if (!match) {
-                if (error) {
-                    NSString *rule = [NSString stringWithFormat:@"pattern '%@'", validation.pattern];
-                    *error = [CSValidationError argumentValidationFailedError:capUrn
-                                                                 argumentName:argDef.mediaUrn
-                                                               validationRule:rule
-                                                                  actualValue:value];
-                }
-                return NO;
-            }
-        }
-    }
-
-    // Allowed values validation
-    if (validation.allowedValues.count > 0 && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        if (![validation.allowedValues containsObject:stringValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"allowed values: %@", validation.allowedValues];
-                *error = [CSValidationError argumentValidationFailedError:capUrn
-                                                             argumentName:argDef.mediaUrn
-                                                           validationRule:rule
-                                                              actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    return YES;
-}
-
 + (NSString *)getJsonTypeName:(id)value {
     if ([value isKindOfClass:[NSNull class]]) {
         return @"null";
@@ -723,10 +604,6 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                                value:(id)value
                           cap:(CSCap *)cap
                                error:(NSError **)error;
-+ (BOOL)validateOutputRules:(CSCapOutput *)outputDef
-                      value:(id)value
-                 cap:(CSCap *)cap
-                      error:(NSError **)error;
 @end
 
 @implementation CSOutputValidator
@@ -763,16 +640,11 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         return NO;
     }
 
-    // FIRST PASS: Media spec validation rules (inherent to the semantic type)
+    // Media spec validation rules (inherent to the semantic type)
     if (mediaSpec && mediaSpec.validation) {
         if (![self validateOutputMediaSpecRules:outputDef mediaSpec:mediaSpec value:output cap:cap error:error]) {
             return NO;
         }
-    }
-
-    // SECOND PASS: Output-level validation rules (context-specific)
-    if (![self validateOutputRules:outputDef value:output cap:cap error:error]) {
-        return NO;
     }
 
     // Schema validation
@@ -983,107 +855,6 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
     return YES;
 }
 
-+ (BOOL)validateOutputRules:(CSCapOutput *)outputDef
-                      value:(id)value
-                 cap:(CSCap *)cap
-                      error:(NSError **)error {
-    NSString *capUrn = [cap urnString];
-    CSArgumentValidation *validation = outputDef.validation;
-
-    if (!validation) {
-        return YES;
-    }
-
-    // Apply same validation rules as arguments
-    if (validation.min) {
-        NSNumber *numValue = [CSInputValidator getNumericValue:value];
-        if (numValue && [numValue doubleValue] < [validation.min doubleValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"minimum value %@", validation.min];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    if (validation.max) {
-        NSNumber *numValue = [CSInputValidator getNumericValue:value];
-        if (numValue && [numValue doubleValue] > [validation.max doubleValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"maximum value %@", validation.max];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    if (validation.minLength && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        if (stringValue.length < [validation.minLength integerValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"minimum length %@", validation.minLength];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    if (validation.maxLength && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        if (stringValue.length > [validation.maxLength integerValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"maximum length %@", validation.maxLength];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    if (validation.pattern && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        NSError *regexError = nil;
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:validation.pattern
-                                                                               options:0
-                                                                                 error:&regexError];
-        if (regex) {
-            NSRange range = NSMakeRange(0, stringValue.length);
-            NSTextCheckingResult *match = [regex firstMatchInString:stringValue options:0 range:range];
-            if (!match) {
-                if (error) {
-                    NSString *rule = [NSString stringWithFormat:@"pattern '%@'", validation.pattern];
-                    *error = [CSValidationError outputValidationFailedError:capUrn
-                                                             validationRule:rule
-                                                                actualValue:value];
-                }
-                return NO;
-            }
-        }
-    }
-
-    if (validation.allowedValues.count > 0 && [value isKindOfClass:[NSString class]]) {
-        NSString *stringValue = (NSString *)value;
-        if (![validation.allowedValues containsObject:stringValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"allowed values: %@", validation.allowedValues];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:value];
-            }
-            return NO;
-        }
-    }
-
-    return YES;
-}
-
 @end
 
 @implementation CSCapValidator
@@ -1236,31 +1007,33 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
             }
             return NO;
         }
-    }
 
-    // Validate binary data size constraints if defined
-    CSArgumentValidation *validation = output.validation;
-    if (validation && validation.min) {
-        if (outputData.length < [validation.min integerValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"minimum size %@ bytes", validation.min];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:@(outputData.length)];
+        // Validate binary data size constraints using media spec validation if defined
+        CSArgumentValidation *validation = mediaSpec.validation;
+        if (validation && validation.min) {
+            if (outputData.length < [validation.min integerValue]) {
+                if (error) {
+                    NSString *rule = [NSString stringWithFormat:@"minimum size %@ bytes", validation.min];
+                    *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                            mediaUrn:mediaSpec.mediaUrn
+                                                                      validationRule:rule
+                                                                         actualValue:@(outputData.length)];
+                }
+                return NO;
             }
-            return NO;
         }
-    }
 
-    if (validation && validation.max) {
-        if (outputData.length > [validation.max integerValue]) {
-            if (error) {
-                NSString *rule = [NSString stringWithFormat:@"maximum size %@ bytes", validation.max];
-                *error = [CSValidationError outputValidationFailedError:capUrn
-                                                         validationRule:rule
-                                                            actualValue:@(outputData.length)];
+        if (validation && validation.max) {
+            if (outputData.length > [validation.max integerValue]) {
+                if (error) {
+                    NSString *rule = [NSString stringWithFormat:@"maximum size %@ bytes", validation.max];
+                    *error = [CSValidationError outputMediaSpecValidationFailedError:capUrn
+                                                                            mediaUrn:mediaSpec.mediaUrn
+                                                                      validationRule:rule
+                                                                         actualValue:@(outputData.length)];
+                }
+                return NO;
             }
-            return NO;
         }
     }
 

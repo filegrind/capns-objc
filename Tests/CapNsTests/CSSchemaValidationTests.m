@@ -67,7 +67,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--user"]]
                                        argDescription:@"User data object"
-                                           validation:nil
                                          defaultValue:nil];
 
     // Valid data that matches schema
@@ -106,7 +105,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--user"]]
                                        argDescription:@"User data object"
-                                           validation:nil
                                          defaultValue:nil];
 
     // Invalid data - missing required field
@@ -132,7 +130,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--data"]]
                                        argDescription:@"Some data"
-                                           validation:nil
                                          defaultValue:nil];
 
     NSDictionary *data = @{@"test": @"value"};
@@ -151,7 +148,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--name"]]
                                        argDescription:@"User name"
-                                           validation:nil
                                          defaultValue:nil];
 
     NSString *value = @"test";
@@ -188,7 +184,6 @@
     };
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
-                                                validation:nil
                                          outputDescription:@"Query results"];
 
     // Valid output data
@@ -227,7 +222,6 @@
     };
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
-                                                validation:nil
                                          outputDescription:@"Query results"];
 
     // Invalid data - negative count
@@ -275,7 +269,6 @@
                                             required:YES
                                              sources:@[[CSArgSource cliFlagSource:@"--user"]]
                                       argDescription:@"User object"
-                                          validation:nil
                                         defaultValue:nil];
 
     CSCap *cap = [CSCap capWithUrn:urn
@@ -344,7 +337,6 @@
     };
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:results-array.v1"
-                                                validation:nil
                                          outputDescription:@"Query results array"];
 
     CSCap *cap = [CSCap capWithUrn:urn
@@ -429,7 +421,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--payload"]]
                                        argDescription:@"Complex payload"
-                                           validation:nil
                                          defaultValue:nil];
 
     // Valid complex data
@@ -499,7 +490,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--test"]]
                                        argDescription:@"Test argument"
-                                           validation:nil
                                          defaultValue:nil];
 
     // Invalid data with multiple errors
@@ -530,7 +520,6 @@
                                            required:YES
                                             sources:@[[CSArgSource cliFlagSource:@"--text"]]
                                      argDescription:@"Text input"
-                                         validation:nil
                                        defaultValue:nil];
 
     NSError *error = nil;
@@ -542,7 +531,6 @@
                                          required:YES
                                           sources:@[[CSArgSource cliFlagSource:@"--count"]]
                                    argDescription:@"Count value"
-                                       validation:nil
                                      defaultValue:nil];
 
     result = [self.validator validateArgument:intArg withValue:@42 mediaSpecs:@{} error:&error];
@@ -553,7 +541,6 @@
                                         required:YES
                                          sources:@[[CSArgSource cliFlagSource:@"--data"]]
                                   argDescription:@"JSON data"
-                                      validation:nil
                                     defaultValue:nil];
 
     result = [self.validator validateArgument:objArg withValue:@{@"key": @"value"} mediaSpecs:@{} error:&error];
@@ -573,7 +560,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--input"]]
                                        argDescription:@"Text input"
-                                           validation:nil
                                          defaultValue:nil];
 
     // String-form spec has no schema, so any value passes schema validation
@@ -619,7 +605,6 @@
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--data"]]
                                        argDescription:@"Large data set"
-                                           validation:nil
                                          defaultValue:nil];
 
     // Create large valid data set
@@ -691,11 +676,9 @@
                                              required:YES
                                               sources:@[[CSArgSource positionSource:0], [CSArgSource cliFlagSource:@"--input"]]
                                        argDescription:@"Transformation input"
-                                           validation:nil
                                          defaultValue:nil];
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:transform-output.v1"
-                                                validation:nil
                                          outputDescription:@"Transformation result"];
 
     CSCap *cap = [CSCap capWithUrn:urn
