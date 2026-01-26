@@ -247,7 +247,7 @@
 }
 
 - (void)testCanonicalValidationDeserialization {
-    // Test CSArgumentValidation.validationWithDictionary
+    // Test CSMediaValidation.validationWithDictionary
     NSDictionary *validationDict = @{
         @"min_length": @1,
         @"max_length": @255,
@@ -256,7 +256,7 @@
     };
 
     NSError *error;
-    CSArgumentValidation *validation = [CSArgumentValidation validationWithDictionary:validationDict error:&error];
+    CSMediaValidation *validation = [CSMediaValidation validationWithDictionary:validationDict error:&error];
 
     XCTAssertNil(error, @"Validation dictionary deserialization should not fail: %@", error.localizedDescription);
     XCTAssertNotNil(validation, @"Validation should be created from dictionary");

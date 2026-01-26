@@ -150,7 +150,7 @@ NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
 @property (nonatomic, readwrite, nullable) NSString *title;
 @property (nonatomic, readwrite, nullable) NSString *descriptionText;
 @property (nonatomic, readwrite, nullable) NSString *mediaUrn;
-@property (nonatomic, readwrite, nullable) CSArgumentValidation *validation;
+@property (nonatomic, readwrite, nullable) CSMediaValidation *validation;
 @property (nonatomic, readwrite, nullable) NSDictionary *metadata;
 @end
 
@@ -267,7 +267,7 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
                          schema:(nullable NSDictionary *)schema
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
-                     validation:(nullable CSArgumentValidation *)validation {
+                     validation:(nullable CSMediaValidation *)validation {
     return [self withContentType:contentType profile:profile schema:schema title:title descriptionText:descriptionText validation:validation metadata:nil];
 }
 
@@ -276,7 +276,7 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
                          schema:(nullable NSDictionary *)schema
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
-                     validation:(nullable CSArgumentValidation *)validation
+                     validation:(nullable CSMediaValidation *)validation
                        metadata:(nullable NSDictionary *)metadata {
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
@@ -358,11 +358,11 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
             NSString *descriptionText = objDef[@"description"];
 
             // Parse validation if present
-            CSArgumentValidation *validation = nil;
+            CSMediaValidation *validation = nil;
             NSDictionary *validationDict = objDef[@"validation"];
             if (validationDict && [validationDict isKindOfClass:[NSDictionary class]]) {
                 NSError *validationError = nil;
-                validation = [CSArgumentValidation validationWithDictionary:validationDict error:&validationError];
+                validation = [CSMediaValidation validationWithDictionary:validationDict error:&validationError];
                 // Ignore validation parse errors - validation is optional
             }
 

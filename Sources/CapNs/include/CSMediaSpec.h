@@ -16,7 +16,7 @@
 #import <Foundation/Foundation.h>
 
 @class CSCapUrn;
-@class CSArgumentValidation;
+@class CSMediaValidation;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -113,7 +113,7 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 @property (nonatomic, readonly, nullable) NSString *descriptionText;
 
 /// Optional validation rules (inherent to the semantic type)
-@property (nonatomic, readonly, nullable) CSArgumentValidation *validation;
+@property (nonatomic, readonly, nullable) CSMediaValidation *validation;
 
 /// Optional metadata (arbitrary key-value pairs for display/categorization)
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
@@ -149,7 +149,7 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
                          schema:(nullable NSDictionary *)schema
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
-                     validation:(nullable CSArgumentValidation *)validation
+                     validation:(nullable CSMediaValidation *)validation
                        metadata:(nullable NSDictionary *)metadata;
 
 /**

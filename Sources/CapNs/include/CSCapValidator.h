@@ -20,7 +20,7 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
     CSValidationErrorTypeMissingRequiredArgument,
     CSValidationErrorTypeUnknownArgument,
     CSValidationErrorTypeInvalidArgumentType,
-    CSValidationErrorTypeArgumentValidationFailed,
+    CSValidationErrorTypeMediaValidationFailed,
     CSValidationErrorTypeMediaSpecValidationFailed,
     CSValidationErrorTypeInvalidOutputType,
     CSValidationErrorTypeOutputValidationFailed,
@@ -50,7 +50,7 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
                             expectedType:(NSString *)expectedType
                               actualType:(NSString *)actualType
                              actualValue:(id)actualValue;
-+ (instancetype)argumentValidationFailedError:(NSString *)capUrn
++ (instancetype)mediaValidationFailedError:(NSString *)capUrn
                                  argumentName:(NSString *)argumentName
                                validationRule:(NSString *)validationRule
                                   actualValue:(id)actualValue;

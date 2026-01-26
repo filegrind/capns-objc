@@ -17,9 +17,9 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * Argument validation rules
+ * Media validation rules
  */
-@interface CSArgumentValidation : NSObject <NSCopying, NSCoding>
+@interface CSMediaValidation : NSObject <NSCopying, NSCoding>
 
 @property (nonatomic, readonly, nullable) NSNumber *min;
 @property (nonatomic, readonly, nullable) NSNumber *max;

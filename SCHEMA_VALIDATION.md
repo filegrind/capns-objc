@@ -5,7 +5,7 @@ This document describes the comprehensive JSON Schema validation system implemen
 ## Overview
 
 The JSON Schema validation system provides Draft-7 compliant validation for:
-- **Argument validation**: Validates structured input arguments (objects and arrays) against JSON schemas
+- **Media validation**: Validates structured input arguments (objects and arrays) against JSON schemas
 - **Output validation**: Validates structured outputs against JSON schemas  
 - **Schema references**: Supports both embedded schemas and external schema file references
 - **Integration**: Seamlessly integrates with the existing CSCapValidator system
@@ -182,7 +182,7 @@ if (!isValid && [error isKindOfClass:[CSSchemaValidationError class]]) {
 ```
 
 Error types include:
-- `CSSchemaValidationErrorTypeArgumentValidation`: Argument failed schema validation
+- `CSSchemaValidationErrorTypeMediaValidation`: Argument failed schema validation
 - `CSSchemaValidationErrorTypeOutputValidation`: Output failed schema validation  
 - `CSSchemaValidationErrorTypeSchemaCompilation`: Schema parsing/compilation failed
 - `CSSchemaValidationErrorTypeSchemaRefNotResolved`: External schema reference not found

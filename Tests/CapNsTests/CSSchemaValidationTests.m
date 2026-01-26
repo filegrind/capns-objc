@@ -119,7 +119,7 @@
     XCTAssertTrue([error isKindOfClass:[CSSchemaValidationError class]], @"Should be schema validation error");
 
     CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
-    XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeArgumentValidation);
+    XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeMediaValidation);
     XCTAssertEqualObjects(schemaError.argumentName, @"my:user-data.v1");
 }
 
@@ -504,7 +504,7 @@
     XCTAssertTrue([error isKindOfClass:[CSSchemaValidationError class]]);
 
     CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
-    XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeArgumentValidation);
+    XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeMediaValidation);
     XCTAssertEqualObjects(schemaError.argumentName, @"my:test-arg.v1");
     XCTAssertNotNil(schemaError.validationErrors);
     XCTAssertTrue(schemaError.validationErrors.count > 0, @"Should have validation error details");

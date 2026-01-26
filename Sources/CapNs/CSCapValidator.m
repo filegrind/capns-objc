@@ -97,13 +97,13 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              }];
 }
 
-+ (instancetype)argumentValidationFailedError:(NSString *)capUrn
++ (instancetype)mediaValidationFailedError:(NSString *)capUrn
                                  argumentName:(NSString *)argumentName
                                validationRule:(NSString *)validationRule
                                   actualValue:(id)actualValue {
     NSString *description = [NSString stringWithFormat:@"Cap '%@' argument '%@' failed validation rule '%@' with value: %@",
                             capUrn, argumentName, validationRule, actualValue];
-    return [[self alloc] initWithType:CSValidationErrorTypeArgumentValidationFailed
+    return [[self alloc] initWithType:CSValidationErrorTypeMediaValidationFailed
                          capUrn:capUrn
                           description:description
                              userInfo:@{
@@ -450,7 +450,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                     cap:(CSCap *)cap
                          error:(NSError **)error {
     NSString *capUrn = [cap urnString];
-    CSArgumentValidation *validation = mediaSpec.validation;
+    CSMediaValidation *validation = mediaSpec.validation;
     NSString *mediaUrn = mediaSpec.mediaUrn ?: argDef.mediaUrn;
 
     if (!validation) {
@@ -749,7 +749,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                           cap:(CSCap *)cap
                                error:(NSError **)error {
     NSString *capUrn = [cap urnString];
-    CSArgumentValidation *validation = mediaSpec.validation;
+    CSMediaValidation *validation = mediaSpec.validation;
     NSString *mediaUrn = mediaSpec.mediaUrn ?: outputDef.mediaUrn;
 
     if (!validation) {
@@ -1009,7 +1009,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
         }
 
         // Validate binary data size constraints using media spec validation if defined
-        CSArgumentValidation *validation = mediaSpec.validation;
+        CSMediaValidation *validation = mediaSpec.validation;
         if (validation && validation.min) {
             if (outputData.length < [validation.min integerValue]) {
                 if (error) {

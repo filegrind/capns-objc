@@ -46,7 +46,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
     return self;
 }
 
-+ (instancetype)argumentValidationError:(NSString *)argumentName
++ (instancetype)mediaValidationError:(NSString *)argumentName
                         validationErrors:(NSArray<NSString *> *)validationErrors
                                    value:(nullable id)value {
     NSString *description = [NSString stringWithFormat:@"Schema validation failed for argument '%@': %@",
@@ -57,7 +57,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
         CSSchemaValidationErrorValidationErrorsKey: validationErrors,
         CSSchemaValidationErrorValueKey: value ?: [NSNull null]
     };
-    return [[self alloc] initWithType:CSSchemaValidationErrorTypeArgumentValidation userInfo:userInfo];
+    return [[self alloc] initWithType:CSSchemaValidationErrorTypeMediaValidation userInfo:userInfo];
 }
 
 + (instancetype)outputValidationError:(NSArray<NSString *> *)validationErrors
@@ -421,7 +421,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
             if ([context hasPrefix:@"argument"]) {
                 NSString *argumentName = [context stringByReplacingOccurrencesOfString:@"argument '" withString:@""];
                 argumentName = [argumentName stringByReplacingOccurrencesOfString:@"'" withString:@""];
-                *error = [CSSchemaValidationError argumentValidationError:argumentName
+                *error = [CSSchemaValidationError mediaValidationError:argumentName
                                                          validationErrors:errors
                                                                     value:value];
             } else {

@@ -8,9 +8,9 @@
 #import "include/CSCap.h"
 #import "include/CSMediaSpec.h"
 
-#pragma mark - CSArgumentValidation Implementation
+#pragma mark - CSMediaValidation Implementation
 
-@implementation CSArgumentValidation
+@implementation CSMediaValidation
 
 + (instancetype)validationWithMin:(nullable NSNumber *)min
                               max:(nullable NSNumber *)max
@@ -18,7 +18,7 @@
                         maxLength:(nullable NSNumber *)maxLength
                           pattern:(nullable NSString *)pattern
                     allowedValues:(nullable NSArray<NSString *> *)allowedValues {
-    CSArgumentValidation *validation = [[CSArgumentValidation alloc] init];
+    CSMediaValidation *validation = [[CSMediaValidation alloc] init];
     validation->_min = min;
     validation->_max = max;
     validation->_minLength = minLength;
@@ -45,7 +45,7 @@
 }
 
 - (id)copyWithZone:(NSZone *)zone {
-    return [CSArgumentValidation validationWithMin:self.min
+    return [CSMediaValidation validationWithMin:self.min
                                                 max:self.max
                                           minLength:self.minLength
                                           maxLength:self.maxLength
@@ -96,9 +96,9 @@
 
 - (BOOL)isEqual:(id)object {
     if (self == object) return YES;
-    if (![object isKindOfClass:[CSArgumentValidation class]]) return NO;
+    if (![object isKindOfClass:[CSMediaValidation class]]) return NO;
 
-    CSArgumentValidation *other = (CSArgumentValidation *)object;
+    CSMediaValidation *other = (CSMediaValidation *)object;
 
     if ((self.min == nil) != (other.min == nil)) return NO;
     if (self.min && ![self.min isEqualToNumber:other.min]) return NO;

@@ -17,7 +17,7 @@ FOUNDATION_EXPORT NSErrorDomain const CSSchemaValidationErrorDomain;
 
 /// Schema validation error types
 typedef NS_ENUM(NSInteger, CSSchemaValidationErrorType) {
-    CSSchemaValidationErrorTypeArgumentValidation,
+    CSSchemaValidationErrorTypeMediaValidation,
     CSSchemaValidationErrorTypeOutputValidation,
     CSSchemaValidationErrorTypeSchemaCompilation,
     CSSchemaValidationErrorTypeSchemaRefNotResolved,
@@ -37,7 +37,7 @@ typedef NS_ENUM(NSInteger, CSSchemaValidationErrorType) {
 @property (nonatomic, readonly, nullable) id value;
 @property (nonatomic, readonly, nullable) NSArray<NSString *> *validationErrors;
 
-+ (instancetype)argumentValidationError:(NSString *)argumentName 
++ (instancetype)mediaValidationError:(NSString *)argumentName 
                               validationErrors:(NSArray<NSString *> *)validationErrors
                                          value:(nullable id)value;
 
