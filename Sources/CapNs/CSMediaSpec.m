@@ -31,6 +31,13 @@ NSString * const CSMediaImage = @"media:png;binary";
 NSString * const CSMediaAudio = @"media:wav;audio;binary;";
 NSString * const CSMediaVideo = @"media:video;binary";
 NSString * const CSMediaText = @"media:text;textable";
+// Semantic AI input types
+NSString * const CSMediaImageVisualEmbedding = @"media:image;png;binary;visual-embedding-source";
+NSString * const CSMediaImageCaptioning = @"media:image;png;binary;captioning-source";
+NSString * const CSMediaImageVisionQuery = @"media:image;png;binary;vision-query-source";
+NSString * const CSMediaAudioSpeech = @"media:audio;wav;binary;speech";
+NSString * const CSMediaTextEmbedding = @"media:text;textable;scalar;embedding-source";
+NSString * const CSMediaImageThumbnail = @"media:image;png;binary;thumbnail";
 // Document types (PRIMARY naming - type IS the format)
 NSString * const CSMediaPdf = @"media:pdf;binary";
 NSString * const CSMediaEpub = @"media:epub;binary";

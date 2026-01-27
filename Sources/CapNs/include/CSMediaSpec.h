@@ -53,6 +53,13 @@ FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:png;binary
 FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;binary;
 FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;binary
 FOUNDATION_EXPORT NSString * const CSMediaText;         // media:text;textable
+// Semantic AI input types
+FOUNDATION_EXPORT NSString * const CSMediaImageVisualEmbedding;  // media:image;png;binary;visual-embedding-source
+FOUNDATION_EXPORT NSString * const CSMediaImageCaptioning;       // media:image;png;binary;captioning-source
+FOUNDATION_EXPORT NSString * const CSMediaImageVisionQuery;      // media:image;png;binary;vision-query-source
+FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;binary;speech
+FOUNDATION_EXPORT NSString * const CSMediaTextEmbedding;         // media:text;textable;scalar;embedding-source
+FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;binary;thumbnail
 // Document types (PRIMARY naming - type IS the format)
 FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;binary
 FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub;binary
