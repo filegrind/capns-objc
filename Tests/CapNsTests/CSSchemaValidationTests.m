@@ -716,4 +716,54 @@
     XCTAssertTrue(outputValid, @"Valid output should pass: %@", error);
 }
 
+#pragma mark - XV5 Validation Tests
+
+// TEST054: XV5 - Test inline media spec redefinition of existing registry spec is detected and rejected
+- (void)testXV5InlineSpecRedefinitionDetected {
+    // Try to redefine CSMediaString which is a built-in spec
+    // CSMediaString = @"media:textable;form=scalar"
+    NSDictionary *mediaSpecs = @{
+        CSMediaString: @{
+            @"media_type": @"text/plain",
+            @"title": @"My Custom String",
+            @"description": @"Trying to redefine string"
+        }
+    };
+
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs];
+
+    XCTAssertFalse(result.valid, @"Should fail validation when redefining built-in spec");
+    XCTAssertNotNil(result.error, @"Should have error message");
+    XCTAssertTrue([result.error containsString:@"XV5"], @"Error should mention XV5");
+    XCTAssertTrue([result.redefines containsObject:CSMediaString], @"Should identify CSMediaString as redefined");
+}
+
+// TEST055: XV5 - Test new inline media spec (not in registry) is allowed
+- (void)testXV5NewInlineSpecAllowed {
+    // Define a completely new media spec that doesn't exist in built-ins
+    NSDictionary *mediaSpecs = @{
+        @"media:my-unique-custom-type-xyz123": @{
+            @"media_type": @"application/json",
+            @"title": @"My Custom Output",
+            @"description": @"A custom output type"
+        }
+    };
+
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs];
+
+    XCTAssertTrue(result.valid, @"Should pass validation for new spec not in built-ins");
+    XCTAssertNil(result.error, @"Should not have error message");
+}
+
+// TEST056: XV5 - Test empty media_specs (no inline specs) passes XV5 validation
+- (void)testXV5EmptyMediaSpecsAllowed {
+    // Empty media_specs should pass
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:@{}];
+    XCTAssertTrue(result.valid, @"Empty dictionary should pass validation");
+
+    // Nil media_specs should pass
+    result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:nil];
+    XCTAssertTrue(result.valid, @"Nil should pass validation");
+}
+
 @end

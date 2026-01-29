@@ -227,6 +227,14 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
                              userInfo:userInfo];
 }
 
++ (instancetype)inlineMediaSpecRedefinesRegistryError:(NSString *)mediaUrn {
+    NSString *description = [NSString stringWithFormat:@"XV5: Inline media spec '%@' redefines existing registry spec", mediaUrn];
+    return [[self alloc] initWithType:CSValidationErrorTypeInlineMediaSpecRedefinesRegistry
+                         capUrn:@""
+                          description:description
+                             userInfo:@{NSLocalizedDescriptionKey: description}];
+}
+
 @end
 
 // Internal helper functions
@@ -1043,6 +1051,57 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 - (BOOL)validateCapSchema:(CSCap *)cap
                            error:(NSError **)error {
     return [CSCapValidator validateCap:cap error:error];
+}
+
+@end
+
+// ============================================================================
+// XV5 VALIDATION - No Redefinition of Registry Media Specs
+// ============================================================================
+
+@implementation CSXV5ValidationResult
+
++ (instancetype)validResult {
+    CSXV5ValidationResult *result = [[CSXV5ValidationResult alloc] init];
+    result->_valid = YES;
+    result->_error = nil;
+    result->_redefines = nil;
+    return result;
+}
+
++ (instancetype)invalidResultWithError:(NSString *)error redefines:(NSArray<NSString *> *)redefines {
+    CSXV5ValidationResult *result = [[CSXV5ValidationResult alloc] init];
+    result->_valid = NO;
+    result->_error = error;
+    result->_redefines = redefines;
+    return result;
+}
+
+@end
+
+@implementation CSXV5Validator
+
++ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(NSDictionary *)mediaSpecs {
+    if (!mediaSpecs || mediaSpecs.count == 0) {
+        return [CSXV5ValidationResult validResult];
+    }
+
+    NSMutableArray<NSString *> *redefines = [NSMutableArray array];
+
+    for (NSString *mediaUrn in mediaSpecs) {
+        // Check if this media URN is a built-in spec
+        if (CSIsBuiltinMediaUrn(mediaUrn)) {
+            [redefines addObject:mediaUrn];
+        }
+    }
+
+    if (redefines.count > 0) {
+        NSString *error = [NSString stringWithFormat:@"XV5: Inline media specs redefine existing built-in specs: %@",
+                           [redefines componentsJoinedByString:@", "]];
+        return [CSXV5ValidationResult invalidResultWithError:error redefines:redefines];
+    }
+
+    return [CSXV5ValidationResult validResult];
 }
 
 @end

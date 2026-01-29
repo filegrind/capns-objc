@@ -28,7 +28,8 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
     CSValidationErrorTypeInvalidCapSchema,
     CSValidationErrorTypeTooManyArguments,
     CSValidationErrorTypeJSONParseError,
-    CSValidationErrorTypeSchemaValidationFailed
+    CSValidationErrorTypeSchemaValidationFailed,
+    CSValidationErrorTypeInlineMediaSpecRedefinesRegistry // XV5
 };
 
 /// Validation error information
@@ -75,9 +76,30 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
                           maxExpected:(NSInteger)maxExpected 
                           actualCount:(NSInteger)actualCount;
 + (instancetype)jsonParseError:(NSString *)capUrn error:(NSString *)error;
-+ (instancetype)schemaValidationFailedError:(NSString *)capUrn 
-                               argumentName:(nullable NSString *)argumentName 
++ (instancetype)schemaValidationFailedError:(NSString *)capUrn
+                               argumentName:(nullable NSString *)argumentName
                            underlyingError:(NSError *)underlyingError;
+
++ (instancetype)inlineMediaSpecRedefinesRegistryError:(NSString *)mediaUrn;
+
+@end
+
+/// XV5 Validation Result
+@interface CSXV5ValidationResult : NSObject
+@property (nonatomic, readonly) BOOL valid;
+@property (nonatomic, readonly, copy, nullable) NSString *error;
+@property (nonatomic, readonly, copy, nullable) NSArray<NSString *> *redefines;
+
++ (instancetype)validResult;
++ (instancetype)invalidResultWithError:(NSString *)error redefines:(NSArray<NSString *> *)redefines;
+@end
+
+/// XV5 Validator - No Redefinition of Registry Media Specs
+@interface CSXV5Validator : NSObject
+
+/// Validates that inline media_specs don't redefine built-in specs
+/// Returns a result indicating if validation passed
++ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(nullable NSDictionary *)mediaSpecs;
 
 @end
 
