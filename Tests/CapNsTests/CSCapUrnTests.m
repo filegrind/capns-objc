@@ -22,7 +22,7 @@ static NSString* testUrn(NSString *tags) {
     if (tags == nil || tags.length == 0) {
         return @"cap:in=media:void;out=media:object";
     }
-    return [NSString stringWithFormat:@"cap:in=media:void;out=media:object;%@", tags];
+    return [NSString stringWithFormat:@"cap:in=media:void;out=media:form=map;%@", tags];
 }
 
 #pragma mark - Basic Creation Tests
@@ -53,7 +53,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNil(error);
 
     // Should be sorted alphabetically: ext, in, op, out, target
-    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=media:object;target=thumbnail");
+    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=media:form=map;target=thumbnail");
 }
 
 - (void)testCapPrefixRequired {
@@ -117,7 +117,7 @@ static NSString* testUrn(NSString *tags) {
 
     // Test value-less tag at end of input
     error = nil;
-    capUrn = [CSCapUrn fromString:@"cap:in=media:void;out=media:object;flag" error:&error];
+    capUrn = [CSCapUrn fromString:@"cap:in=media:void;out=media:form=map;flag" error:&error];
     XCTAssertNotNil(capUrn);
     XCTAssertNil(error);
     XCTAssertEqualObjects([capUrn getTag:@"flag"], @"*");
@@ -137,7 +137,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMissingInSpecFails {
     NSError *error = nil;
     // Missing 'in' should fail
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=media:object;op=generate" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=media:form=map;op=generate" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
@@ -177,7 +177,7 @@ static NSString* testUrn(NSString *tags) {
     // Different inSpec should not match
     CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=media:object" error:&error];
     XCTAssertNotNil(cap1);
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:binary;op=test;out=media:object" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:bytes;op=test;out=media:object" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertFalse([cap1 matches:cap2]);
 
@@ -400,7 +400,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMerge {
     NSError *error;
     CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:void;op=generate;out=media:object" error:&error];
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:string;out=media:binary;output=binary" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:string;out=media:bytes;output=binary" error:&error];
     CSCapUrn *merged = [cap1 merge:cap2];
 
     // Direction comes from cap2 (other takes precedence)
@@ -462,7 +462,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testExtendedCharacterSupport {
     NSError *error = nil;
     // Test forward slashes and colons in tag components
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;out=media:object;url=https://example_org/api;path=/some/file" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;out=media:form=map;url=https://example_org/api;path=/some/file" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"url"], @"https://example_org/api");
@@ -472,7 +472,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWildcardRestrictions {
     NSError *error = nil;
     // Wildcard should be rejected in keys
-    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=media:void;out=media:object;*=value" error:&error];
+    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=media:void;out=media:form=map;*=value" error:&error];
     XCTAssertNil(invalidKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidCharacter);
@@ -825,7 +825,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=media:object" error:&error];
     XCTAssertNotNil(cap);
 
-    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:binary;op=generate;out=media:object" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:bytes;op=generate;out=media:object" error:&error];
     XCTAssertNotNil(request);
 
     XCTAssertFalse([cap matches:request], @"Test 10: Direction mismatch should prevent match");

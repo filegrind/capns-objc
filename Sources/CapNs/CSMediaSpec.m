@@ -14,33 +14,33 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 // BUILT-IN MEDIA URN CONSTANTS
 // ============================================================================
 
-NSString * const CSMediaString = @"media:string;textable;scalar";
-NSString * const CSMediaInteger = @"media:integer;textable;numeric;scalar";
-NSString * const CSMediaNumber = @"media:number;textable;numeric;scalar";
-NSString * const CSMediaBoolean = @"media:boolean;textable;scalar";
-NSString * const CSMediaObject = @"media:object;textable;keyed";
-NSString * const CSMediaStringArray = @"media:string-array;textable;sequence";
-NSString * const CSMediaIntegerArray = @"media:integer-array;textable;numeric;sequence";
-NSString * const CSMediaNumberArray = @"media:number-array;textable;numeric;sequence";
-NSString * const CSMediaBooleanArray = @"media:boolean-array;textable;sequence";
-NSString * const CSMediaObjectArray = @"media:object-array;textable;keyed;sequence";
-NSString * const CSMediaBinary = @"media:raw;binary";
+NSString * const CSMediaString = @"media:textable;form=scalar";
+NSString * const CSMediaInteger = @"media:integer;textable;numeric;form=scalar";
+NSString * const CSMediaNumber = @"media:number;textable;numeric;form=scalar";
+NSString * const CSMediaBoolean = @"media:boolean;textable;form=scalar";
+NSString * const CSMediaObject = @"media:object;textable;form=map";
+NSString * const CSMediaStringArray = @"media:string-array;textable;form=list";
+NSString * const CSMediaIntegerArray = @"media:integer-array;textable;numeric;form=list";
+NSString * const CSMediaNumberArray = @"media:number-array;textable;numeric;form=list";
+NSString * const CSMediaBooleanArray = @"media:boolean-array;textable;form=list";
+NSString * const CSMediaObjectArray = @"media:object-array;textable;form=list";
+NSString * const CSMediaBinary = @"media:bytes";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
-NSString * const CSMediaImage = @"media:png;binary";
-NSString * const CSMediaAudio = @"media:wav;audio;binary;";
-NSString * const CSMediaVideo = @"media:video;binary";
-NSString * const CSMediaText = @"media:text;textable";
+NSString * const CSMediaImage = @"media:png;bytes";
+NSString * const CSMediaAudio = @"media:wav;audio;bytes;";
+NSString * const CSMediaVideo = @"media:video;bytes";
+NSString * const CSMediaText = @"media:textable";
 // Semantic AI input types
-NSString * const CSMediaImageVisualEmbedding = @"media:image;png;binary;visual-embedding-source";
-NSString * const CSMediaImageCaptioning = @"media:image;png;binary;captioning-source";
-NSString * const CSMediaImageVisionQuery = @"media:image;png;binary;vision-query-source";
-NSString * const CSMediaAudioSpeech = @"media:audio;wav;binary;speech";
-NSString * const CSMediaTextEmbedding = @"media:text;textable;scalar;embedding-source";
-NSString * const CSMediaImageThumbnail = @"media:image;png;binary;thumbnail";
+NSString * const CSMediaImageVisualEmbedding = @"media:image;png;bytes";
+NSString * const CSMediaImageCaptioning = @"media:image;png;bytes";
+NSString * const CSMediaImageVisionQuery = @"media:image;png;bytes";
+NSString * const CSMediaAudioSpeech = @"media:audio;wav;bytes;speech";
+NSString * const CSMediaTextEmbedding = @"media:image;png;bytes";
+NSString * const CSMediaImageThumbnail = @"media:image;png;bytes;thumbnail";
 // Document types (PRIMARY naming - type IS the format)
-NSString * const CSMediaPdf = @"media:pdf;binary";
-NSString * const CSMediaEpub = @"media:epub;binary";
+NSString * const CSMediaPdf = @"media:pdf;bytes";
+NSString * const CSMediaEpub = @"media:epub;bytes";
 // Text format types (PRIMARY naming - type IS the format)
 NSString * const CSMediaMd = @"media:md;textable";
 NSString * const CSMediaTxt = @"media:txt;textable";
@@ -48,8 +48,8 @@ NSString * const CSMediaRst = @"media:rst;textable";
 NSString * const CSMediaLog = @"media:log;textable";
 NSString * const CSMediaHtml = @"media:html;textable";
 NSString * const CSMediaXml = @"media:xml;textable";
-NSString * const CSMediaJson = @"media:json;textable;keyed";
-NSString * const CSMediaYaml = @"media:yaml;textable;keyed";
+NSString * const CSMediaJson = @"media:json;textable;form=map";
+NSString * const CSMediaYaml = @"media:yaml;textable;form=map";
 
 // ============================================================================
 // SCHEMA URL CONFIGURATION
@@ -305,7 +305,7 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
 }
 
 - (BOOL)isJSON {
-    return CSMediaUrnHasTag(self.mediaUrn, @"keyed");
+    return CSMediaUrnHasTag(self.mediaUrn, @"form=map");
 }
 
 - (BOOL)isText {

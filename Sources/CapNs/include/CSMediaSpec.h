@@ -36,33 +36,33 @@ typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
 // ============================================================================
 
 /// Well-known built-in media URNs with coercion tags - these do not need to be declared in mediaSpecs
-FOUNDATION_EXPORT NSString * const CSMediaString;       // media:string;textable;scalar
-FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:integer;textable;numeric;scalar
-FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:number;textable;numeric;scalar
-FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:boolean;textable;scalar
-FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:object;textable;keyed
-FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:string-array;textable;sequence
-FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer-array;textable;numeric;sequence
-FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:number-array;textable;numeric;sequence
-FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:boolean-array;textable;sequence
-FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:object-array;textable;keyed;sequence
-FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:raw;binary
+FOUNDATION_EXPORT NSString * const CSMediaString;       // media:textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:integer;textable;numeric;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:number;textable;numeric;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:boolean;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:object;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:string-array;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer-array;textable;numeric;form=list
+FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:number-array;textable;numeric;form=list
+FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:boolean-array;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:object-array;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:bytes
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
-FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:png;binary
-FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;binary;
-FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;binary
-FOUNDATION_EXPORT NSString * const CSMediaText;         // media:text;textable
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:png;bytes
+FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;bytes;
+FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;bytes
+FOUNDATION_EXPORT NSString * const CSMediaText;         // media:textable
 // Semantic AI input types
-FOUNDATION_EXPORT NSString * const CSMediaImageVisualEmbedding;  // media:image;png;binary;visual-embedding-source
-FOUNDATION_EXPORT NSString * const CSMediaImageCaptioning;       // media:image;png;binary;captioning-source
-FOUNDATION_EXPORT NSString * const CSMediaImageVisionQuery;      // media:image;png;binary;vision-query-source
-FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;binary;speech
-FOUNDATION_EXPORT NSString * const CSMediaTextEmbedding;         // media:text;textable;scalar;embedding-source
-FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;binary;thumbnail
+FOUNDATION_EXPORT NSString * const CSMediaImageVisualEmbedding;  // media:image;bytes
+FOUNDATION_EXPORT NSString * const CSMediaImageCaptioning;       // media:image;bytes
+FOUNDATION_EXPORT NSString * const CSMediaImageVisionQuery;      // media:image;bytes
+FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;bytes;speech
+FOUNDATION_EXPORT NSString * const CSMediaTextEmbedding;         // media:image;bytes
+FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;bytes;thumbnail
 // Document types (PRIMARY naming - type IS the format)
-FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;binary
-FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub;binary
+FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;bytes
+FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub;bytes
 // Text format types (PRIMARY naming - type IS the format)
 FOUNDATION_EXPORT NSString * const CSMediaMd;           // media:md;textable
 FOUNDATION_EXPORT NSString * const CSMediaTxt;          // media:txt;textable
@@ -70,8 +70,8 @@ FOUNDATION_EXPORT NSString * const CSMediaRst;          // media:rst;textable
 FOUNDATION_EXPORT NSString * const CSMediaLog;          // media:log;textable
 FOUNDATION_EXPORT NSString * const CSMediaHtml;         // media:html;textable
 FOUNDATION_EXPORT NSString * const CSMediaXml;          // media:xml;textable
-FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:json;textable;keyed
-FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;keyed
+FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:json;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;form=map
 
 // ============================================================================
 // SCHEMA URL CONFIGURATION

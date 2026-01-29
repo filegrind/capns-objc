@@ -223,7 +223,7 @@
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:binary" outSpec:@"media:string" title:@"Generic Binary to String"];
 
     // More specific converter (with extra tag for higher specificity)
-    CSCapUrn *capUrn2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:binary;op=convert;out=media:string" error:nil];
+    CSCapUrn *capUrn2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:bytes;op=convert;out=media:string" error:nil];
     CSCap *cap2 = [CSCap capWithUrn:capUrn2
                              title:@"PDF Binary to String"
                            command:@"convert"
