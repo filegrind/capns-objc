@@ -53,7 +53,8 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNil(error);
 
     // Should be sorted alphabetically: ext, in, op, out, target
-    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=media:form=map;target=thumbnail");
+    // Note: out value contains ; so it must be quoted in the canonical form
+    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:form=map;textable\";target=thumbnail");
 }
 
 - (void)testCapPrefixRequired {
@@ -117,7 +118,7 @@ static NSString* testUrn(NSString *tags) {
 
     // Test value-less tag at end of input
     error = nil;
-    capUrn = [CSCapUrn fromString:@"cap:in=media:void;out=media:form=map;flag" error:&error];
+    capUrn = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\";flag" error:&error];
     XCTAssertNotNil(capUrn);
     XCTAssertNil(error);
     XCTAssertEqualObjects([capUrn getTag:@"flag"], @"*");
@@ -137,7 +138,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMissingInSpecFails {
     NSError *error = nil;
     // Missing 'in' should fail
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=media:form=map;op=generate" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=\"media:form=map;textable\";op=generate" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
@@ -462,7 +463,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testExtendedCharacterSupport {
     NSError *error = nil;
     // Test forward slashes and colons in tag components
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;out=media:form=map;url=https://example_org/api;path=/some/file" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\";url=https://example_org/api;path=/some/file" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"url"], @"https://example_org/api");
@@ -472,7 +473,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWildcardRestrictions {
     NSError *error = nil;
     // Wildcard should be rejected in keys
-    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=media:void;out=media:form=map;*=value" error:&error];
+    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\";*=value" error:&error];
     XCTAssertNil(invalidKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidCharacter);
@@ -532,7 +533,7 @@ static NSString* testUrn(NSString *tags) {
     NSError *error = nil;
     // Unquoted values are normalized to lowercase
     // Note: in/out values must be quoted since media URNs contain special chars
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:EXT=PDF;IN=\"media:void\";OP=Generate;OUT=\"media:object\";Target=Thumbnail" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:EXT=PDF;IN=\"media:void\";OP=Generate;OUT=\"media:form=map;textable\";Target=Thumbnail" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
 
