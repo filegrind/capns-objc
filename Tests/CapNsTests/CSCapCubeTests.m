@@ -53,12 +53,12 @@
                 metadataJSON:nil];
 }
 
-// Helper for test URNs
+// Helper for test URNs - media URNs with form=map must be quoted
 - (NSString *)testUrnWithTags:(NSString *)tags {
     if (tags.length == 0) {
-        return @"cap:in=media:void;out=media:object";
+        return @"cap:in=\"media:void\";out=\"media:form=map;textable\"";
     }
-    return [NSString stringWithFormat:@"cap:in=media:void;out=media:form=map;%@", tags];
+    return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:form=map;textable\";%@", tags];
 }
 
 - (void)testCapCubeMoreSpecificWins {

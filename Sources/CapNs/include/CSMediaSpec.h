@@ -38,27 +38,22 @@ typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
 /// Well-known built-in media URNs with coercion tags - these do not need to be declared in mediaSpecs
 FOUNDATION_EXPORT NSString * const CSMediaString;       // media:textable;form=scalar
 FOUNDATION_EXPORT NSString * const CSMediaInteger;      // media:integer;textable;numeric;form=scalar
-FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:number;textable;numeric;form=scalar
-FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:boolean;textable;form=scalar
-FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:object;textable;form=map
-FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:string-array;textable;form=list
-FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer-array;textable;numeric;form=list
-FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:number-array;textable;numeric;form=list
-FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:boolean-array;textable;form=list
-FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:object-array;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaNumber;       // media:textable;numeric;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaBoolean;      // media:bool;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaObject;       // media:form=map;textable
+FOUNDATION_EXPORT NSString * const CSMediaStringArray;  // media:textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer;textable;numeric;form=list
+FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:textable;numeric;form=list
+FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:bool;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:form=list;textable
 FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:bytes
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
 FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:png;bytes
 FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;bytes;
 FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;bytes
-FOUNDATION_EXPORT NSString * const CSMediaText;         // media:textable
 // Semantic AI input types
-FOUNDATION_EXPORT NSString * const CSMediaImageVisualEmbedding;  // media:image;bytes
-FOUNDATION_EXPORT NSString * const CSMediaImageCaptioning;       // media:image;bytes
-FOUNDATION_EXPORT NSString * const CSMediaImageVisionQuery;      // media:image;bytes
 FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;bytes;speech
-FOUNDATION_EXPORT NSString * const CSMediaTextEmbedding;         // media:image;bytes
 FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;bytes;thumbnail
 // Document types (PRIMARY naming - type IS the format)
 FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;bytes
@@ -180,19 +175,47 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 
 /**
  * Check if this media spec represents binary output
- * @return YES if binary (image/*, audio/*, video/*, application/octet-stream, etc.)
+ * @return YES if bytes marker tag is present
  */
 - (BOOL)isBinary;
 
 /**
- * Check if this media spec represents JSON output
- * @return YES if application/json or *+json
+ * Check if this media spec represents a map/object structure (form=map)
+ * @return YES if form=map tag is present
+ */
+- (BOOL)isMap;
+
+/**
+ * Check if this media spec represents a scalar value (form=scalar)
+ * @return YES if form=scalar tag is present
+ */
+- (BOOL)isScalar;
+
+/**
+ * Check if this media spec represents a list/array structure (form=list)
+ * @return YES if form=list tag is present
+ */
+- (BOOL)isList;
+
+/**
+ * Check if this media spec represents structured data (map or list)
+ * Structured data can be serialized as JSON when transmitted as text.
+ * Note: This does NOT check for the explicit `json` tag - use isJSON for that.
+ * @return YES if structured (map or list)
+ */
+- (BOOL)isStructured;
+
+/**
+ * Check if this media spec represents JSON representation
+ * Note: This only checks for explicit JSON format marker.
+ * For checking if data is structured (map/list), use isStructured.
+ * @return YES if json marker tag is present
  */
 - (BOOL)isJSON;
 
 /**
  * Check if this media spec represents text output
- * @return YES if text/* or neither binary nor JSON
+ * @return YES if textable marker tag is present
  */
 - (BOOL)isText;
 

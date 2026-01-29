@@ -16,27 +16,22 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 
 NSString * const CSMediaString = @"media:textable;form=scalar";
 NSString * const CSMediaInteger = @"media:integer;textable;numeric;form=scalar";
-NSString * const CSMediaNumber = @"media:number;textable;numeric;form=scalar";
-NSString * const CSMediaBoolean = @"media:boolean;textable;form=scalar";
-NSString * const CSMediaObject = @"media:object;textable;form=map";
-NSString * const CSMediaStringArray = @"media:string-array;textable;form=list";
-NSString * const CSMediaIntegerArray = @"media:integer-array;textable;numeric;form=list";
-NSString * const CSMediaNumberArray = @"media:number-array;textable;numeric;form=list";
-NSString * const CSMediaBooleanArray = @"media:boolean-array;textable;form=list";
-NSString * const CSMediaObjectArray = @"media:object-array;textable;form=list";
+NSString * const CSMediaNumber = @"media:textable;numeric;form=scalar";
+NSString * const CSMediaBoolean = @"media:bool;textable;form=scalar";
+NSString * const CSMediaObject = @"media:form=map;textable";
+NSString * const CSMediaStringArray = @"media:textable;form=list";
+NSString * const CSMediaIntegerArray = @"media:integer;textable;numeric;form=list";
+NSString * const CSMediaNumberArray = @"media:textable;numeric;form=list";
+NSString * const CSMediaBooleanArray = @"media:bool;textable;form=list";
+NSString * const CSMediaObjectArray = @"media:form=list;textable";
 NSString * const CSMediaBinary = @"media:bytes";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
 NSString * const CSMediaImage = @"media:png;bytes";
 NSString * const CSMediaAudio = @"media:wav;audio;bytes;";
 NSString * const CSMediaVideo = @"media:video;bytes";
-NSString * const CSMediaText = @"media:textable";
 // Semantic AI input types
-NSString * const CSMediaImageVisualEmbedding = @"media:image;png;bytes";
-NSString * const CSMediaImageCaptioning = @"media:image;png;bytes";
-NSString * const CSMediaImageVisionQuery = @"media:image;png;bytes";
 NSString * const CSMediaAudioSpeech = @"media:audio;wav;bytes;speech";
-NSString * const CSMediaTextEmbedding = @"media:image;png;bytes";
 NSString * const CSMediaImageThumbnail = @"media:image;png;bytes;thumbnail";
 // Document types (PRIMARY naming - type IS the format)
 NSString * const CSMediaPdf = @"media:pdf;bytes";
@@ -120,7 +115,6 @@ static NSDictionary<NSString *, NSString *> *CSGetBuiltinMediaUrns(void) {
             CSMediaImage: @"image/png; profile=https://capns.org/schema/image",
             CSMediaAudio: @"audio/wav; profile=https://capns.org/schema/audio",
             CSMediaVideo: @"video/mp4; profile=https://capns.org/schema/video",
-            CSMediaText: @"text/plain; profile=https://capns.org/schema/text",
             // Document types (PRIMARY naming)
             CSMediaPdf: @"application/pdf",
             CSMediaEpub: @"application/epub+zip",
@@ -168,6 +162,16 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
     CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
     if (error || !parsed) return NO;
     return [parsed getTag:tagName] != nil;
+}
+
+/// Helper to check if a media URN has a tag with a specific value (e.g., form=map)
+static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString *tagValue) {
+    if (!mediaUrn) return NO;
+    NSError *error = nil;
+    CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
+    if (error || !parsed) return NO;
+    NSString *value = [parsed getTag:tagKey];
+    return value != nil && [value isEqualToString:tagValue];
 }
 
 @implementation CSMediaSpec
@@ -301,11 +305,27 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
 }
 
 - (BOOL)isBinary {
-    return CSMediaUrnHasTag(self.mediaUrn, @"binary");
+    return CSMediaUrnHasTag(self.mediaUrn, @"bytes");
+}
+
+- (BOOL)isMap {
+    return CSMediaUrnHasTagValue(self.mediaUrn, @"form", @"map");
+}
+
+- (BOOL)isScalar {
+    return CSMediaUrnHasTagValue(self.mediaUrn, @"form", @"scalar");
+}
+
+- (BOOL)isList {
+    return CSMediaUrnHasTagValue(self.mediaUrn, @"form", @"list");
+}
+
+- (BOOL)isStructured {
+    return [self isMap] || [self isList];
 }
 
 - (BOOL)isJSON {
-    return CSMediaUrnHasTag(self.mediaUrn, @"form=map");
+    return CSMediaUrnHasTag(self.mediaUrn, @"json");
 }
 
 - (BOOL)isText {
