@@ -27,6 +27,7 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Basic Creation Tests
 
+// TEST001: Test that cap URN is created with tags parsed correctly and direction specs accessible
 - (void)testCapUrnCreation {
     NSError *error;
     // Use type=data_processing key=value instead of flag
@@ -45,6 +46,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([capUrn getOutSpec], @"media:form=map;textable");
 }
 
+// TEST011: Test that serialization uses smart quoting (no quotes for simple lowercase, quotes for special chars/uppercase)
 - (void)testCanonicalStringFormat {
     NSError *error;
     CSCapUrn *capUrn = [CSCapUrn fromString:testUrn(@"op=generate;target=thumbnail;ext=pdf") error:&error];
@@ -57,6 +59,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:form=map;textable\";target=thumbnail");
 }
 
+// TEST015: Test that cap: prefix is required and case-insensitive
 - (void)testCapPrefixRequired {
     NSError *error;
     // Missing cap: prefix should fail
@@ -73,6 +76,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([capUrn getTag:@"op"], @"generate");
 }
 
+// TEST016: Test that trailing semicolon is equivalent (same hash, same string, matches)
 - (void)testTrailingSemicolonEquivalence {
     NSError *error;
     // Both with and without trailing semicolon should be equivalent
@@ -96,6 +100,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap2 matches:cap1]);
 }
 
+// TEST001 variant: Test empty URN fails
 - (void)testInvalidCapUrn {
     NSError *error;
     CSCapUrn *capUrn = [CSCapUrn fromString:@"" error:&error];
@@ -105,6 +110,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidFormat);
 }
 
+// TEST031: Test wildcard rejected in keys but accepted in values (variant: solo tags as wildcards)
 - (void)testValuelessTagParsing {
     NSError *error;
     // Value-less tags are now valid (parsed as wildcards)
@@ -124,6 +130,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([capUrn getTag:@"flag"], @"*");
 }
 
+// TEST003: Invalid format/character test
 - (void)testInvalidCharacters {
     NSError *error;
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=media:void;type@invalid=value;out=\"media:form=map;textable\"" error:&error];
@@ -135,6 +142,7 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Required Direction Tests
 
+// TEST002: Test that missing 'in' spec fails with MissingInSpec, missing 'out' fails with MissingOutSpec
 - (void)testMissingInSpecFails {
     NSError *error = nil;
     // Missing 'in' should fail
@@ -144,6 +152,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
 }
 
+// TEST002: Missing 'out' spec fails
 - (void)testMissingOutSpecFails {
     NSError *error = nil;
     // Missing 'out' should fail
@@ -153,6 +162,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorMissingOutSpec);
 }
 
+// TEST028: Test empty cap URN fails with MissingInSpec
 - (void)testEmptyCapUrnFailsWithMissingInSpec {
     NSError *error = nil;
     // Empty cap URN now fails because in/out are required
@@ -162,6 +172,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
 }
 
+// TEST029: Test minimal valid cap URN has just in and out, empty tags
 - (void)testMinimalValidCapUrn {
     NSError *error = nil;
     // Minimal valid cap URN has just in and out
@@ -173,6 +184,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(minimal.tags.count, 0); // No extra tags
 }
 
+// TEST003: Test that direction specs must match exactly, different in/out types don't match, wildcard matches any
 - (void)testDirectionMismatchNoMatch {
     NSError *error = nil;
     // Different inSpec should not match
@@ -190,6 +202,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertFalse([cap3 matches:cap4]);
 }
 
+// TEST003: Direction wildcard matching
 - (void)testDirectionWildcardMatches {
     NSError *error = nil;
     // Wildcard inSpec matches any
@@ -209,6 +222,7 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Tag Matching Tests
 
+// TEST017: Test tag matching: exact match, subset match, wildcard match, value mismatch
 - (void)testTagMatching {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;target=thumbnail") error:&error];
@@ -231,6 +245,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertFalse([cap matches:request4]);
 }
 
+// TEST019: Test that missing tags are treated as wildcards (cap without tag matches any value for that tag)
 - (void)testMissingTagHandling {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -246,6 +261,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap2 matches:request2]);
 }
 
+// TEST020: Test specificity calculation (in/out base, wildcards don't count)
 - (void)testSpecificity {
     NSError *error;
     // Specificity now includes in and out (if not wildcards)
@@ -263,6 +279,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap2 isMoreSpecificThan:cap1]);
 }
 
+// TEST024: Test compatibility checking (missing tags = wildcards, different directions = incompatible)
 - (void)testCompatibility {
     NSError *error;
     CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
@@ -285,6 +302,7 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Convenience Methods Tests
 
+// TEST039: Test get_tag returns direction specs (in/out) with case-insensitive lookup
 - (void)testConvenienceMethods {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;output=binary;target=thumbnail") error:&error];
@@ -298,6 +316,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getTag:@"out"], @"media:form=map;textable");
 }
 
+// TEST036: Test with_tag preserves value case
 - (void)testWithTag {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -310,6 +329,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([original toString], @"cap:in=media:void;op=generate;out=\"media:form=map;textable\"");
 }
 
+// TEST036: with_tag ignores in/out (use with_in_spec/with_out_spec instead)
 - (void)testWithTagIgnoresInOut {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -322,6 +342,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(original, sameOut); // Same object
 }
 
+// TEST036: Test with_in_spec sets input direction
 - (void)testWithInSpec {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -331,6 +352,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([original getInSpec], @"media:void"); // Original unchanged
 }
 
+// TEST036: Test with_out_spec sets output direction
 - (void)testWithOutSpec {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -340,6 +362,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([original getOutSpec], @"media:form=map;textable"); // Original unchanged
 }
 
+// TEST036: Test without_tag removes tag
 - (void)testWithoutTag {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
@@ -351,6 +374,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([original toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:form=map;textable\"");
 }
 
+// TEST036: without_tag ignores in/out
 - (void)testWithoutTagIgnoresInOut {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -363,6 +387,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(original, sameOut); // Same object
 }
 
+// TEST027: Test with_wildcard_tag sets tag to wildcard, including in/out
 - (void)testWildcardTag {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"ext=pdf") error:&error];
@@ -376,6 +401,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([wildcarded matches:request]);
 }
 
+// TEST027: with_wildcard_tag for in/out direction
 - (void)testWildcardTagDirection {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -389,6 +415,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([wildcardOut getOutSpec], @"*");
 }
 
+// TEST026: Test merge combines tags from both caps, subset keeps only specified tags
 - (void)testSubset {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;output=binary;target=thumbnail") error:&error];
@@ -398,6 +425,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([subset toString], @"cap:ext=pdf;in=media:void;out=\"media:form=map;textable\"");
 }
 
+// TEST026: Test merge
 - (void)testMerge {
     NSError *error;
     CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:void;op=generate;out=\"media:form=map;textable\"" error:&error];
@@ -413,6 +441,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([merged getTag:@"output"], @"binary");
 }
 
+// TEST016: Test equality and hashing
 - (void)testEquality {
     NSError *error;
     CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -426,6 +455,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual([cap1 hash], [cap2 hash]);
 }
 
+// Obj-C specific: NSCoding support
 - (void)testCoding {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -447,6 +477,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([decoded getOutSpec], @"media:form=map;textable");
 }
 
+// Obj-C specific: NSCopying support
 - (void)testCopying {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
@@ -460,6 +491,7 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Extended Character Support Tests
 
+// TEST030: Test extended characters (forward slashes, colons) in tag values
 - (void)testExtendedCharacterSupport {
     NSError *error = nil;
     // Test forward slashes and colons in tag components
@@ -470,6 +502,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getTag:@"path"], @"/some/file");
 }
 
+// TEST031: Test wildcard rejected in keys but accepted in values
 - (void)testWildcardRestrictions {
     NSError *error = nil;
     // Wildcard should be rejected in keys
@@ -488,6 +521,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([validValue getTag:@"key"], @"*");
 }
 
+// TEST032: Test duplicate keys are rejected with DuplicateKey error
 - (void)testDuplicateKeyRejection {
     NSError *error = nil;
     // Duplicate keys should be rejected
@@ -497,6 +531,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorDuplicateKey);
 }
 
+// TEST033: Test pure numeric keys rejected, mixed alphanumeric allowed, numeric values allowed
 - (void)testNumericKeyRestriction {
     NSError *error = nil;
 
@@ -529,6 +564,7 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Quoted Value Tests
 
+// TEST004: Test that unquoted keys and values are normalized to lowercase
 - (void)testUnquotedValuesLowercased {
     NSError *error = nil;
     // Unquoted values are normalized to lowercase
@@ -553,6 +589,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects(cap, cap2);
 }
 
+// TEST005: Test that quoted values preserve case while unquoted are lowercased
 - (void)testQuotedValuesPreserveCase {
     NSError *error = nil;
     // Quoted values preserve their case
@@ -581,6 +618,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotEqualObjects(unquoted, quoted); // NOT equal
 }
 
+// TEST006: Test that quoted values can contain special characters (semicolons, equals, spaces)
 - (void)testQuotedValueSpecialChars {
     NSError *error = nil;
     // Semicolons in quoted values
@@ -604,6 +642,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap3 getTag:@"key"], @"hello world");
 }
 
+// TEST007: Test that escape sequences in quoted values (\" and \\) are parsed correctly
 - (void)testQuotedValueEscapeSequences {
     NSError *error = nil;
     // Escaped quotes
@@ -620,6 +659,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"path\\file");
 }
 
+// TEST008: Test that mixed quoted and unquoted values in same URN parse correctly
 - (void)testMixedQuotedUnquoted {
     NSError *error = nil;
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:a=\"Quoted\";b=simple;in=media:void;out=\"media:form=map;textable\"" error:&error];
@@ -629,6 +669,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getTag:@"b"], @"simple");
 }
 
+// TEST009: Test that unterminated quote produces UnterminatedQuote error
 - (void)testUnterminatedQuoteError {
     NSError *error = nil;
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"unterminated;out=\"media:form=map;textable\"" error:&error];
@@ -637,6 +678,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorUnterminatedQuote);
 }
 
+// TEST010: Test that invalid escape sequences (like \n, \x) produce InvalidEscapeSequence error
 - (void)testInvalidEscapeSequenceError {
     NSError *error = nil;
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"bad\\n\";out=\"media:form=map;textable\"" error:&error];
@@ -645,6 +687,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidEscapeSequence);
 }
 
+// TEST012: Test that simple cap URN round-trips (parse -> serialize -> parse equals original)
 - (void)testRoundTripSimple {
     NSError *error = nil;
     NSString *original = testUrn(@"op=generate;ext=pdf");
@@ -656,6 +699,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects(cap, reparsed);
 }
 
+// TEST013: Test that quoted values round-trip preserving case and spaces
 - (void)testRoundTripQuoted {
     NSError *error = nil;
     NSString *original = @"cap:in=media:void;key=\"Value With Spaces\";out=\"media:form=map;textable\"";
@@ -668,6 +712,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([reparsed getTag:@"key"], @"Value With Spaces");
 }
 
+// TEST035: Test has_tag is case-sensitive for values, case-insensitive for keys, works for in/out
 - (void)testHasTagCaseSensitive {
     NSError *error = nil;
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"Value\";out=\"media:form=map;textable\"" error:&error];
@@ -690,6 +735,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap hasTag:@"out" withValue:@"media:form=map;textable"]);
 }
 
+// TEST038: Test semantic equivalence of unquoted and quoted simple lowercase values
 - (void)testSemanticEquivalence {
     NSError *error = nil;
     // Unquoted and quoted simple lowercase values are equivalent
@@ -711,6 +757,7 @@ static NSString* testUrn(NSString *tags) {
 // All implementations (Rust, Go, JS, ObjC) must pass these identically
 // ============================================================================
 
+// TEST040: Matching semantics - exact match succeeds
 - (void)testMatchingSemantics_Test1_ExactMatch {
     // Test 1: Exact match
     NSError *error = nil;
@@ -723,6 +770,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 1: Exact match should succeed");
 }
 
+// TEST041: Matching semantics - cap missing tag matches (implicit wildcard)
 - (void)testMatchingSemantics_Test2_CapMissingTag {
     // Test 2: Cap missing tag (implicit wildcard)
     NSError *error = nil;
@@ -735,6 +783,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 2: Cap missing tag should match (implicit wildcard)");
 }
 
+// TEST042: Matching semantics - cap with extra tag matches
 - (void)testMatchingSemantics_Test3_CapHasExtraTag {
     // Test 3: Cap has extra tag
     NSError *error = nil;
@@ -747,6 +796,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 3: Cap with extra tag should match");
 }
 
+// TEST043: Matching semantics - request wildcard matches specific cap value
 - (void)testMatchingSemantics_Test4_RequestHasWildcard {
     // Test 4: Request has wildcard
     NSError *error = nil;
@@ -759,6 +809,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 4: Request wildcard should match");
 }
 
+// TEST044: Matching semantics - cap wildcard matches specific request value
 - (void)testMatchingSemantics_Test5_CapHasWildcard {
     // Test 5: Cap has wildcard
     NSError *error = nil;
@@ -771,6 +822,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 5: Cap wildcard should match");
 }
 
+// TEST045: Matching semantics - value mismatch does not match
 - (void)testMatchingSemantics_Test6_ValueMismatch {
     // Test 6: Value mismatch
     NSError *error = nil;
@@ -783,6 +835,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertFalse([cap matches:request], @"Test 6: Value mismatch should not match");
 }
 
+// TEST046: Matching semantics - fallback pattern (cap missing tag = implicit wildcard)
 - (void)testMatchingSemantics_Test7_FallbackPattern {
     // Test 7: Fallback pattern (cap missing tag = implicit wildcard)
     NSError *error = nil;
@@ -795,6 +848,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 7: Fallback pattern should match");
 }
 
+// TEST048: Matching semantics - wildcard direction matches anything
 - (void)testMatchingSemantics_Test8_WildcardCapMatchesAnything {
     // Test 8: Wildcard cap (in=*, out=*) matches anything
     // (This replaces the old "empty cap" test since empty caps are no longer valid)
@@ -808,6 +862,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([wildcardCap matches:request], @"Test 8: Wildcard cap should match anything");
 }
 
+// TEST049: Matching semantics - cross-dimension independence
 - (void)testMatchingSemantics_Test9_CrossDimensionIndependence {
     // Test 9: Cross-dimension independence (with same direction)
     NSError *error = nil;
@@ -820,6 +875,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap matches:request], @"Test 9: Cross-dimension independence should match");
 }
 
+// TEST050: Matching semantics - direction mismatch prevents matching
 - (void)testMatchingSemantics_Test10_DirectionMismatch {
     // Test 10: Direction mismatch prevents match even with matching tags
     NSError *error = nil;

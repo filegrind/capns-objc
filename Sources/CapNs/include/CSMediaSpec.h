@@ -49,7 +49,7 @@ FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:form=list;texta
 FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:bytes
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
-FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:png;bytes
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:image;png;bytes
 FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;bytes;
 FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;bytes
 // Semantic AI input types
@@ -66,7 +66,15 @@ FOUNDATION_EXPORT NSString * const CSMediaLog;          // media:log;textable
 FOUNDATION_EXPORT NSString * const CSMediaHtml;         // media:html;textable
 FOUNDATION_EXPORT NSString * const CSMediaXml;          // media:xml;textable
 FOUNDATION_EXPORT NSString * const CSMediaJson;         // media:json;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaJsonSchema;   // media:json;json-schema;textable;form=map
 FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;form=map
+// Semantic input types
+FOUNDATION_EXPORT NSString * const CSMediaModelSpec;    // media:model-spec;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaModelRepo;    // media:model-repo;textable;form=map
+// Semantic output types
+FOUNDATION_EXPORT NSString * const CSMediaModelDim;     // media:model-dim;integer;textable;numeric;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaDecision;     // media:decision;bool;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaDecisionArray;// media:decision;bool;textable;form=list
 
 // ============================================================================
 // SCHEMA URL CONFIGURATION

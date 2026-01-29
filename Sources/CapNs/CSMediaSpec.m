@@ -27,7 +27,7 @@ NSString * const CSMediaObjectArray = @"media:form=list;textable";
 NSString * const CSMediaBinary = @"media:bytes";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
-NSString * const CSMediaImage = @"media:png;bytes";
+NSString * const CSMediaImage = @"media:image;png;bytes";
 NSString * const CSMediaAudio = @"media:wav;audio;bytes;";
 NSString * const CSMediaVideo = @"media:video;bytes";
 // Semantic AI input types
@@ -44,7 +44,15 @@ NSString * const CSMediaLog = @"media:log;textable";
 NSString * const CSMediaHtml = @"media:html;textable";
 NSString * const CSMediaXml = @"media:xml;textable";
 NSString * const CSMediaJson = @"media:json;textable;form=map";
+NSString * const CSMediaJsonSchema = @"media:json;json-schema;textable;form=map";
 NSString * const CSMediaYaml = @"media:yaml;textable;form=map";
+// Semantic input types
+NSString * const CSMediaModelSpec = @"media:model-spec;textable;form=scalar";
+NSString * const CSMediaModelRepo = @"media:model-repo;textable;form=map";
+// Semantic output types
+NSString * const CSMediaModelDim = @"media:model-dim;integer;textable;numeric;form=scalar";
+NSString * const CSMediaDecision = @"media:decision;bool;textable;form=scalar";
+NSString * const CSMediaDecisionArray = @"media:decision;bool;textable;form=list";
 
 // ============================================================================
 // SCHEMA URL CONFIGURATION
