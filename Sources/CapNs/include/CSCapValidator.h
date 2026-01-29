@@ -94,12 +94,21 @@ typedef NS_ENUM(NSInteger, CSValidationErrorType) {
 + (instancetype)invalidResultWithError:(NSString *)error redefines:(NSArray<NSString *> *)redefines;
 @end
 
+/// Block type for checking if a media URN exists in the registry
+/// Returns YES if the media URN exists in registry (cache or online), NO otherwise
+/// If the check fails (network error, etc.), should return NO to allow graceful degradation
+typedef BOOL (^CSMediaUrnExistsInRegistryBlock)(NSString *mediaUrn);
+
 /// XV5 Validator - No Redefinition of Registry Media Specs
 @interface CSXV5Validator : NSObject
 
-/// Validates that inline media_specs don't redefine built-in specs
-/// Returns a result indicating if validation passed
-+ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(nullable NSDictionary *)mediaSpecs;
+/// Validates that inline media_specs don't redefine existing registry specs
+/// @param mediaSpecs The inline media_specs from a cap definition
+/// @param existsInRegistry Block that checks if a media URN exists in the registry
+///                         If nil, validation passes (graceful degradation - can't check)
+/// @return Validation result indicating if passed or which specs are redefinitions
++ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(nullable NSDictionary *)mediaSpecs
+                                               existsInRegistry:(nullable CSMediaUrnExistsInRegistryBlock)existsInRegistry;
 
 @end
 

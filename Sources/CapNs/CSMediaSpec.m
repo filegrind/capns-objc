@@ -98,56 +98,6 @@ NSString *CSGetProfileURL(NSString *profileName) {
 // BUILTIN MEDIA URN DEFINITIONS
 // ============================================================================
 
-// Built-in media URN definitions - maps media URN to canonical media spec string
-static NSDictionary<NSString *, NSString *> *_builtinMediaUrns = nil;
-
-static NSDictionary<NSString *, NSString *> *CSGetBuiltinMediaUrns(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // Note: These use hardcoded URLs for static initialization.
-        // Use CSGetSchemaBaseURL() and CSGetProfileURL() for dynamic resolution.
-        _builtinMediaUrns = @{
-            CSMediaString: @"text/plain; profile=https://capns.org/schema/string",
-            CSMediaInteger: @"text/plain; profile=https://capns.org/schema/integer",
-            CSMediaNumber: @"text/plain; profile=https://capns.org/schema/number",
-            CSMediaBoolean: @"text/plain; profile=https://capns.org/schema/boolean",
-            CSMediaObject: @"application/json; profile=https://capns.org/schema/object",
-            CSMediaStringArray: @"application/json; profile=https://capns.org/schema/string-array",
-            CSMediaIntegerArray: @"application/json; profile=https://capns.org/schema/integer-array",
-            CSMediaNumberArray: @"application/json; profile=https://capns.org/schema/number-array",
-            CSMediaBooleanArray: @"application/json; profile=https://capns.org/schema/boolean-array",
-            CSMediaObjectArray: @"application/json; profile=https://capns.org/schema/object-array",
-            CSMediaBinary: @"application/octet-stream",
-            CSMediaVoid: @"application/x-void; profile=https://capns.org/schema/void",
-            // Semantic content types
-            CSMediaImage: @"image/png; profile=https://capns.org/schema/image",
-            CSMediaAudio: @"audio/wav; profile=https://capns.org/schema/audio",
-            CSMediaVideo: @"video/mp4; profile=https://capns.org/schema/video",
-            // Document types (PRIMARY naming)
-            CSMediaPdf: @"application/pdf",
-            CSMediaEpub: @"application/epub+zip",
-            // Text format types (PRIMARY naming)
-            CSMediaMd: @"text/markdown",
-            CSMediaTxt: @"text/plain",
-            CSMediaRst: @"text/x-rst",
-            CSMediaLog: @"text/plain",
-            CSMediaHtml: @"text/html",
-            CSMediaXml: @"application/xml",
-            CSMediaJson: @"application/json",
-            CSMediaYaml: @"application/x-yaml"
-        };
-    });
-    return _builtinMediaUrns;
-}
-
-BOOL CSIsBuiltinMediaUrn(NSString *mediaUrn) {
-    return CSGetBuiltinMediaUrns()[mediaUrn] != nil;
-}
-
-NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn) {
-    return CSGetBuiltinMediaUrns()[mediaUrn];
-}
-
 // ============================================================================
 // MEDIA SPEC IMPLEMENTATION
 // ============================================================================
@@ -170,6 +120,10 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
     CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
     if (error || !parsed) return NO;
     return [parsed getTag:tagName] != nil;
+}
+
+BOOL CSMediaUrnIsBinary(NSString *mediaUrn) {
+    return CSMediaUrnHasTag(mediaUrn, @"bytes");
 }
 
 /// Helper to check if a media URN has a tag with a specific value (e.g., form=map)
@@ -423,19 +377,11 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
         }
     }
 
-    // Check built-in media URNs
-    NSString *builtinDef = CSGetBuiltinMediaUrnDefinition(mediaUrn);
-    if (builtinDef) {
-        CSMediaSpec *spec = [CSMediaSpec parse:builtinDef error:error];
-        if (spec) spec.mediaUrn = mediaUrn;
-        return spec;
-    }
-
-    // FAIL HARD - no fallbacks, no guessing
+    // FAIL HARD - media URN must be in mediaSpecs table
     if (error) {
         *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
                                      code:CSMediaSpecErrorUnresolvableMediaUrn
-                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Cannot resolve media URN: '%@'. Not found in mediaSpecs table and not a known built-in.", mediaUrn]}];
+                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Cannot resolve media URN: '%@'. Not found in mediaSpecs table.", mediaUrn]}];
     }
     return nil;
 }

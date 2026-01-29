@@ -146,7 +146,12 @@
 
 // Obj-C specific: Non-structured argument skips schema validation
 - (void)testNonStructuredArgumentSkipsSchemaValidation {
-    // Create string argument (built-in, no schema validation expected)
+    // Create string argument (no schema validation expected for non-structured types)
+    // Media URNs must be defined in mediaSpecs (no built-in resolution)
+    NSDictionary *mediaSpecs = @{
+        CSMediaString: @"text/plain; profile=https://capns.org/schema/string"
+    };
+
     CSCapArg *argument = [CSCapArg argWithMediaUrn:CSMediaString
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--name"]]
@@ -156,7 +161,7 @@
     NSString *value = @"test";
 
     NSError *error = nil;
-    BOOL result = [self.validator validateArgument:argument withValue:value mediaSpecs:@{} error:&error];
+    BOOL result = [self.validator validateArgument:argument withValue:value mediaSpecs:mediaSpecs error:&error];
 
     XCTAssertTrue(result, @"Non-structured types should skip schema validation");
     XCTAssertNil(error, @"Error should be nil");
@@ -518,7 +523,12 @@
 #pragma mark - Built-in Spec ID Tests
 
 - (void)testBuiltinSpecIdsResolve {
-    // Built-in spec IDs should resolve even with empty mediaSpecs
+    // Media URNs must be defined in mediaSpecs table (no built-in resolution)
+    NSDictionary *mediaSpecs = @{
+        CSMediaString: @"text/plain; profile=https://capns.org/schema/string",
+        CSMediaInteger: @"text/plain; profile=https://capns.org/schema/integer",
+        CSMediaObject: @"application/json; profile=https://capns.org/schema/object"
+    };
 
     CSCapArg *strArg = [CSCapArg argWithMediaUrn:CSMediaString
                                            required:YES
@@ -527,8 +537,8 @@
                                        defaultValue:nil];
 
     NSError *error = nil;
-    BOOL result = [self.validator validateArgument:strArg withValue:@"hello" mediaSpecs:@{} error:&error];
-    XCTAssertTrue(result, @"Built-in str spec should validate string");
+    BOOL result = [self.validator validateArgument:strArg withValue:@"hello" mediaSpecs:mediaSpecs error:&error];
+    XCTAssertTrue(result, @"String spec should validate string");
     XCTAssertNil(error);
 
     CSCapArg *intArg = [CSCapArg argWithMediaUrn:CSMediaInteger
@@ -537,8 +547,8 @@
                                    argDescription:@"Count value"
                                      defaultValue:nil];
 
-    result = [self.validator validateArgument:intArg withValue:@42 mediaSpecs:@{} error:&error];
-    XCTAssertTrue(result, @"Built-in int spec should validate integer");
+    result = [self.validator validateArgument:intArg withValue:@42 mediaSpecs:mediaSpecs error:&error];
+    XCTAssertTrue(result, @"Integer spec should validate integer");
     XCTAssertNil(error);
 
     CSCapArg *objArg = [CSCapArg argWithMediaUrn:CSMediaObject
@@ -547,8 +557,8 @@
                                   argDescription:@"JSON data"
                                     defaultValue:nil];
 
-    result = [self.validator validateArgument:objArg withValue:@{@"key": @"value"} mediaSpecs:@{} error:&error];
-    XCTAssertTrue(result, @"Built-in obj spec should validate object");
+    result = [self.validator validateArgument:objArg withValue:@{@"key": @"value"} mediaSpecs:mediaSpecs error:&error];
+    XCTAssertTrue(result, @"Object spec should validate object");
     XCTAssertNil(error);
 }
 
@@ -725,7 +735,7 @@
 
 // TEST054: XV5 - Test inline media spec redefinition of existing registry spec is detected and rejected
 - (void)testXV5InlineSpecRedefinitionDetected {
-    // Try to redefine CSMediaString which is a built-in spec
+    // Try to redefine CSMediaString which exists in the registry
     // CSMediaString = @"media:textable;form=scalar"
     NSDictionary *mediaSpecs = @{
         CSMediaString: @{
@@ -735,9 +745,15 @@
         }
     };
 
-    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs];
+    // Mock registry lookup that returns YES for CSMediaString (it exists in registry)
+    CSMediaUrnExistsInRegistryBlock mockRegistryLookup = ^BOOL(NSString *mediaUrn) {
+        return [mediaUrn isEqualToString:CSMediaString];
+    };
 
-    XCTAssertFalse(result.valid, @"Should fail validation when redefining built-in spec");
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs
+                                                                        existsInRegistry:mockRegistryLookup];
+
+    XCTAssertFalse(result.valid, @"Should fail validation when redefining registry spec");
     XCTAssertNotNil(result.error, @"Should have error message");
     XCTAssertTrue([result.error containsString:@"XV5"], @"Error should mention XV5");
     XCTAssertTrue([result.redefines containsObject:CSMediaString], @"Should identify CSMediaString as redefined");
@@ -745,7 +761,7 @@
 
 // TEST055: XV5 - Test new inline media spec (not in registry) is allowed
 - (void)testXV5NewInlineSpecAllowed {
-    // Define a completely new media spec that doesn't exist in built-ins
+    // Define a completely new media spec that doesn't exist in registry
     NSDictionary *mediaSpecs = @{
         @"media:my-unique-custom-type-xyz123": @{
             @"media_type": @"application/json",
@@ -754,21 +770,39 @@
         }
     };
 
-    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs];
+    // Mock registry lookup that returns NO (spec not in registry)
+    CSMediaUrnExistsInRegistryBlock mockRegistryLookup = ^BOOL(NSString *mediaUrn) {
+        return NO;
+    };
 
-    XCTAssertTrue(result.valid, @"Should pass validation for new spec not in built-ins");
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs
+                                                                        existsInRegistry:mockRegistryLookup];
+
+    XCTAssertTrue(result.valid, @"Should pass validation for new spec not in registry");
     XCTAssertNil(result.error, @"Should not have error message");
 }
 
 // TEST056: XV5 - Test empty media_specs (no inline specs) passes XV5 validation
 - (void)testXV5EmptyMediaSpecsAllowed {
-    // Empty media_specs should pass
-    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:@{}];
+    // Empty media_specs should pass (with or without registry lookup)
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:@{}
+                                                                        existsInRegistry:nil];
     XCTAssertTrue(result.valid, @"Empty dictionary should pass validation");
 
     // Nil media_specs should pass
-    result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:nil];
+    result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:nil
+                                                  existsInRegistry:nil];
     XCTAssertTrue(result.valid, @"Nil should pass validation");
+
+    // Graceful degradation: nil lookup function should allow
+    NSDictionary *mediaSpecs = @{
+        CSMediaString: @{
+            @"media_type": @"text/plain",
+        }
+    };
+    result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs
+                                                  existsInRegistry:nil];
+    XCTAssertTrue(result.valid, @"Should pass when registry lookup not available (graceful degradation)");
 }
 
 @end

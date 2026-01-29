@@ -55,13 +55,18 @@
 }
 
 - (void)testMetadataNoneForBuiltin {
-    // Built-in media URNs should have no metadata
+    // Media URNs resolved from string-form definitions should have no metadata
+    // (Built-in resolution removed - all URNs must be in mediaSpecs table)
+    NSDictionary *mediaSpecs = @{
+        CSMediaString: @"text/plain; profile=https://capns.org/schema/string"
+    };
+
     NSError *error = nil;
-    CSMediaSpec *resolved = CSResolveMediaUrn(CSMediaString, @{}, &error);
+    CSMediaSpec *resolved = CSResolveMediaUrn(CSMediaString, mediaSpecs, &error);
 
     XCTAssertNil(error, @"Should not have error");
     XCTAssertNotNil(resolved, @"Should resolve successfully");
-    XCTAssertNil(resolved.metadata, @"Built-in should have no metadata");
+    XCTAssertNil(resolved.metadata, @"String-form definition should have no metadata");
 }
 
 - (void)testMetadataWithValidation {

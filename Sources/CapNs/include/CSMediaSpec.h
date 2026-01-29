@@ -270,18 +270,12 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                                           NSError * _Nullable * _Nullable error);
 
 /**
- * Check if a media URN is a known built-in
- * @param mediaUrn The media URN to check
- * @return YES if built-in
+ * Check if a media URN represents binary data by checking for 'bytes' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (e.g., "media:image;png;bytes;thumbnail")
+ * @return YES if the media URN has the 'bytes' marker tag
  */
-BOOL CSIsBuiltinMediaUrn(NSString *mediaUrn);
-
-/**
- * Get the canonical media spec string for a built-in media URN
- * @param mediaUrn The built-in media URN
- * @return The canonical media spec string or nil if not built-in
- */
-NSString * _Nullable CSGetBuiltinMediaUrnDefinition(NSString *mediaUrn);
+BOOL CSMediaUrnIsBinary(NSString *mediaUrn);
 
 /**
  * Helper functions for working with MediaSpec in CapUrn

@@ -1081,22 +1081,28 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
 @implementation CSXV5Validator
 
-+ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(NSDictionary *)mediaSpecs {
++ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(NSDictionary *)mediaSpecs
+                                               existsInRegistry:(CSMediaUrnExistsInRegistryBlock)existsInRegistry {
     if (!mediaSpecs || mediaSpecs.count == 0) {
+        return [CSXV5ValidationResult validResult];
+    }
+
+    // If no registry check provided, degrade gracefully and allow
+    if (!existsInRegistry) {
         return [CSXV5ValidationResult validResult];
     }
 
     NSMutableArray<NSString *> *redefines = [NSMutableArray array];
 
     for (NSString *mediaUrn in mediaSpecs) {
-        // Check if this media URN is a built-in spec
-        if (CSIsBuiltinMediaUrn(mediaUrn)) {
+        // Check if this media URN already exists in the registry
+        if (existsInRegistry(mediaUrn)) {
             [redefines addObject:mediaUrn];
         }
     }
 
     if (redefines.count > 0) {
-        NSString *error = [NSString stringWithFormat:@"XV5: Inline media specs redefine existing built-in specs: %@",
+        NSString *error = [NSString stringWithFormat:@"XV5: Inline media specs redefine existing registry specs: %@",
                            [redefines componentsJoinedByString:@", "]];
         return [CSXV5ValidationResult invalidResultWithError:error redefines:redefines];
     }

@@ -367,7 +367,9 @@
                 @"required": @[@"result"]
             }
         },
-        @"my:text-input.v1": @"text/plain; profile=https://example.com/schema/text-input"
+        @"my:text-input.v1": @"text/plain; profile=https://example.com/schema/text-input",
+        // Built-in media URNs must now be explicitly defined in mediaSpecs
+        CSMediaString: @"text/plain; profile=https://capns.org/schema/string"
     };
 
     CSCap *cap = [CSCap capWithUrn:key
@@ -391,34 +393,15 @@
     XCTAssertNotNil(resolvedString, @"Should resolve string-form spec ID: %@", error);
     XCTAssertEqualObjects(resolvedString.contentType, @"text/plain");
 
-    // Resolve built-in spec ID
-    CSMediaSpec *resolvedBuiltin = [cap resolveSpecId:CSMediaString error:&error];
-    XCTAssertNotNil(resolvedBuiltin, @"Should resolve built-in spec ID: %@", error);
-    XCTAssertEqualObjects(resolvedBuiltin.contentType, @"text/plain");
+    // Resolve media URN from mediaSpecs (no built-in resolution)
+    CSMediaSpec *resolvedFromTable = [cap resolveSpecId:CSMediaString error:&error];
+    XCTAssertNotNil(resolvedFromTable, @"Should resolve media URN from mediaSpecs: %@", error);
+    XCTAssertEqualObjects(resolvedFromTable.contentType, @"text/plain");
 
     // Fail on unknown spec ID
     CSMediaSpec *unknown = [cap resolveSpecId:@"unknown:spec.v1" error:&error];
     XCTAssertNil(unknown, @"Should fail on unknown spec ID");
     XCTAssertNotNil(error, @"Should set error for unknown spec ID");
-}
-
-- (void)testBuiltinSpecIds {
-    // Test all built-in spec IDs are recognized
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaString));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaInteger));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaNumber));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaBoolean));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaObject));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaStringArray));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaIntegerArray));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaNumberArray));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaBooleanArray));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaObjectArray));
-    XCTAssertTrue(CSIsBuiltinMediaUrn(CSMediaBinary));
-
-    // Test non-builtin returns false
-    XCTAssertFalse(CSIsBuiltinMediaUrn(@"custom:spec.v1"));
-    XCTAssertFalse(CSIsBuiltinMediaUrn(@"my:output.v1"));
 }
 
 // MARK: - Cap Manifest Tests
