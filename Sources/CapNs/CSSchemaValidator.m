@@ -217,7 +217,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 - (BOOL)validateArgument:(CSCapArg *)argument
                withValue:(id)value
-              mediaSpecs:(NSDictionary *)mediaSpecs
+              mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                    error:(NSError **)error {
     // Resolve the mediaUrn to get the schema
     NSDictionary *schema = [self resolveArgumentSchema:argument mediaSpecs:mediaSpecs error:error];
@@ -235,7 +235,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 
 - (BOOL)validateOutput:(CSCapOutput *)output
              withValue:(id)value
-            mediaSpecs:(NSDictionary *)mediaSpecs
+            mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                  error:(NSError **)error {
     // Resolve the mediaUrn to get the schema
     NSDictionary *schema = [self resolveOutputSchema:output mediaSpecs:mediaSpecs error:error];
@@ -328,7 +328,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 #pragma mark - Private Methods
 
 - (nullable NSDictionary *)resolveArgumentSchema:(CSCapArg *)argument
-                                      mediaSpecs:(NSDictionary *)mediaSpecs
+                                      mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                                            error:(NSError **)error {
     // Get the media URN from the argument
     NSString *specId = argument.mediaUrn;
@@ -353,7 +353,7 @@ NSString * const CSSchemaValidationErrorValidationErrorsKey = @"CSSchemaValidati
 }
 
 - (nullable NSDictionary *)resolveOutputSchema:(CSCapOutput *)output
-                                    mediaSpecs:(NSDictionary *)mediaSpecs
+                                    mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                                          error:(NSError **)error {
     // Get the media URN from the output
     NSString *specId = output.mediaUrn;

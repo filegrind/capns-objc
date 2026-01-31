@@ -25,10 +25,8 @@ FOUNDATION_EXPORT NSErrorDomain const CSMediaSpecErrorDomain;
 
 /// Error codes for MediaSpec operations
 typedef NS_ERROR_ENUM(CSMediaSpecErrorDomain, CSMediaSpecError) {
-    CSMediaSpecErrorEmptyContentType = 1,
-    CSMediaSpecErrorUnterminatedQuote = 2,
-    CSMediaSpecErrorLegacyFormat = 3,
-    CSMediaSpecErrorUnresolvableMediaUrn = 4
+    CSMediaSpecErrorUnresolvableMediaUrn = 1,
+    CSMediaSpecErrorDuplicateMediaUrn = 2
 };
 
 // ============================================================================
@@ -103,9 +101,12 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 // ============================================================================
 
 /**
- * A parsed MediaSpec value
+ * A resolved MediaSpec value
  */
 @interface CSMediaSpec : NSObject
+
+/// The media URN identifier (e.g., "media:pdf;bytes")
+@property (nonatomic, readonly, nullable) NSString *mediaUrn;
 
 /// The MIME content type (e.g., "application/json", "image/png")
 @property (nonatomic, readonly) NSString *contentType;
@@ -130,21 +131,6 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 
 /// Optional file extension for storing this media type (e.g., "pdf", "json", "txt")
 @property (nonatomic, readonly, nullable) NSString *extension;
-
-/// The media URN this spec was resolved from (if resolved via CSResolveMediaUrn)
-@property (nonatomic, readonly, nullable) NSString *mediaUrn;
-
-/**
- * Parse a media_spec string in canonical format
- * Format: `<media-type>; profile=<url>` (NO content-type: prefix)
- *
- * IMPORTANT: Legacy "content-type:" prefix is NOT supported and will FAIL HARD
- *
- * @param string The media_spec string
- * @param error Error if parsing fails
- * @return A new CSMediaSpec instance or nil if invalid
- */
-+ (nullable instancetype)parse:(NSString *)string error:(NSError * _Nullable * _Nullable)error;
 
 /**
  * Create a MediaSpec with all properties
@@ -261,18 +247,27 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
  * Resolve a media URN to a MediaSpec
  *
  * Resolution algorithm:
- * 1. Look up media URN in mediaSpecs table
- * 2. If not found AND media URN is a known built-in (media:*): use built-in definition
- * 3. If not found and not a built-in: FAIL HARD
+ * 1. Iterate mediaSpecs array and find by URN
+ * 2. If not found: FAIL HARD
  *
- * @param mediaUrn The media URN (e.g., "media:string")
- * @param mediaSpecs The mediaSpecs lookup table (can be nil)
+ * @param mediaUrn The media URN (e.g., "media:textable;form=scalar")
+ * @param mediaSpecs The mediaSpecs array (can be nil)
  * @param error Error if media URN cannot be resolved
  * @return The resolved MediaSpec or nil on error
  */
 CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
-                                          NSDictionary * _Nullable mediaSpecs,
+                                          NSArray<NSDictionary *> * _Nullable mediaSpecs,
                                           NSError * _Nullable * _Nullable error);
+
+/**
+ * Validate that there are no duplicate URNs in mediaSpecs array
+ *
+ * @param mediaSpecs The mediaSpecs array to validate
+ * @param error Error if duplicate URNs are found
+ * @return YES if no duplicates, NO if duplicates found
+ */
+BOOL CSValidateNoMediaSpecDuplicates(NSArray<NSDictionary *> * _Nullable mediaSpecs,
+                                     NSError * _Nullable * _Nullable error);
 
 /**
  * Check if a media URN represents binary data by checking for 'bytes' tag.
@@ -370,12 +365,12 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn);
 /**
  * Extract MediaSpec from a CapUrn's 'out' tag (which now contains a media URN)
  * @param capUrn The cap URN to extract from
- * @param mediaSpecs The mediaSpecs lookup table for resolution (can be nil)
+ * @param mediaSpecs The mediaSpecs array for resolution (can be nil)
  * @param error Error if media URN not found or resolution fails
  * @return The resolved MediaSpec or nil if not found
  */
 + (nullable instancetype)fromCapUrn:(CSCapUrn *)capUrn
-                         mediaSpecs:(NSDictionary * _Nullable)mediaSpecs
+                         mediaSpecs:(NSArray<NSDictionary *> * _Nullable)mediaSpecs
                               error:(NSError * _Nullable * _Nullable)error;
 
 @end

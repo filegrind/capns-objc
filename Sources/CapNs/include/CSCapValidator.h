@@ -103,11 +103,11 @@ typedef BOOL (^CSMediaUrnExistsInRegistryBlock)(NSString *mediaUrn);
 @interface CSXV5Validator : NSObject
 
 /// Validates that inline media_specs don't redefine existing registry specs
-/// @param mediaSpecs The inline media_specs from a cap definition
+/// @param mediaSpecs The inline media_specs array from a cap definition
 /// @param existsInRegistry Block that checks if a media URN exists in the registry
 ///                         If nil, validation passes (graceful degradation - can't check)
 /// @return Validation result indicating if passed or which specs are redefinitions
-+ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(nullable NSDictionary *)mediaSpecs
++ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(nullable NSArray<NSDictionary *> *)mediaSpecs
                                                existsInRegistry:(nullable CSMediaUrnExistsInRegistryBlock)existsInRegistry;
 
 @end

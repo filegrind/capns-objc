@@ -1081,7 +1081,7 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
 @implementation CSXV5Validator
 
-+ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(NSDictionary *)mediaSpecs
++ (CSXV5ValidationResult *)validateNoInlineMediaSpecRedefinition:(NSArray<NSDictionary *> *)mediaSpecs
                                                existsInRegistry:(CSMediaUrnExistsInRegistryBlock)existsInRegistry {
     if (!mediaSpecs || mediaSpecs.count == 0) {
         return [CSXV5ValidationResult validResult];
@@ -1094,7 +1094,11 @@ NSString * const CSValidationErrorExpectedTypeKey = @"CSValidationErrorExpectedT
 
     NSMutableArray<NSString *> *redefines = [NSMutableArray array];
 
-    for (NSString *mediaUrn in mediaSpecs) {
+    for (NSDictionary *spec in mediaSpecs) {
+        // Extract the URN from the spec object
+        NSString *mediaUrn = spec[@"urn"];
+        if (!mediaUrn) continue;
+
         // Check if this media URN already exists in the registry
         if (existsInRegistry(mediaUrn)) {
             [redefines addObject:mediaUrn];

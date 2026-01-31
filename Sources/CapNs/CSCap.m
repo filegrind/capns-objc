@@ -824,7 +824,7 @@
     // Optional fields
     NSString *capDescription = dictionary[@"cap_description"];
     NSDictionary *metadata = dictionary[@"metadata"] ?: @{};
-    NSDictionary *mediaSpecs = dictionary[@"media_specs"] ?: @{};
+    NSArray<NSDictionary *> *mediaSpecs = dictionary[@"media_specs"] ?: @[];
     NSDictionary *metadataJSON = dictionary[@"metadata_json"];
 
     // Parse args (new unified array format)
@@ -983,9 +983,9 @@
     // Metadata dictionary
     if (![self.metadata isEqualToDictionary:other.metadata]) return NO;
 
-    // MediaSpecs dictionary
+    // MediaSpecs array
     if ((self.mediaSpecs == nil) != (other.mediaSpecs == nil)) return NO;
-    if (self.mediaSpecs && ![self.mediaSpecs isEqualToDictionary:other.mediaSpecs]) return NO;
+    if (self.mediaSpecs && ![self.mediaSpecs isEqualToArray:other.mediaSpecs]) return NO;
 
     // Args
     if ((self.args == nil) != (other.args == nil)) return NO;
@@ -1056,7 +1056,7 @@
     NSString *command = [coder decodeObjectOfClass:[NSString class] forKey:@"command"];
     NSString *description = [coder decodeObjectOfClass:[NSString class] forKey:@"capDescription"];
     NSDictionary *metadata = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadata"];
-    NSDictionary *mediaSpecs = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"mediaSpecs"];
+    NSArray *mediaSpecs = [coder decodeObjectOfClasses:[NSSet setWithObjects:[NSArray class], [NSDictionary class], nil] forKey:@"mediaSpecs"];
     NSArray *args = [coder decodeObjectOfClasses:[NSSet setWithObjects:[NSArray class], [CSCapArg class], nil] forKey:@"args"];
     CSCapOutput *output = [coder decodeObjectOfClass:[CSCapOutput class] forKey:@"output"];
     NSDictionary *metadataJSON = [coder decodeObjectOfClass:[NSDictionary class] forKey:@"metadataJSON"];
@@ -1072,7 +1072,7 @@
                           command:command
                       description:description
                          metadata:metadata
-                       mediaSpecs:mediaSpecs ?: @{}
+                       mediaSpecs:mediaSpecs ?: @[]
                              args:args ?: @[]
                            output:output
                      metadataJSON:metadataJSON];
@@ -1088,7 +1088,7 @@
                     command:command
                 description:nil
                    metadata:@{}
-                 mediaSpecs:@{}
+                 mediaSpecs:@[]
                        args:@[]
                      output:nil
                metadataJSON:nil];
@@ -1099,7 +1099,7 @@
                    command:(NSString *)command
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> *)metadata
-                mediaSpecs:(NSDictionary<NSString *, id> *)mediaSpecs
+                mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                       args:(NSArray<CSCapArg *> *)args
                     output:(nullable CSCapOutput *)output
               metadataJSON:(nullable NSDictionary *)metadataJSON {

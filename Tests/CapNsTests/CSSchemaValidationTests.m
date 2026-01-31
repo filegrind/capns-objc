@@ -3,9 +3,9 @@
 //  Comprehensive tests for JSON Schema validation
 //
 //  Tests schema validation for both arguments and outputs with schemas stored
-//  in the mediaSpecs table, and integration with existing validation system.
+//  in the mediaSpecs array, and integration with existing validation system.
 //
-//  Schemas are stored in the mediaSpecs table and resolved via spec IDs.
+//  Schemas are stored in the mediaSpecs array and resolved via URN field.
 //
 
 #import <XCTest/XCTest.h>
@@ -54,14 +54,15 @@
         @"required": @[@"name"]
     };
 
-    // MediaSpecs table with schema
-    NSDictionary *mediaSpecs = @{
-        @"my:user-data.v1": @{
+    // MediaSpecs array with schema
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:user-data.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/user-data",
             @"schema": schema
         }
-    };
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
                                              required:YES
@@ -94,13 +95,14 @@
         @"required": @[@"name"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:user-data.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:user-data.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/user-data",
             @"schema": schema
         }
-    };
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
                                              required:YES
@@ -137,7 +139,7 @@
     NSDictionary *data = @{@"test": @"value"};
 
     NSError *error = nil;
-    BOOL result = [self.validator validateArgument:argument withValue:data mediaSpecs:@{} error:&error];
+    BOOL result = [self.validator validateArgument:argument withValue:data mediaSpecs:@[] error:&error];
 
     XCTAssertFalse(result, @"Validation should fail for unresolvable spec ID");
     XCTAssertNotNil(error, @"Error should be present");
@@ -148,9 +150,13 @@
 - (void)testNonStructuredArgumentSkipsSchemaValidation {
     // Create string argument (no schema validation expected for non-structured types)
     // Media URNs must be defined in mediaSpecs (no built-in resolution)
-    NSDictionary *mediaSpecs = @{
-        CSMediaString: @"text/plain; profile=https://capns.org/schema/string"
-    };
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": CSMediaString,
+            @"media_type": @"text/plain",
+            @"profile_uri": @"https://capns.org/schema/string"
+        }
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:CSMediaString
                                              required:YES
@@ -184,13 +190,14 @@
         @"required": @[@"result", @"count"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:query-results.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:query-results.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/query-results",
             @"schema": schema
         }
-    };
+    ];
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
                                          outputDescription:@"Query results"];
@@ -222,13 +229,14 @@
         @"required": @[@"result", @"count"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:query-results.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:query-results.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/query-results",
             @"schema": schema
         }
-    };
+    ];
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
                                          outputDescription:@"Query results"];
@@ -266,13 +274,14 @@
         @"required": @[@"id", @"name", @"email"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:user.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:user.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/user",
             @"schema": userSchema
         }
-    };
+    ];
 
     CSCapArg *userArg = [CSCapArg argWithMediaUrn:@"my:user.v1"
                                             required:YES
@@ -337,13 +346,14 @@
         @"minItems": @0
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:results-array.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:results-array.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/results-array",
             @"schema": resultSchema
         }
-    };
+    ];
 
     CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:results-array.v1"
                                          outputDescription:@"Query results array"];
@@ -418,13 +428,14 @@
         @"required": @[@"metadata", @"data"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:payload.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:payload.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/payload",
             @"schema": complexSchema
         }
-    };
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:payload.v1"
                                              required:YES
@@ -487,13 +498,14 @@
         @"required": @[@"requiredString"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:test-arg.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:test-arg.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/test-arg",
             @"schema": schema
         }
-    };
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:test-arg.v1"
                                              required:YES
@@ -523,12 +535,24 @@
 #pragma mark - Built-in Spec ID Tests
 
 - (void)testBuiltinSpecIdsResolve {
-    // Media URNs must be defined in mediaSpecs table (no built-in resolution)
-    NSDictionary *mediaSpecs = @{
-        CSMediaString: @"text/plain; profile=https://capns.org/schema/string",
-        CSMediaInteger: @"text/plain; profile=https://capns.org/schema/integer",
-        CSMediaObject: @"application/json; profile=https://capns.org/schema/object"
-    };
+    // Media URNs must be defined in mediaSpecs array (no built-in resolution)
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": CSMediaString,
+            @"media_type": @"text/plain",
+            @"profile_uri": @"https://capns.org/schema/string"
+        },
+        @{
+            @"urn": CSMediaInteger,
+            @"media_type": @"text/plain",
+            @"profile_uri": @"https://capns.org/schema/integer"
+        },
+        @{
+            @"urn": CSMediaObject,
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://capns.org/schema/object"
+        }
+    ];
 
     CSCapArg *strArg = [CSCapArg argWithMediaUrn:CSMediaString
                                            required:YES
@@ -562,13 +586,17 @@
     XCTAssertNil(error);
 }
 
-#pragma mark - MediaSpecs String Form Tests
+#pragma mark - MediaSpecs Without Schema Tests
 
-- (void)testMediaSpecsStringForm {
-    // Test that string-form media spec definitions work
-    NSDictionary *mediaSpecs = @{
-        @"my:text-input.v1": @"text/plain; profile=https://example.com/schema/text-input"
-    };
+- (void)testMediaSpecsWithoutSchemaSkipsValidation {
+    // Test that media spec definitions without schema skip schema validation
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:text-input.v1",
+            @"media_type": @"text/plain",
+            @"profile_uri": @"https://example.com/schema/text-input"
+        }
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:text-input.v1"
                                              required:YES
@@ -576,11 +604,11 @@
                                        argDescription:@"Text input"
                                          defaultValue:nil];
 
-    // String-form spec has no schema, so any value passes schema validation
+    // Spec without schema skips schema validation
     // (schema validation is skipped when no schema is present)
     NSError *error = nil;
     BOOL result = [self.validator validateArgument:argument withValue:@"hello world" mediaSpecs:mediaSpecs error:&error];
-    XCTAssertTrue(result, @"String-form spec without schema should pass");
+    XCTAssertTrue(result, @"Spec without schema should pass");
     XCTAssertNil(error);
 }
 
@@ -607,13 +635,14 @@
         }
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:large-data.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:large-data.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/large-data",
             @"schema": schema
         }
-    };
+    ];
 
     CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:large-data.v1"
                                              required:YES
@@ -673,18 +702,20 @@
         @"required": @[@"result"]
     };
 
-    NSDictionary *mediaSpecs = @{
-        @"my:transform-input.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:transform-input.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/transform-input",
             @"schema": inputSchema
         },
-        @"my:transform-output.v1": @{
+        @{
+            @"urn": @"my:transform-output.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/transform-output",
             @"schema": outputSchema
         }
-    };
+    ];
 
     CSCapArg *inputArg = [CSCapArg argWithMediaUrn:@"my:transform-input.v1"
                                              required:YES
@@ -737,13 +768,14 @@
 - (void)testXV5InlineSpecRedefinitionDetected {
     // Try to redefine CSMediaString which exists in the registry
     // CSMediaString = @"media:textable;form=scalar"
-    NSDictionary *mediaSpecs = @{
-        CSMediaString: @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": CSMediaString,
             @"media_type": @"text/plain",
             @"title": @"My Custom String",
             @"description": @"Trying to redefine string"
         }
-    };
+    ];
 
     // Mock registry lookup that returns YES for CSMediaString (it exists in registry)
     CSMediaUrnExistsInRegistryBlock mockRegistryLookup = ^BOOL(NSString *mediaUrn) {
@@ -762,13 +794,14 @@
 // TEST055: XV5 - Test new inline media spec (not in registry) is allowed
 - (void)testXV5NewInlineSpecAllowed {
     // Define a completely new media spec that doesn't exist in registry
-    NSDictionary *mediaSpecs = @{
-        @"media:my-unique-custom-type-xyz123": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"media:my-unique-custom-type-xyz123",
             @"media_type": @"application/json",
             @"title": @"My Custom Output",
             @"description": @"A custom output type"
         }
-    };
+    ];
 
     // Mock registry lookup that returns NO (spec not in registry)
     CSMediaUrnExistsInRegistryBlock mockRegistryLookup = ^BOOL(NSString *mediaUrn) {
@@ -785,9 +818,9 @@
 // TEST056: XV5 - Test empty media_specs (no inline specs) passes XV5 validation
 - (void)testXV5EmptyMediaSpecsAllowed {
     // Empty media_specs should pass (with or without registry lookup)
-    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:@{}
+    CSXV5ValidationResult *result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:@[]
                                                                         existsInRegistry:nil];
-    XCTAssertTrue(result.valid, @"Empty dictionary should pass validation");
+    XCTAssertTrue(result.valid, @"Empty array should pass validation");
 
     // Nil media_specs should pass
     result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:nil
@@ -795,11 +828,12 @@
     XCTAssertTrue(result.valid, @"Nil should pass validation");
 
     // Graceful degradation: nil lookup function should allow
-    NSDictionary *mediaSpecs = @{
-        CSMediaString: @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": CSMediaString,
             @"media_type": @"text/plain",
         }
-    };
+    ];
     result = [CSXV5Validator validateNoInlineMediaSpecRedefinition:mediaSpecs
                                                   existsInRegistry:nil];
     XCTAssertTrue(result.valid, @"Should pass when registry lookup not available (graceful degradation)");

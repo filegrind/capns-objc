@@ -109,13 +109,13 @@ typedef NS_ENUM(NSInteger, CSSchemaValidationErrorType) {
  * Schema is obtained by resolving the argument's mediaSpec to a MediaSpec with schema
  * @param argument The argument definition with mediaSpec
  * @param value The value to validate
- * @param mediaSpecs The mediaSpecs lookup table for spec ID resolution
+ * @param mediaSpecs The mediaSpecs array for resolution
  * @param error Pointer to NSError for error reporting
  * @return YES if validation succeeds, NO if it fails
  */
 - (BOOL)validateArgument:(CSCapArg *)argument
                withValue:(id)value
-              mediaSpecs:(NSDictionary *)mediaSpecs
+              mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                    error:(NSError **)error;
 
 /**
@@ -123,13 +123,13 @@ typedef NS_ENUM(NSInteger, CSSchemaValidationErrorType) {
  * Schema is obtained by resolving the output's mediaSpec to a MediaSpec with schema
  * @param output The output definition with mediaSpec
  * @param value The value to validate
- * @param mediaSpecs The mediaSpecs lookup table for spec ID resolution
+ * @param mediaSpecs The mediaSpecs array for resolution
  * @param error Pointer to NSError for error reporting
  * @return YES if validation succeeds, NO if it fails
  */
 - (BOOL)validateOutput:(CSCapOutput *)output
              withValue:(id)value
-            mediaSpecs:(NSDictionary *)mediaSpecs
+            mediaSpecs:(NSArray<NSDictionary *> *)mediaSpecs
                  error:(NSError **)error;
 
 /**

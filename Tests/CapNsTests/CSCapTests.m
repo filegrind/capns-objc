@@ -30,7 +30,7 @@
                            command:@"test-command"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -54,7 +54,7 @@
                            command:@"parse-cmd"
                        description:@"Parse JSON data"
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -75,7 +75,7 @@
                             command:@"generate"
                         description:@"Generate embeddings"
                            metadata:@{}
-                         mediaSpecs:@{}
+                         mediaSpecs:@[]
                           args:@[]
                              output:nil
                        metadataJSON:nil];
@@ -95,7 +95,7 @@
                             command:@"generate"
                         description:@"Generate embeddings"
                            metadata:@{}
-                         mediaSpecs:@{}
+                         mediaSpecs:@[]
                                args:@[stdinArg]
                              output:nil
                        metadataJSON:nil];
@@ -118,7 +118,7 @@
                            command:@"test-command"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -147,7 +147,7 @@
                                 command:@"generate"
                             description:@"Generate embeddings"
                                metadata:@{@"model": @"sentence-transformer"}
-                             mediaSpecs:@{}
+                             mediaSpecs:@[]
                                    args:@[stdinArg]
                                  output:nil
                            metadataJSON:nil];
@@ -275,12 +275,13 @@
         @"command": @"transform-data",
         @"cap_description": @"Transform JSON data with validation",
         @"metadata": @{@"engine": @"jq", @"performance": @"high"},
-        @"media_specs": @{
-            @"my:output.v1": @{
+        @"media_specs": @[
+            @{
+                @"urn": @"my:output.v1",
                 @"media_type": @"application/json",
                 @"profile_uri": @"https://capns.org/schema/transform-output"
             }
-        },
+        ],
         @"args": @[
             @{
                 @"media_urn": CSMediaString,
@@ -331,8 +332,9 @@
     XCTAssertEqualObjects(cap.metadata[@"engine"], @"jq");
     XCTAssertEqualObjects(cap.metadata[@"performance"], @"high");
 
-    // Verify media_specs
-    XCTAssertNotNil(cap.mediaSpecs[@"my:output.v1"]);
+    // Verify media_specs (array format)
+    XCTAssertEqual(cap.mediaSpecs.count, 1);
+    XCTAssertEqualObjects(cap.mediaSpecs[0][@"urn"], @"my:output.v1");
 
     // Verify arguments
     XCTAssertEqual([cap getRequiredArgs].count, 1);
@@ -350,13 +352,14 @@
 }
 
 - (void)testMediaSpecsResolution {
-    // Test that spec IDs can be resolved from the mediaSpecs table
+    // Test that spec IDs can be resolved from the mediaSpecs array
     NSError *error;
     CSCapUrn *key = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(key);
 
-    NSDictionary *mediaSpecs = @{
-        @"my:custom-output.v1": @{
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"my:custom-output.v1",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/custom-output",
             @"schema": @{
@@ -367,10 +370,17 @@
                 @"required": @[@"result"]
             }
         },
-        @"my:text-input.v1": @"text/plain; profile=https://example.com/schema/text-input",
-        // Built-in media URNs must now be explicitly defined in mediaSpecs
-        CSMediaString: @"text/plain; profile=https://capns.org/schema/string"
-    };
+        @{
+            @"urn": @"my:text-input.v1",
+            @"media_type": @"text/plain",
+            @"profile_uri": @"https://example.com/schema/text-input"
+        },
+        @{
+            @"urn": CSMediaString,
+            @"media_type": @"text/plain",
+            @"profile_uri": @"https://capns.org/schema/string"
+        }
+    ];
 
     CSCap *cap = [CSCap capWithUrn:key
                              title:@"Test"
@@ -388,15 +398,15 @@
     XCTAssertEqualObjects(resolved.contentType, @"application/json");
     XCTAssertNotNil(resolved.schema);
 
-    // Resolve string-form spec
-    CSMediaSpec *resolvedString = [cap resolveSpecId:@"my:text-input.v1" error:&error];
-    XCTAssertNotNil(resolvedString, @"Should resolve string-form spec ID: %@", error);
-    XCTAssertEqualObjects(resolvedString.contentType, @"text/plain");
+    // Resolve object-form spec
+    CSMediaSpec *resolvedText = [cap resolveSpecId:@"my:text-input.v1" error:&error];
+    XCTAssertNotNil(resolvedText, @"Should resolve spec ID: %@", error);
+    XCTAssertEqualObjects(resolvedText.contentType, @"text/plain");
 
     // Resolve media URN from mediaSpecs (no built-in resolution)
-    CSMediaSpec *resolvedFromTable = [cap resolveSpecId:CSMediaString error:&error];
-    XCTAssertNotNil(resolvedFromTable, @"Should resolve media URN from mediaSpecs: %@", error);
-    XCTAssertEqualObjects(resolvedFromTable.contentType, @"text/plain");
+    CSMediaSpec *resolvedFromArray = [cap resolveSpecId:CSMediaString error:&error];
+    XCTAssertNotNil(resolvedFromArray, @"Should resolve media URN from mediaSpecs: %@", error);
+    XCTAssertEqualObjects(resolvedFromArray.contentType, @"text/plain");
 
     // Fail on unknown spec ID
     CSMediaSpec *unknown = [cap resolveSpecId:@"unknown:spec.v1" error:&error];
@@ -417,7 +427,7 @@
                            command:@"extract-metadata"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -445,7 +455,7 @@
                            command:@"extract-metadata"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -531,7 +541,7 @@
                            command:@"extract-metadata"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -541,7 +551,7 @@
                            command:@"extract-outline"
                        description:nil
                           metadata:@{@"supports_outline": @"true"}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -592,7 +602,7 @@
                            command:@"validate"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];
@@ -639,7 +649,7 @@
                            command:@"process"
                        description:nil
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:args
                             output:nil
                       metadataJSON:nil];

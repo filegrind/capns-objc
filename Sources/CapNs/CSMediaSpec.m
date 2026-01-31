@@ -116,231 +116,98 @@ NSString *CSGetProfileURL(NSString *profileName) {
 
 /// Helper to check if a media URN has a marker tag using CSTaggedUrn.
 /// Requires a valid, non-empty media URN - fails hard otherwise.
+/// Nil/empty/whitespace validation is handled by CSTaggedUrn.
 static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnHasTag called with nil/empty mediaUrn - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn"];
-    }
     NSError *error = nil;
     CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
     if (parsed == nil || error != nil) {
         [NSException raise:NSInvalidArgumentException
-                    format:@"Failed to parse media URN '%@': %@ - this indicates invalid data", mediaUrn, error.localizedDescription];
+                    format:@"Failed to parse media URN '%@': %@ - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn", mediaUrn, error.localizedDescription];
     }
     return [parsed getTag:tagName] != nil;
 }
 
 /// Helper to check if a media URN has a tag with a specific value (e.g., form=map).
 /// Requires a valid, non-empty media URN - fails hard otherwise.
+/// Nil/empty/whitespace validation is handled by CSTaggedUrn.
 static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString *tagValue) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnHasTagValue called with nil/empty mediaUrn - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn"];
-    }
     NSError *error = nil;
     CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
     if (parsed == nil || error != nil) {
         [NSException raise:NSInvalidArgumentException
-                    format:@"Failed to parse media URN '%@': %@ - this indicates invalid data", mediaUrn, error.localizedDescription];
+                    format:@"Failed to parse media URN '%@': %@ - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn", mediaUrn, error.localizedDescription];
     }
     NSString *value = [parsed getTag:tagKey];
     return value != nil && [value isEqualToString:tagValue];
 }
 
 /// Public function to check if a media URN represents binary data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsBinary(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsBinary called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"bytes");
 }
 
 /// Public function to check if a media URN represents text data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsText(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsText called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"textable");
 }
 
 /// Public function to check if a media URN represents JSON data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsJson(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsJson called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"json");
 }
 
 /// Public function to check if a media URN represents a list (form=list).
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsList(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsList called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTagValue(mediaUrn, @"form", @"list");
 }
 
 /// Public function to check if a media URN represents a map (form=map).
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsMap(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsMap called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTagValue(mediaUrn, @"form", @"map");
 }
 
 /// Public function to check if a media URN represents a scalar (form=scalar).
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsScalar(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsScalar called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTagValue(mediaUrn, @"form", @"scalar");
 }
 
 /// Public function to check if a media URN represents image data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsImage(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsImage called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"image");
 }
 
 /// Public function to check if a media URN represents audio data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsAudio(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsAudio called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"audio");
 }
 
 /// Public function to check if a media URN represents video data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsVideo(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsVideo called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"video");
 }
 
 /// Public function to check if a media URN represents numeric data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsNumeric(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsNumeric called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"numeric");
 }
 
 /// Public function to check if a media URN represents boolean data.
-/// Requires a valid, non-empty media URN.
+/// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
-    if (mediaUrn == nil || mediaUrn.length == 0) {
-        [NSException raise:NSInvalidArgumentException
-                    format:@"CSMediaUrnIsBool called with nil/empty mediaUrn"];
-    }
     return CSMediaUrnHasTag(mediaUrn, @"bool");
 }
 
 @implementation CSMediaSpec
-
-+ (nullable instancetype)parse:(NSString *)string error:(NSError * _Nullable * _Nullable)error {
-    NSString *trimmed = [string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    NSString *lower = [trimmed lowercaseString];
-
-    // FAIL HARD on legacy format - no backward compatibility
-    if ([lower hasPrefix:@"content-type:"]) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
-                                         code:CSMediaSpecErrorLegacyFormat
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Legacy 'content-type:' prefix is no longer supported. Use canonical format: '<media-type>; profile=<url>'"}];
-        }
-        return nil;
-    }
-
-    // Split by semicolon to separate mime type from parameters
-    NSRange semicolonRange = [trimmed rangeOfString:@";"];
-    NSString *contentType;
-    NSString *paramsStr = nil;
-
-    if (semicolonRange.location == NSNotFound) {
-        contentType = [trimmed stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    } else {
-        contentType = [[trimmed substringToIndex:semicolonRange.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-        paramsStr = [[trimmed substringFromIndex:semicolonRange.location + 1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    }
-
-    if (contentType.length == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
-                                         code:CSMediaSpecErrorEmptyContentType
-                                     userInfo:@{NSLocalizedDescriptionKey: @"media_type cannot be empty"}];
-        }
-        return nil;
-    }
-
-    // Parse profile if present
-    NSString *profile = nil;
-    if (paramsStr) {
-        profile = [self parseProfile:paramsStr error:error];
-        if (error && *error != nil) {
-            return nil;
-        }
-    }
-
-    CSMediaSpec *spec = [[CSMediaSpec alloc] init];
-    spec.contentType = contentType;
-    spec.profile = profile;
-    spec.schema = nil;
-    return spec;
-}
-
-+ (NSString *)parseProfile:(NSString *)params error:(NSError * _Nullable * _Nullable)error {
-    // Look for profile= (case-insensitive)
-    NSRange range = [[params lowercaseString] rangeOfString:@"profile="];
-    if (range.location == NSNotFound) {
-        return nil;
-    }
-
-    NSString *afterProfile = [params substringFromIndex:range.location + range.length];
-
-    // Handle quoted value
-    if ([afterProfile hasPrefix:@"\""]) {
-        NSString *rest = [afterProfile substringFromIndex:1];
-        NSRange endQuote = [rest rangeOfString:@"\""];
-        if (endQuote.location == NSNotFound) {
-            if (error) {
-                *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
-                                             code:CSMediaSpecErrorUnterminatedQuote
-                                         userInfo:@{NSLocalizedDescriptionKey: @"unterminated quote in profile value"}];
-            }
-            return nil;
-        }
-        return [rest substringToIndex:endQuote.location];
-    }
-
-    // Unquoted value - take until semicolon or end
-    NSRange semicolon = [afterProfile rangeOfString:@";"];
-    if (semicolon.location != NSNotFound) {
-        return [[afterProfile substringToIndex:semicolon.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    }
-    return [afterProfile stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-}
 
 + (instancetype)withContentType:(NSString *)contentType
                         profile:(nullable NSString *)profile
@@ -449,71 +316,91 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
 // ============================================================================
 
 CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
-                                          NSDictionary * _Nullable mediaSpecs,
+                                          NSArray<NSDictionary *> * _Nullable mediaSpecs,
                                           NSError * _Nullable * _Nullable error) {
-    // First check local mediaSpecs table
-    if (mediaSpecs && mediaSpecs[mediaUrn]) {
-        id def = mediaSpecs[mediaUrn];
+    // Find in the provided media_specs array
+    if (mediaSpecs) {
+        for (NSDictionary *def in mediaSpecs) {
+            NSString *urn = def[@"urn"];
+            if (urn && [urn isEqualToString:mediaUrn]) {
+                // Object form: { urn, media_type, profile_uri?, schema?, title?, description?, validation?, metadata?, extension? }
+                NSString *mediaType = def[@"media_type"] ?: def[@"mediaType"];
+                NSString *profileUri = def[@"profile_uri"] ?: def[@"profileUri"];
+                NSDictionary *schema = def[@"schema"];
+                NSString *title = def[@"title"];
+                NSString *descriptionText = def[@"description"];
 
-        if ([def isKindOfClass:[NSString class]]) {
-            // String form: canonical media spec string
-            CSMediaSpec *spec = [CSMediaSpec parse:(NSString *)def error:error];
-            if (spec) spec.mediaUrn = mediaUrn;
-            return spec;
-        } else if ([def isKindOfClass:[NSDictionary class]]) {
-            // Object form: { media_type, profile_uri, schema?, title?, description?, validation?, metadata? }
-            NSDictionary *objDef = (NSDictionary *)def;
-            NSString *mediaType = objDef[@"media_type"] ?: objDef[@"mediaType"];
-            NSString *profileUri = objDef[@"profile_uri"] ?: objDef[@"profileUri"];
-            NSDictionary *schema = objDef[@"schema"];
-            NSString *title = objDef[@"title"];
-            NSString *descriptionText = objDef[@"description"];
-
-            // Parse validation if present
-            CSMediaValidation *validation = nil;
-            NSDictionary *validationDict = objDef[@"validation"];
-            if (validationDict && [validationDict isKindOfClass:[NSDictionary class]]) {
-                NSError *validationError = nil;
-                validation = [CSMediaValidation validationWithDictionary:validationDict error:&validationError];
-                // Ignore validation parse errors - validation is optional
-            }
-
-            // Extract metadata if present
-            NSDictionary *metadata = nil;
-            id metadataValue = objDef[@"metadata"];
-            if (metadataValue && [metadataValue isKindOfClass:[NSDictionary class]]) {
-                metadata = (NSDictionary *)metadataValue;
-            }
-
-            // Extract extension if present
-            NSString *extension = nil;
-            id extensionValue = objDef[@"extension"];
-            if (extensionValue && [extensionValue isKindOfClass:[NSString class]]) {
-                extension = (NSString *)extensionValue;
-            }
-
-            if (!mediaType) {
-                if (error) {
-                    *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
-                                                 code:CSMediaSpecErrorUnresolvableMediaUrn
-                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Media URN '%@' has invalid object definition: missing media_type", mediaUrn]}];
+                // Parse validation if present
+                CSMediaValidation *validation = nil;
+                NSDictionary *validationDict = def[@"validation"];
+                if (validationDict && [validationDict isKindOfClass:[NSDictionary class]]) {
+                    NSError *validationError = nil;
+                    validation = [CSMediaValidation validationWithDictionary:validationDict error:&validationError];
+                    // Ignore validation parse errors - validation is optional
                 }
-                return nil;
-            }
 
-            CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation metadata:metadata extension:extension];
-            spec.mediaUrn = mediaUrn;
-            return spec;
+                // Extract metadata if present
+                NSDictionary *metadata = nil;
+                id metadataValue = def[@"metadata"];
+                if (metadataValue && [metadataValue isKindOfClass:[NSDictionary class]]) {
+                    metadata = (NSDictionary *)metadataValue;
+                }
+
+                // Extract extension if present
+                NSString *extension = nil;
+                id extensionValue = def[@"extension"];
+                if (extensionValue && [extensionValue isKindOfClass:[NSString class]]) {
+                    extension = (NSString *)extensionValue;
+                }
+
+                if (!mediaType) {
+                    if (error) {
+                        *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
+                                                     code:CSMediaSpecErrorUnresolvableMediaUrn
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Media URN '%@' has invalid object definition: missing media_type", mediaUrn]}];
+                    }
+                    return nil;
+                }
+
+                CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation metadata:metadata extension:extension];
+                spec.mediaUrn = mediaUrn;
+                return spec;
+            }
         }
     }
 
-    // FAIL HARD - media URN must be in mediaSpecs table
+    // FAIL HARD - media URN must be in mediaSpecs array
     if (error) {
         *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
                                      code:CSMediaSpecErrorUnresolvableMediaUrn
-                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Cannot resolve media URN: '%@'. Not found in mediaSpecs table.", mediaUrn]}];
+                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Cannot resolve media URN: '%@'. Not found in mediaSpecs array.", mediaUrn]}];
     }
     return nil;
+}
+
+// Validate no duplicate URNs in mediaSpecs array
+BOOL CSValidateNoMediaSpecDuplicates(NSArray<NSDictionary *> * _Nullable mediaSpecs,
+                                     NSError * _Nullable * _Nullable error) {
+    if (!mediaSpecs) {
+        return YES;
+    }
+
+    NSMutableSet *seen = [NSMutableSet set];
+    for (NSDictionary *def in mediaSpecs) {
+        NSString *urn = def[@"urn"];
+        if (urn) {
+            if ([seen containsObject:urn]) {
+                if (error) {
+                    *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
+                                                 code:CSMediaSpecErrorDuplicateMediaUrn
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Duplicate media URN '%@' in mediaSpecs array", urn]}];
+                }
+                return NO;
+            }
+            [seen addObject:urn];
+        }
+    }
+    return YES;
 }
 
 // ============================================================================
@@ -523,7 +410,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
 @implementation CSMediaSpec (CapUrn)
 
 + (nullable instancetype)fromCapUrn:(CSCapUrn *)capUrn
-                         mediaSpecs:(NSDictionary * _Nullable)mediaSpecs
+                         mediaSpecs:(NSArray<NSDictionary *> * _Nullable)mediaSpecs
                               error:(NSError * _Nullable * _Nullable)error {
     // Use getOutSpec directly - outSpec is now a required first-class field containing a media URN
     NSString *mediaUrn = [capUrn getOutSpec];

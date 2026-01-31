@@ -63,7 +63,7 @@
                            command:@"test"
                        description:@"Test capability"
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:@[]
                             output:nil
                       metadataJSON:nil];
@@ -106,7 +106,7 @@
                                  command:@"generate"
                              description:@"General generation"
                                 metadata:@{}
-                              mediaSpecs:@{}
+                              mediaSpecs:@[]
                                args:@[]
                                   output:nil
                             metadataJSON:nil];
@@ -119,7 +119,7 @@
                                   command:@"generate"
                               description:@"Specific text generation"
                                  metadata:@{}
-                               mediaSpecs:@{}
+                               mediaSpecs:@[]
                                 args:@[]
                                    output:nil
                              metadataJSON:nil];
@@ -163,7 +163,7 @@
                            command:@"test"
                        description:@"Test"
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:@[]
                             output:nil
                       metadataJSON:nil];
@@ -188,7 +188,7 @@
                            command:@"test"
                        description:@"Test"
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:@[]
                             output:nil
                       metadataJSON:nil];
@@ -218,7 +218,7 @@
                            command:@"test"
                        description:@"Test"
                           metadata:@{}
-                        mediaSpecs:@{}
+                        mediaSpecs:@[]
                          args:@[]
                             output:nil
                       metadataJSON:nil];

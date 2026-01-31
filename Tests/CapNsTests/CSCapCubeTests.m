@@ -47,7 +47,7 @@
                      command:@"test"
                  description:title
                     metadata:@{}
-                  mediaSpecs:@{}
+                  mediaSpecs:@[]
                         args:@[]
                       output:nil
                 metadataJSON:nil];

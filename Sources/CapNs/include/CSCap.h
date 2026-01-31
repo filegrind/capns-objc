@@ -334,8 +334,8 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 /**
  * Formal cap definition
  *
- * The mediaSpecs property is a resolution table that maps spec IDs to MediaSpec definitions.
- * Arguments and output use spec IDs in their mediaUrn fields, which resolve via this table.
+ * The mediaSpecs property is an array of media spec definitions.
+ * Arguments and output use mediaUrn fields which resolve via this array.
  */
 @interface CSCap : NSObject <NSCopying, NSCoding>
 
@@ -354,8 +354,8 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 /// Command string for CLI execution
 @property (nonatomic, readonly) NSString *command;
 
-/// Media specs resolution table: maps spec ID -> string or object definition
-@property (nonatomic, readonly) NSDictionary<NSString *, id> *mediaSpecs;
+/// Media specs array: each element is a dictionary with urn, media_type, profile_uri, etc.
+@property (nonatomic, readonly) NSArray<NSDictionary *> *mediaSpecs;
 
 /// Cap arguments (new unified args array)
 @property (nonatomic, readonly) NSArray<CSCapArg *> *args;
@@ -377,7 +377,7 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
  * @param command The command string
  * @param description The cap description
  * @param metadata The cap metadata
- * @param mediaSpecs Media spec resolution table (spec ID -> definition)
+ * @param mediaSpecs Media spec array (each element has urn, media_type, profile_uri, etc.)
  * @param args The cap arguments array
  * @param output The output definition
  * @param metadataJSON Arbitrary metadata as JSON object
@@ -388,7 +388,7 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
                    command:(NSString * _Nonnull)command
                description:(nullable NSString *)description
                   metadata:(NSDictionary<NSString *, NSString *> * _Nonnull)metadata
-                mediaSpecs:(NSDictionary<NSString *, id> * _Nonnull)mediaSpecs
+                mediaSpecs:(NSArray<NSDictionary *> * _Nonnull)mediaSpecs
                       args:(NSArray<CSCapArg *> * _Nonnull)args
                     output:(nullable CSCapOutput *)output
               metadataJSON:(nullable NSDictionary *)metadataJSON;
