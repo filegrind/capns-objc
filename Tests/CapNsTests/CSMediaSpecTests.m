@@ -114,4 +114,70 @@
     XCTAssertEqual(error.code, CSMediaSpecErrorUnresolvableMediaUrn, @"Should be UNRESOLVABLE_MEDIA_URN error");
 }
 
+// Extension field tests
+
+- (void)testExtensionPropagationFromObjectDef {
+    // Create a media spec definition with extension
+    NSDictionary *mediaSpecs = @{
+        @"media:pdf;bytes": @{
+            @"media_type": @"application/pdf",
+            @"profile_uri": @"https://capns.org/schema/pdf",
+            @"title": @"PDF Document",
+            @"description": @"A PDF document",
+            @"extension": @"pdf"
+        }
+    };
+
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:pdf;bytes", mediaSpecs, &error);
+
+    XCTAssertNil(error, @"Should not have error");
+    XCTAssertNotNil(resolved, @"Should resolve successfully");
+    XCTAssertEqualObjects(resolved.extension, @"pdf", @"Should have extension");
+}
+
+- (void)testExtensionNoneForStringDef {
+    // String form definitions should have no extension
+    NSDictionary *mediaSpecs = @{
+        @"media:text;textable": @"text/plain; profile=https://example.com"
+    };
+
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:text;textable", mediaSpecs, &error);
+
+    XCTAssertNil(error, @"Should not have error");
+    XCTAssertNotNil(resolved, @"Should resolve successfully");
+    XCTAssertNil(resolved.extension, @"String form should have no extension");
+}
+
+- (void)testExtensionWithMetadataAndValidation {
+    // Ensure extension, metadata, and validation can coexist
+    NSDictionary *mediaSpecs = @{
+        @"media:custom-output": @{
+            @"media_type": @"application/json",
+            @"profile_uri": @"https://example.com/schema",
+            @"title": @"Custom Output",
+            @"validation": @{
+                @"min_length": @1,
+                @"max_length": @1000
+            },
+            @"metadata": @{
+                @"category": @"output"
+            },
+            @"extension": @"json"
+        }
+    };
+
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:custom-output", mediaSpecs, &error);
+
+    XCTAssertNil(error, @"Should not have error");
+    XCTAssertNotNil(resolved, @"Should resolve successfully");
+
+    // Verify all fields are present
+    XCTAssertNotNil(resolved.validation, @"Should have validation");
+    XCTAssertNotNil(resolved.metadata, @"Should have metadata");
+    XCTAssertEqualObjects(resolved.extension, @"json", @"Should have extension");
+}
+
 @end

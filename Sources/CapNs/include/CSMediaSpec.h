@@ -128,6 +128,9 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 /// Optional metadata (arbitrary key-value pairs for display/categorization)
 @property (nonatomic, readonly, nullable) NSDictionary *metadata;
 
+/// Optional file extension for storing this media type (e.g., "pdf", "json", "txt")
+@property (nonatomic, readonly, nullable) NSString *extension;
+
 /// The media URN this spec was resolved from (if resolved via CSResolveMediaUrn)
 @property (nonatomic, readonly, nullable) NSString *mediaUrn;
 
@@ -152,6 +155,7 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
  * @param descriptionText Optional description
  * @param validation Optional validation rules
  * @param metadata Optional metadata dictionary
+ * @param extension Optional file extension for storing this media type
  * @return A new CSMediaSpec instance
  */
 + (instancetype)withContentType:(NSString *)contentType
@@ -160,7 +164,8 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
                      validation:(nullable CSMediaValidation *)validation
-                       metadata:(nullable NSDictionary *)metadata;
+                       metadata:(nullable NSDictionary *)metadata
+                      extension:(nullable NSString *)extension;
 
 /**
  * Create a MediaSpec from content type, optional profile, and optional schema

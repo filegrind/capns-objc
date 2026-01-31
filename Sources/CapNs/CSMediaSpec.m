@@ -111,6 +111,7 @@ NSString *CSGetProfileURL(NSString *profileName) {
 @property (nonatomic, readwrite, nullable) NSString *mediaUrn;
 @property (nonatomic, readwrite, nullable) CSMediaValidation *validation;
 @property (nonatomic, readwrite, nullable) NSDictionary *metadata;
+@property (nonatomic, readwrite, nullable) NSString *extension;
 @end
 
 /// Helper to check if a media URN has a marker tag using CSTaggedUrn
@@ -241,7 +242,7 @@ static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
                      validation:(nullable CSMediaValidation *)validation {
-    return [self withContentType:contentType profile:profile schema:schema title:title descriptionText:descriptionText validation:validation metadata:nil];
+    return [self withContentType:contentType profile:profile schema:schema title:title descriptionText:descriptionText validation:validation metadata:nil extension:nil];
 }
 
 + (instancetype)withContentType:(NSString *)contentType
@@ -250,7 +251,8 @@ static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
                      validation:(nullable CSMediaValidation *)validation
-                       metadata:(nullable NSDictionary *)metadata {
+                       metadata:(nullable NSDictionary *)metadata
+                      extension:(nullable NSString *)extension {
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
     spec.profile = profile;
@@ -259,6 +261,7 @@ static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString
     spec.descriptionText = descriptionText;
     spec.validation = validation;
     spec.metadata = metadata;
+    spec.extension = extension;
     return spec;
 }
 
@@ -362,6 +365,13 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                 metadata = (NSDictionary *)metadataValue;
             }
 
+            // Extract extension if present
+            NSString *extension = nil;
+            id extensionValue = objDef[@"extension"];
+            if (extensionValue && [extensionValue isKindOfClass:[NSString class]]) {
+                extension = (NSString *)extensionValue;
+            }
+
             if (!mediaType) {
                 if (error) {
                     *error = [NSError errorWithDomain:CSMediaSpecErrorDomain
@@ -371,7 +381,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                 return nil;
             }
 
-            CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation metadata:metadata];
+            CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation metadata:metadata extension:extension];
             spec.mediaUrn = mediaUrn;
             return spec;
         }
