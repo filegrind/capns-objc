@@ -50,3 +50,4 @@ fastlane/screenshots
 .idea/
 .vscode/
 .ws/
+*.log
