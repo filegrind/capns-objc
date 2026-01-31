@@ -277,10 +277,90 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
 /**
  * Check if a media URN represents binary data by checking for 'bytes' tag.
  * This is a pure syntax check - no resolution required.
- * @param mediaUrn The media URN to check (e.g., "media:image;png;bytes;thumbnail")
+ * @param mediaUrn The media URN to check (must be non-empty)
  * @return YES if the media URN has the 'bytes' marker tag
  */
 BOOL CSMediaUrnIsBinary(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents text data by checking for 'textable' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'textable' marker tag
+ */
+BOOL CSMediaUrnIsText(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents JSON data by checking for 'json' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'json' marker tag
+ */
+BOOL CSMediaUrnIsJson(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents a list/array (form=list).
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has form=list
+ */
+BOOL CSMediaUrnIsList(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents a map/object (form=map).
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has form=map
+ */
+BOOL CSMediaUrnIsMap(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents a scalar value (form=scalar).
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has form=scalar
+ */
+BOOL CSMediaUrnIsScalar(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents image data by checking for 'image' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'image' marker tag
+ */
+BOOL CSMediaUrnIsImage(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents audio data by checking for 'audio' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'audio' marker tag
+ */
+BOOL CSMediaUrnIsAudio(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents video data by checking for 'video' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'video' marker tag
+ */
+BOOL CSMediaUrnIsVideo(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents numeric data by checking for 'numeric' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'numeric' marker tag
+ */
+BOOL CSMediaUrnIsNumeric(NSString *mediaUrn);
+
+/**
+ * Check if a media URN represents boolean data by checking for 'bool' tag.
+ * This is a pure syntax check - no resolution required.
+ * @param mediaUrn The media URN to check (must be non-empty)
+ * @return YES if the media URN has the 'bool' marker tag
+ */
+BOOL CSMediaUrnIsBool(NSString *mediaUrn);
 
 /**
  * Helper functions for working with MediaSpec in CapUrn

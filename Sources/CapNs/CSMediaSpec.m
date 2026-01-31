@@ -114,27 +114,147 @@ NSString *CSGetProfileURL(NSString *profileName) {
 @property (nonatomic, readwrite, nullable) NSString *extension;
 @end
 
-/// Helper to check if a media URN has a marker tag using CSTaggedUrn
+/// Helper to check if a media URN has a marker tag using CSTaggedUrn.
+/// Requires a valid, non-empty media URN - fails hard otherwise.
 static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
-    if (!mediaUrn) return NO;
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnHasTag called with nil/empty mediaUrn - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn"];
+    }
     NSError *error = nil;
     CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
-    if (error || !parsed) return NO;
+    if (parsed == nil || error != nil) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"Failed to parse media URN '%@': %@ - this indicates invalid data", mediaUrn, error.localizedDescription];
+    }
     return [parsed getTag:tagName] != nil;
 }
 
+/// Helper to check if a media URN has a tag with a specific value (e.g., form=map).
+/// Requires a valid, non-empty media URN - fails hard otherwise.
+static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString *tagValue) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnHasTagValue called with nil/empty mediaUrn - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn"];
+    }
+    NSError *error = nil;
+    CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
+    if (parsed == nil || error != nil) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"Failed to parse media URN '%@': %@ - this indicates invalid data", mediaUrn, error.localizedDescription];
+    }
+    NSString *value = [parsed getTag:tagKey];
+    return value != nil && [value isEqualToString:tagValue];
+}
+
+/// Public function to check if a media URN represents binary data.
+/// Requires a valid, non-empty media URN.
 BOOL CSMediaUrnIsBinary(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsBinary called with nil/empty mediaUrn"];
+    }
     return CSMediaUrnHasTag(mediaUrn, @"bytes");
 }
 
-/// Helper to check if a media URN has a tag with a specific value (e.g., form=map)
-static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString *tagValue) {
-    if (!mediaUrn) return NO;
-    NSError *error = nil;
-    CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
-    if (error || !parsed) return NO;
-    NSString *value = [parsed getTag:tagKey];
-    return value != nil && [value isEqualToString:tagValue];
+/// Public function to check if a media URN represents text data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsText(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsText called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"textable");
+}
+
+/// Public function to check if a media URN represents JSON data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsJson(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsJson called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"json");
+}
+
+/// Public function to check if a media URN represents a list (form=list).
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsList(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsList called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTagValue(mediaUrn, @"form", @"list");
+}
+
+/// Public function to check if a media URN represents a map (form=map).
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsMap(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsMap called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTagValue(mediaUrn, @"form", @"map");
+}
+
+/// Public function to check if a media URN represents a scalar (form=scalar).
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsScalar(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsScalar called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTagValue(mediaUrn, @"form", @"scalar");
+}
+
+/// Public function to check if a media URN represents image data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsImage(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsImage called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"image");
+}
+
+/// Public function to check if a media URN represents audio data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsAudio(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsAudio called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"audio");
+}
+
+/// Public function to check if a media URN represents video data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsVideo(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsVideo called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"video");
+}
+
+/// Public function to check if a media URN represents numeric data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsNumeric(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsNumeric called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"numeric");
+}
+
+/// Public function to check if a media URN represents boolean data.
+/// Requires a valid, non-empty media URN.
+BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
+    if (mediaUrn == nil || mediaUrn.length == 0) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"CSMediaUrnIsBool called with nil/empty mediaUrn"];
+    }
+    return CSMediaUrnHasTag(mediaUrn, @"bool");
 }
 
 @implementation CSMediaSpec
