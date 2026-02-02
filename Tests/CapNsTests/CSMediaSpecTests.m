@@ -105,10 +105,10 @@
     XCTAssertEqual(error.code, CSMediaSpecErrorUnresolvableMediaUrn, @"Should be UNRESOLVABLE_MEDIA_URN error");
 }
 
-// Extension field tests
+// Extensions field tests
 
-- (void)testExtensionPropagationFromObjectDef {
-    // Create a media spec definition with extension
+- (void)testExtensionsPropagationFromObjectDef {
+    // Create a media spec definition with extensions array
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
             @"urn": @"media:pdf;bytes",
@@ -116,7 +116,7 @@
             @"profile_uri": @"https://capns.org/schema/pdf",
             @"title": @"PDF Document",
             @"description": @"A PDF document",
-            @"extension": @"pdf"
+            @"extensions": @[@"pdf"]
         }
     ];
 
@@ -125,11 +125,13 @@
 
     XCTAssertNil(error, @"Should not have error");
     XCTAssertNotNil(resolved, @"Should resolve successfully");
-    XCTAssertEqualObjects(resolved.extension, @"pdf", @"Should have extension");
+    XCTAssertNotNil(resolved.extensions, @"Should have extensions array");
+    XCTAssertEqual(resolved.extensions.count, 1, @"Should have one extension");
+    XCTAssertEqualObjects(resolved.extensions[0], @"pdf", @"Should have pdf extension");
 }
 
-- (void)testExtensionEmptyWhenNotSet {
-    // Media specs without extension field should have nil extension
+- (void)testExtensionsEmptyWhenNotSet {
+    // Media specs without extensions field should have empty array
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
             @"urn": @"media:text;textable",
@@ -143,11 +145,12 @@
 
     XCTAssertNil(error, @"Should not have error");
     XCTAssertNotNil(resolved, @"Should resolve successfully");
-    XCTAssertNil(resolved.extension, @"Should have nil extension when not provided");
+    XCTAssertNotNil(resolved.extensions, @"Extensions should not be nil");
+    XCTAssertEqual(resolved.extensions.count, 0, @"Should have empty extensions array when not provided");
 }
 
-- (void)testExtensionWithMetadataAndValidation {
-    // Ensure extension, metadata, and validation can coexist
+- (void)testExtensionsWithMetadataAndValidation {
+    // Ensure extensions, metadata, and validation can coexist
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
             @"urn": @"media:custom-output",
@@ -161,7 +164,7 @@
             @"metadata": @{
                 @"category": @"output"
             },
-            @"extension": @"json"
+            @"extensions": @[@"json"]
         }
     ];
 
@@ -174,7 +177,32 @@
     // Verify all fields are present
     XCTAssertNotNil(resolved.validation, @"Should have validation");
     XCTAssertNotNil(resolved.metadata, @"Should have metadata");
-    XCTAssertEqualObjects(resolved.extension, @"json", @"Should have extension");
+    XCTAssertEqual(resolved.extensions.count, 1, @"Should have one extension");
+    XCTAssertEqualObjects(resolved.extensions[0], @"json", @"Should have json extension");
+}
+
+- (void)testMultipleExtensions {
+    // Test multiple extensions in a media spec
+    NSArray<NSDictionary *> *mediaSpecs = @[
+        @{
+            @"urn": @"media:image;jpeg;bytes",
+            @"media_type": @"image/jpeg",
+            @"profile_uri": @"https://capns.org/schema/jpeg",
+            @"title": @"JPEG Image",
+            @"description": @"JPEG image data",
+            @"extensions": @[@"jpg", @"jpeg"]
+        }
+    ];
+
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:image;jpeg;bytes", mediaSpecs, &error);
+
+    XCTAssertNil(error, @"Should not have error");
+    XCTAssertNotNil(resolved, @"Should resolve successfully");
+    XCTAssertNotNil(resolved.extensions, @"Should have extensions array");
+    XCTAssertEqual(resolved.extensions.count, 2, @"Should have two extensions");
+    XCTAssertEqualObjects(resolved.extensions[0], @"jpg", @"Should have jpg extension first");
+    XCTAssertEqualObjects(resolved.extensions[1], @"jpeg", @"Should have jpeg extension second");
 }
 
 // Duplicate URN validation tests

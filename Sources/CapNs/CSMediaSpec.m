@@ -111,7 +111,7 @@ NSString *CSGetProfileURL(NSString *profileName) {
 @property (nonatomic, readwrite, nullable) NSString *mediaUrn;
 @property (nonatomic, readwrite, nullable) CSMediaValidation *validation;
 @property (nonatomic, readwrite, nullable) NSDictionary *metadata;
-@property (nonatomic, readwrite, nullable) NSString *extension;
+@property (nonatomic, readwrite) NSArray<NSString *> *extensions;
 @end
 
 /// Helper to check if a media URN has a marker tag using CSTaggedUrn.
@@ -229,7 +229,7 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
                           title:(nullable NSString *)title
                 descriptionText:(nullable NSString *)descriptionText
                      validation:(nullable CSMediaValidation *)validation {
-    return [self withContentType:contentType profile:profile schema:schema title:title descriptionText:descriptionText validation:validation metadata:nil extension:nil];
+    return [self withContentType:contentType profile:profile schema:schema title:title descriptionText:descriptionText validation:validation metadata:nil extensions:@[]];
 }
 
 + (instancetype)withContentType:(NSString *)contentType
@@ -239,7 +239,7 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
                 descriptionText:(nullable NSString *)descriptionText
                      validation:(nullable CSMediaValidation *)validation
                        metadata:(nullable NSDictionary *)metadata
-                      extension:(nullable NSString *)extension {
+                     extensions:(NSArray<NSString *> *)extensions {
     CSMediaSpec *spec = [[CSMediaSpec alloc] init];
     spec.contentType = contentType;
     spec.profile = profile;
@@ -248,7 +248,7 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
     spec.descriptionText = descriptionText;
     spec.validation = validation;
     spec.metadata = metadata;
-    spec.extension = extension;
+    spec.extensions = extensions ?: @[];
     return spec;
 }
 
@@ -323,7 +323,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
         for (NSDictionary *def in mediaSpecs) {
             NSString *urn = def[@"urn"];
             if (urn && [urn isEqualToString:mediaUrn]) {
-                // Object form: { urn, media_type, profile_uri?, schema?, title?, description?, validation?, metadata?, extension? }
+                // Object form: { urn, media_type, profile_uri?, schema?, title?, description?, validation?, metadata?, extensions? }
                 NSString *mediaType = def[@"media_type"] ?: def[@"mediaType"];
                 NSString *profileUri = def[@"profile_uri"] ?: def[@"profileUri"];
                 NSDictionary *schema = def[@"schema"];
@@ -346,11 +346,11 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                     metadata = (NSDictionary *)metadataValue;
                 }
 
-                // Extract extension if present
-                NSString *extension = nil;
-                id extensionValue = def[@"extension"];
-                if (extensionValue && [extensionValue isKindOfClass:[NSString class]]) {
-                    extension = (NSString *)extensionValue;
+                // Extract extensions array if present
+                NSArray<NSString *> *extensions = @[];
+                id extensionsValue = def[@"extensions"];
+                if (extensionsValue && [extensionsValue isKindOfClass:[NSArray class]]) {
+                    extensions = (NSArray<NSString *> *)extensionsValue;
                 }
 
                 if (!mediaType) {
@@ -362,7 +362,7 @@ CSMediaSpec * _Nullable CSResolveMediaUrn(NSString *mediaUrn,
                     return nil;
                 }
 
-                CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation metadata:metadata extension:extension];
+                CSMediaSpec *spec = [CSMediaSpec withContentType:mediaType profile:profileUri schema:schema title:title descriptionText:descriptionText validation:validation metadata:metadata extensions:extensions];
                 spec.mediaUrn = mediaUrn;
                 return spec;
             }
