@@ -787,35 +787,18 @@
         return nil;
     }
 
-    // Parse cap URN - handle both string and object formats
-    NSError *keyError;
-    CSCapUrn *capUrn = nil;
-
-    if ([urnField isKindOfClass:[NSString class]]) {
-        capUrn = [CSCapUrn fromString:(NSString *)urnField error:&keyError];
-    } else if ([urnField isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *urnDict = (NSDictionary *)urnField;
-        NSDictionary *tags = urnDict[@"tags"];
-
-        if ([tags isKindOfClass:[NSDictionary class]]) {
-            capUrn = [CSCapUrn fromTags:tags error:&keyError];
-        } else {
-            if (error) {
-                *error = [NSError errorWithDomain:@"CSCapError"
-                                             code:1004
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid URN object format - missing or invalid tags"}];
-            }
-            return nil;
-        }
-    } else {
+    // Parse cap URN - must be string in canonical format
+    if (![urnField isKindOfClass:[NSString class]]) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSCapError"
-                                         code:1005
-                                     userInfo:@{NSLocalizedDescriptionKey: @"URN must be string or object"}];
+                                         code:1004
+                                     userInfo:@{NSLocalizedDescriptionKey: @"URN must be a string in canonical format (e.g., 'cap:in=\"media:...\";op=...;out=\"media:...\"')"}];
         }
         return nil;
     }
 
+    NSError *keyError;
+    CSCapUrn *capUrn = [CSCapUrn fromString:(NSString *)urnField error:&keyError];
     if (!capUrn) {
         if (error) *error = keyError;
         return nil;
