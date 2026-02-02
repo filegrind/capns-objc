@@ -20,6 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSString *manifestDescription;
 @property (nonatomic, strong) NSArray<CSCap *> *caps;
 @property (nonatomic, strong, nullable) NSString *author;
+@property (nonatomic, strong, nullable) NSString *pageUrl;
 
 - (instancetype)initWithName:(NSString *)name 
                      version:(NSString *)version 
@@ -36,6 +37,7 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(init(dictionary:error:));
 
 - (CSCapManifest *)withAuthor:(NSString *)author;
+- (CSCapManifest *)withPageUrl:(NSString *)pageUrl;
 
 @end
 

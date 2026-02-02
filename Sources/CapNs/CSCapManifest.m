@@ -79,12 +79,22 @@
     if (author) {
         manifest.author = author;
     }
-    
+
+    NSString *pageUrl = dictionary[@"page_url"];
+    if (pageUrl) {
+        manifest.pageUrl = pageUrl;
+    }
+
     return manifest;
 }
 
 - (CSCapManifest *)withAuthor:(NSString *)author {
     self.author = [author copy];
+    return self;
+}
+
+- (CSCapManifest *)withPageUrl:(NSString *)pageUrl {
+    self.pageUrl = [pageUrl copy];
     return self;
 }
 

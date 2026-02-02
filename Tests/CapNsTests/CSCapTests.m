@@ -469,6 +469,33 @@
     XCTAssertEqualObjects(manifest.author, @"Test Author");
 }
 
+- (void)testCapManifestWithPageUrl {
+    NSError *error;
+    CSCapUrn *key = [CSCapUrn fromString:@"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata" error:&error];
+    XCTAssertNotNil(key, @"Failed to create cap URN: %@", error);
+
+    NSArray<CSCapArg *> *args = @[];
+    CSCap *cap = [CSCap capWithUrn:key
+                             title:@"Extract Metadata"
+                           command:@"extract-metadata"
+                       description:nil
+                          metadata:@{}
+                        mediaSpecs:@[]
+                         args:args
+                            output:nil
+                      metadataJSON:nil];
+
+    CSCapManifest *manifest = [[[CSCapManifest manifestWithName:@"TestComponent"
+                                                                       version:@"0.1.0"
+                                                                   description:@"A test component for validation"
+                                                                  caps:@[cap]]
+                                       withAuthor:@"Test Author"]
+                                       withPageUrl:@"https://github.com/example/test"];
+
+    XCTAssertEqualObjects(manifest.author, @"Test Author");
+    XCTAssertEqualObjects(manifest.pageUrl, @"https://github.com/example/test");
+}
+
 - (void)testCapManifestDictionaryDeserialization {
     NSString *stdinMediaType = @"media:pdf;bytes";
     NSDictionary *manifestDict = @{
@@ -476,6 +503,7 @@
         @"version": @"0.1.0",
         @"description": @"A test component for validation",
         @"author": @"Test Author",
+        @"page_url": @"https://github.com/example/test",
         @"caps": @[
             @{
                 @"urn": @"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata",
@@ -505,6 +533,7 @@
     XCTAssertEqualObjects(manifest.version, @"0.1.0");
     XCTAssertEqualObjects(manifest.manifestDescription, @"A test component for validation");
     XCTAssertEqualObjects(manifest.author, @"Test Author");
+    XCTAssertEqualObjects(manifest.pageUrl, @"https://github.com/example/test");
     XCTAssertEqual(manifest.caps.count, 1);
 
     CSCap *cap = manifest.caps.firstObject;
