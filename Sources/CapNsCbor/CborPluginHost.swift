@@ -117,6 +117,7 @@ private struct PendingRequest: @unchecked Sendable {
     let continuation: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation
 }
 
+
 /// Host-side runtime for communicating with a plugin process.
 ///
 /// **This is the ONLY way for the host to communicate with plugins.**
@@ -156,6 +157,11 @@ public final class CborPluginHost: @unchecked Sendable {
 
     /// Background reader thread
     private var readerThread: Thread?
+
+    /// Pending plugin cap requests awaiting responses, keyed by request ID (CborMessageId).
+    /// When a cap_response message arrives via handleCapResponse, it's routed to the correct request.
+    private var pendingPluginCapRequests: [CborMessageId: AsyncStream<Result<Data, Error>>.Continuation] = [:]
+    private let pendingPluginCapRequestsLock = NSLock()
 
     // MARK: - Initialization
 
@@ -287,6 +293,12 @@ public final class CborPluginHost: @unchecked Sendable {
                 continue
             }
 
+            // Handle plugin-initiated REQ frames (plugin invoking host caps)
+            if frame.frameType == .req {
+                self.handlePluginRequest(frame)
+                continue
+            }
+
             // Route frame to the appropriate pending request
             let requestId = frame.id
             pendingLock.lock()
@@ -349,10 +361,16 @@ public final class CborPluginHost: @unchecked Sendable {
                 request.continuation.yield(.failure(.pluginError(code: code, message: message)))
                 shouldRemove = true
 
-            case .hello, .req, .heartbeat:
+            case .hello, .heartbeat:
                 // Protocol errors - Heartbeat is handled above, these should not happen
                 request.continuation.yield(.failure(.unexpectedFrameType(frame.frameType)))
                 shouldRemove = true
+
+            case .req:
+                // Plugin is invoking a cap on the host - this should be handled at top level,
+                // not routed to a pending request. If we get here, it's a bug.
+                fputs("[CborPluginHost] BUG: REQ frame routed to pending request handler\n", stderr)
+                shouldRemove = false
             }
 
             // Remove completed request - extract continuation while holding lock,
@@ -386,6 +404,159 @@ public final class CborPluginHost: @unchecked Sendable {
             request.continuation.yield(.failure(error))
             request.continuation.finish()
         }
+    }
+
+    /// Thread-safe write of a frame. This is nonisolated to allow calling from async contexts.
+    private func writeFrameLocked(_ frame: CborFrame) {
+        writerLock.lock()
+        try? frameWriter.write(frame)
+        writerLock.unlock()
+    }
+
+    /// Handle a plugin-initiated REQ frame (plugin invoking a cap on the host).
+    ///
+    /// This encodes the request as a special NDJSON message and yields it to ALL pending
+    /// host requests' streams. The PluginStreamingSession's readNextMessage will receive
+    /// it and forward it to fgnd via PluginGRPCBridge. The response comes back via
+    /// handleCapResponse, which sends CHUNK/END/ERR frames back to the plugin.
+    private func handlePluginRequest(_ frame: CborFrame) {
+        let pluginRequestId = frame.id
+
+        // Extract cap URN from the frame
+        guard let capUrn = frame.cap else {
+            // Missing cap URN - send error back to plugin
+            let errFrame = CborFrame.err(id: pluginRequestId, code: "INVALID_REQUEST", message: "Missing cap URN")
+            writeFrameLocked(errFrame)
+            return
+        }
+
+        let payload = frame.payload ?? Data()
+
+        // Generate a string request ID for correlation with cap_response
+        let requestIdString: String
+        if let uuidString = pluginRequestId.uuidString {
+            requestIdString = uuidString
+        } else if case .uint(let n) = pluginRequestId {
+            requestIdString = String(n)
+        } else {
+            requestIdString = UUID().uuidString
+        }
+
+        // Create the cap_request message as NDJSON
+        let capRequestMessage: [String: Any] = [
+            "type": "cap_request",
+            "request_id": requestIdString,
+            "cap": capUrn,
+            "payload": payload.base64EncodedString()
+        ]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: capRequestMessage),
+              var jsonString = String(data: jsonData, encoding: .utf8) else {
+            let errFrame = CborFrame.err(id: pluginRequestId, code: "ENCODING_ERROR", message: "Failed to encode cap request")
+            writeFrameLocked(errFrame)
+            return
+        }
+
+        // Add newline for NDJSON format
+        jsonString += "\n"
+        let messageData = Data(jsonString.utf8)
+
+        // Create a continuation to receive the response from the host
+        let (responseStream, continuation) = AsyncStream<Result<Data, Error>>.makeStream()
+
+        // Register the pending plugin cap request
+        pendingPluginCapRequestsLock.lock()
+        pendingPluginCapRequests[pluginRequestId] = continuation
+        pendingPluginCapRequestsLock.unlock()
+
+        // Yield the cap_request message to ALL pending host requests' streams.
+        // This way, readNextMessage will see it and can forward it to fgnd.
+        // Create a special chunk that contains the cap_request NDJSON.
+        let capRequestChunk = CborResponseChunk(
+            payload: messageData,
+            seq: 0,
+            offset: nil,
+            len: nil,
+            isEof: false  // Not EOF - this is an intermediate message
+        )
+
+        pendingLock.lock()
+        let allPending = pending
+        pendingLock.unlock()
+
+        for (_, request) in allPending {
+            request.continuation.yield(.success(capRequestChunk))
+        }
+
+        // Handle the response asynchronously and stream it back to the plugin
+        Task { [weak self, pluginRequestId] in
+            guard let self = self else { return }
+
+            var seq: UInt64 = 0
+            for await result in responseStream {
+                switch result {
+                case .success(let data):
+                    // Send CHUNK frame with the response data back to the plugin
+                    let chunk = CborFrame.chunk(id: pluginRequestId, seq: seq, payload: data)
+                    self.writeFrameLocked(chunk)
+                    seq += 1
+
+                case .failure(let error):
+                    // Send ERR frame to the plugin and stop
+                    let errFrame = CborFrame.err(
+                        id: pluginRequestId,
+                        code: "CAP_INVOCATION_ERROR",
+                        message: error.localizedDescription
+                    )
+                    self.writeFrameLocked(errFrame)
+                    return
+                }
+            }
+
+            // Stream completed - send END frame to the plugin
+            let endFrame = CborFrame.end(id: pluginRequestId, finalPayload: nil)
+            self.writeFrameLocked(endFrame)
+        }
+    }
+
+    /// Handle a cap response message from the host.
+    /// Called when fgnd responds to a plugin-initiated cap request.
+    /// Routes the response to the pending plugin request's continuation,
+    /// which then sends CHUNK/END/ERR frames back to the plugin.
+    public func handleCapResponse(requestIdString: String, payload: Data?, error: Error?) {
+        // Find the matching plugin request by iterating over pending requests
+        // and matching the string representation of the request ID
+        pendingPluginCapRequestsLock.lock()
+        var matchingKey: CborMessageId? = nil
+        for (key, _) in pendingPluginCapRequests {
+            let keyString: String
+            if let uuidString = key.uuidString {
+                keyString = uuidString
+            } else if case .uint(let n) = key {
+                keyString = String(n)
+            } else {
+                continue
+            }
+            if keyString == requestIdString {
+                matchingKey = key
+                break
+            }
+        }
+
+        guard let key = matchingKey,
+              let continuation = pendingPluginCapRequests.removeValue(forKey: key) else {
+            pendingPluginCapRequestsLock.unlock()
+            fputs("[CborPluginHost] Received cap_response for unknown request: \(requestIdString)\n", stderr)
+            return
+        }
+        pendingPluginCapRequestsLock.unlock()
+
+        if let error = error {
+            continuation.yield(.failure(error))
+        } else if let payload = payload {
+            continuation.yield(.success(payload))
+        }
+        continuation.finish()
     }
 
     // MARK: - Public API
@@ -550,6 +721,7 @@ public final class CborPluginHost: @unchecked Sendable {
         defer { pendingLock.unlock() }
         return closed
     }
+
 
     /// Close the plugin host.
     ///
