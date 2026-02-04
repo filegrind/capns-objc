@@ -145,6 +145,10 @@ public final class CborPluginHost: @unchecked Sendable {
     private var pending: [CborMessageId: PendingRequest] = [:]
     private let pendingLock = NSLock()
 
+    /// Pending heartbeat IDs we've sent (to avoid responding to our own heartbeat responses)
+    private var pendingHeartbeats: Set<CborMessageId> = []
+    private let heartbeatLock = NSLock()
+
     /// Background reader thread
     private var readerThread: Thread?
 
@@ -246,8 +250,19 @@ public final class CborPluginHost: @unchecked Sendable {
                 break
             }
 
-            // Handle heartbeats transparently - respond immediately before ID check
+            // Handle heartbeats transparently - before ID check
             if frame.frameType == .heartbeat {
+                // Check if this is a response to a heartbeat we sent
+                heartbeatLock.lock()
+                let isOurHeartbeat = pendingHeartbeats.remove(frame.id) != nil
+                heartbeatLock.unlock()
+
+                if isOurHeartbeat {
+                    // This is a response to our heartbeat - don't respond
+                    continue
+                }
+
+                // This is a heartbeat request from the plugin - respond
                 let response = CborFrame.heartbeat(id: frame.id)
                 writerLock.lock()
                 do {
@@ -328,13 +343,17 @@ public final class CborPluginHost: @unchecked Sendable {
                 shouldRemove = true
             }
 
-            // Remove completed request
+            // Remove completed request - extract continuation while holding lock,
+            // then finish OUTSIDE the lock to avoid deadlock with onTermination handler
             if shouldRemove {
+                var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
                 pendingLock.lock()
                 if let removed = pending.removeValue(forKey: requestId) {
-                    removed.continuation.finish()
+                    continuationToFinish = removed.continuation
                 }
                 pendingLock.unlock()
+
+                continuationToFinish?.finish()
             }
         }
 
@@ -410,12 +429,15 @@ public final class CborPluginHost: @unchecked Sendable {
             try frameWriter.write(frame)
         } catch {
             writerLock.unlock()
-            // Remove pending request on send failure
+            // Remove pending request on send failure - extract continuation while holding lock,
+            // then finish OUTSIDE the lock to avoid deadlock with onTermination handler
+            var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
             pendingLock.lock()
             if let removed = pending.removeValue(forKey: requestId) {
-                removed.continuation.finish()
+                continuationToFinish = removed.continuation
             }
             pendingLock.unlock()
+            continuationToFinish?.finish()
             throw CborPluginHostError.sendFailed("\(error)")
         }
         writerLock.unlock()
@@ -479,11 +501,20 @@ public final class CborPluginHost: @unchecked Sendable {
         let heartbeatId = CborMessageId.newUUID()
         let frame = CborFrame.heartbeat(id: heartbeatId)
 
+        // Track this heartbeat so we don't respond to the response
+        heartbeatLock.lock()
+        pendingHeartbeats.insert(heartbeatId)
+        heartbeatLock.unlock()
+
         writerLock.lock()
         do {
             try frameWriter.write(frame)
         } catch {
             writerLock.unlock()
+            // Remove from tracking on failure
+            heartbeatLock.lock()
+            pendingHeartbeats.remove(heartbeatId)
+            heartbeatLock.unlock()
             throw CborPluginHostError.sendFailed("\(error)")
         }
         writerLock.unlock()
