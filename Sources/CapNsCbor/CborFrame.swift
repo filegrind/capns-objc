@@ -29,6 +29,8 @@ public enum CborFrameType: UInt8, Sendable {
     case log = 5
     /// Error message
     case err = 6
+    /// Health monitoring ping/pong - either side can send, receiver must respond with same ID
+    case heartbeat = 7
 }
 
 /// Message ID - either a 16-byte UUID or a simple integer
@@ -205,6 +207,12 @@ public struct CborFrame: @unchecked Sendable {
             "message": .utf8String(message)
         ]
         return frame
+    }
+
+    /// Create a HEARTBEAT frame for health monitoring.
+    /// Either side can send; receiver must respond with HEARTBEAT using the same ID.
+    public static func heartbeat(id: CborMessageId) -> CborFrame {
+        return CborFrame(frameType: .heartbeat, id: id)
     }
 
     // MARK: - Accessors

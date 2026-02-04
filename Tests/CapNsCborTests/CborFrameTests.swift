@@ -13,6 +13,7 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(CborFrameType.end.rawValue, 4)
         XCTAssertEqual(CborFrameType.log.rawValue, 5)
         XCTAssertEqual(CborFrameType.err.rawValue, 6)
+        XCTAssertEqual(CborFrameType.heartbeat.rawValue, 7)
     }
 
     // MARK: - Message ID Tests
@@ -115,6 +116,25 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(frame.frameType, .err)
         XCTAssertEqual(frame.errorCode, "NOT_FOUND")
         XCTAssertEqual(frame.errorMessage, "Cap not found")
+    }
+
+    func testHeartbeatFrame() {
+        let id = CborMessageId.newUUID()
+        let frame = CborFrame.heartbeat(id: id)
+        XCTAssertEqual(frame.frameType, .heartbeat)
+        XCTAssertEqual(frame.id, id)
+        XCTAssertNil(frame.payload)
+        XCTAssertNil(frame.meta)
+    }
+
+    func testHeartbeatFrameRoundtrip() throws {
+        let id = CborMessageId.newUUID()
+        let original = CborFrame.heartbeat(id: id)
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .heartbeat)
+        XCTAssertEqual(decoded.id, original.id)
     }
 
     // MARK: - Encode/Decode Tests
