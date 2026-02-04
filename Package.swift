@@ -1,5 +1,5 @@
 // swift-tools-version: 6.0
-// version: 0.90.34523
+// version: 0.90.34524
 import PackageDescription
 
 let package = Package(
@@ -12,9 +12,13 @@ let package = Package(
         .library(
             name: "CapNs",
             targets: ["CapNs"]),
+        .library(
+            name: "CapNsCbor",
+            targets: ["CapNsCbor"]),
     ],
     dependencies: [
         .package(path: "../tagged-urn-objc"),
+        .package(url: "https://github.com/unrelentingtech/SwiftCBOR.git", from: "0.4.7"),
     ],
     targets: [
         .target(
@@ -29,8 +33,19 @@ let package = Package(
                 .linkedFramework("Security")
             ]
         ),
+        .target(
+            name: "CapNsCbor",
+            dependencies: [
+                "CapNs",
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+            ],
+            path: "Sources/CapNsCbor"
+        ),
         .testTarget(
             name: "CapNsTests",
             dependencies: ["CapNs"]),
+        .testTarget(
+            name: "CapNsCborTests",
+            dependencies: ["CapNsCbor"]),
     ]
 )
