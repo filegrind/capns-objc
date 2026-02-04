@@ -200,7 +200,8 @@ public func writeFrame(_ frame: CborFrame, to handle: FileHandle, limits: CborLi
 
     try handle.write(contentsOf: lengthBytes)
     try handle.write(contentsOf: data)
-    try handle.synchronize()
+    // Note: No synchronize() - it fails on pipes and isn't needed
+    // Pipe writes are immediately available to the reader
 }
 
 /// Read a length-prefixed CBOR frame
