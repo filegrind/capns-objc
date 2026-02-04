@@ -2,150 +2,184 @@
 //  CborPluginHost.swift
 //  CapNsCbor
 //
-//  Host-side runtime for communicating with CBOR-based plugins.
+//  Host-side runtime for communicating with plugin processes.
 //
-//  This is the ONLY supported way to communicate with plugins.
-//  The host (e.g., XPC service) uses this runtime to:
-//  1. Spawn and manage plugin processes
-//  2. Perform HELLO handshake
-//  3. Send REQ frames and receive responses
-//  4. Handle HEARTBEAT for health monitoring
-//  5. Process streaming CHUNK responses
+//  The CborPluginHost is the host-side runtime that manages all communication with
+//  a running plugin process. It handles:
+//
+//  - HELLO handshake and limit negotiation
+//  - Sending cap requests
+//  - Receiving and routing responses
+//  - Heartbeat handling (transparent)
+//  - Multiplexed concurrent requests (transparent)
+//
+//  **This is the ONLY way for the host to communicate with plugins.**
+//  No fallbacks, no alternative protocols.
 //
 //  Usage:
+//
+//  The host creates a CborPluginHost, then calls `request()` to invoke caps.
+//  Responses arrive via an AsyncStream - the caller just iterates over chunks.
+//  Multiple requests can be in flight simultaneously; the runtime handles
+//  all correlation and routing.
+//
 //  ```swift
 //  let host = try CborPluginHost(
 //      stdinHandle: pluginStdin,
-//      stdoutHandle: pluginStdout,
-//      onChunk: { requestId, payload in ... },
-//      onLog: { requestId, level, message in ... }
+//      stdoutHandle: pluginStdout
 //  )
-//  try host.performHandshake()
-//  let requestId = try host.sendRequest(capUrn: "cap:op=test", payload: requestData)
-//  // Responses arrive via callbacks
+//
+//  // Send request - returns AsyncStream for responses
+//  let stream = try host.request(capUrn: "cap:op=test", payload: requestData)
+//
+//  // Iterate over response chunks
+//  for await result in stream {
+//      switch result {
+//      case .success(let chunk):
+//          print("Got chunk: \(chunk.payload.count) bytes")
+//      case .failure(let error):
+//          print("Error: \(error)")
+//      }
+//  }
 //  ```
 
 import Foundation
 @preconcurrency import SwiftCBOR
 
-/// Errors specific to PluginHost operations
-public enum CborPluginHostError: Error, LocalizedError, @unchecked Sendable {
-    case notConnected
-    case handshakeNotComplete
+/// Errors that can occur in the plugin host
+public enum CborPluginHostError: Error, LocalizedError, Sendable {
     case handshakeFailed(String)
     case sendFailed(String)
     case receiveFailed(String)
     case pluginError(code: String, message: String)
     case unexpectedFrameType(CborFrameType)
-    case protocolError(String)
-    case timeout
-    case processExited(code: Int32?)
+    case processExited
+    case closed
 
     public var errorDescription: String? {
         switch self {
-        case .notConnected: return "Plugin not connected"
-        case .handshakeNotComplete: return "Handshake not complete"
         case .handshakeFailed(let msg): return "Handshake failed: \(msg)"
         case .sendFailed(let msg): return "Send failed: \(msg)"
         case .receiveFailed(let msg): return "Receive failed: \(msg)"
         case .pluginError(let code, let message): return "Plugin error [\(code)]: \(message)"
         case .unexpectedFrameType(let t): return "Unexpected frame type: \(t)"
-        case .protocolError(let msg): return "Protocol error: \(msg)"
-        case .timeout: return "Operation timed out"
-        case .processExited(let code): return "Plugin process exited with code: \(code?.description ?? "unknown")"
+        case .processExited: return "Plugin process exited unexpectedly"
+        case .closed: return "Host is closed"
         }
     }
 }
 
-/// Response from a plugin request
+/// A response chunk from a plugin
+public struct CborResponseChunk: Sendable {
+    /// The chunk payload data
+    public let payload: Data
+    /// Sequence number within the stream
+    public let seq: UInt64
+    /// Byte offset (for binary transfers)
+    public let offset: UInt64?
+    /// Total length (set on first chunk for binary transfers)
+    public let len: UInt64?
+    /// Whether this is the final chunk
+    public let isEof: Bool
+}
+
+/// Response from a plugin request (for convenience call() method)
 public enum CborPluginResponse: Sendable {
     /// Single complete response
     case single(Data)
-    /// Stream ended with optional final payload
-    case streamEnd(Data?)
-    /// Error response from plugin
-    case error(code: String, message: String)
+    /// Streaming response with collected chunks
+    case streaming([CborResponseChunk])
+
+    /// Get final payload (last chunk's payload for streaming)
+    public var finalPayload: Data? {
+        switch self {
+        case .single(let data): return data
+        case .streaming(let chunks): return chunks.last?.payload
+        }
+    }
+
+    /// Concatenate all payloads
+    public func concatenated() -> Data {
+        switch self {
+        case .single(let data): return data
+        case .streaming(let chunks):
+            var result = Data()
+            for chunk in chunks {
+                result.append(chunk.payload)
+            }
+            return result
+        }
+    }
 }
 
-/// Delegate protocol for receiving plugin events
-@available(macOS 10.15.4, iOS 13.4, *)
-public protocol CborPluginHostDelegate: AnyObject, Sendable {
-    /// Called when a CHUNK frame is received for a request
-    func pluginHost(_ host: CborPluginHost, didReceiveChunk payload: Data, forRequest requestId: CborMessageId, seq: UInt64)
-
-    /// Called when a LOG frame is received
-    func pluginHost(_ host: CborPluginHost, didReceiveLog level: String, message: String, forRequest requestId: CborMessageId)
-
-    /// Called when a request completes (RES or END frame)
-    func pluginHost(_ host: CborPluginHost, didCompleteRequest requestId: CborMessageId, response: CborPluginResponse)
-
-    /// Called when the plugin sends a REQ (cap invocation from plugin)
-    func pluginHost(_ host: CborPluginHost, didReceiveCapRequest requestId: CborMessageId, capUrn: String, payload: Data)
+/// Internal state for pending requests
+private struct PendingRequest: @unchecked Sendable {
+    let continuation: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation
 }
 
-/// Host-side runtime for CBOR plugin communication.
+/// Host-side runtime for communicating with a plugin process.
 ///
-/// This class manages the complete communication lifecycle with a plugin process:
-/// - Performs HELLO handshake to negotiate limits
-/// - Sends REQ frames for cap invocations
-/// - Processes responses (RES, CHUNK, END, ERR frames)
-/// - Handles HEARTBEAT for health monitoring
-/// - Supports multiplexed concurrent requests
+/// **This is the ONLY way for the host to communicate with plugins.**
 ///
-/// **This is the ONLY supported way for the host to communicate with plugins.**
-/// There are no fallbacks, no alternative protocols. CBOR over stdin/stdout pipes.
+/// The runtime handles:
+/// - Multiplexed concurrent requests (transparent)
+/// - Heartbeat handling (transparent)
+/// - Request/response correlation (transparent)
+///
+/// Callers simply send requests and receive responses via AsyncStreams.
 @available(macOS 10.15.4, iOS 13.4, *)
 public final class CborPluginHost: @unchecked Sendable {
 
     // MARK: - Properties
 
-    private let stdinHandle: FileHandle   // Write to plugin's stdin
-    private let stdoutHandle: FileHandle  // Read from plugin's stdout
+    private let stdinHandle: FileHandle
+    private let stdoutHandle: FileHandle
 
-    private var frameReader: CborFrameReader
     private var frameWriter: CborFrameWriter
-    private var chunkAssembler: CborChunkAssembler
+    private let writerLock = NSLock()
 
     private var limits: CborLimits
-    private var handshakeComplete = false
+    private var closed = false
 
-    private let lock = NSLock()
+    /// Pending requests waiting for responses
+    private var pending: [CborMessageId: PendingRequest] = [:]
+    private let pendingLock = NSLock()
 
-    /// Delegate for receiving async events
-    public weak var delegate: CborPluginHostDelegate?
-
-    /// Active request tracking for multiplexing
-    private var activeRequests: Set<CborMessageId> = []
+    /// Background reader thread
+    private var readerThread: Thread?
 
     // MARK: - Initialization
 
-    /// Create a new plugin host with the given I/O handles.
+    /// Create a new plugin host and perform handshake.
+    ///
+    /// This sends a HELLO frame, waits for the plugin's HELLO,
+    /// negotiates protocol limits, then starts the background reader.
     ///
     /// - Parameters:
     ///   - stdinHandle: FileHandle to write to the plugin's stdin
     ///   - stdoutHandle: FileHandle to read from the plugin's stdout
-    public init(stdinHandle: FileHandle, stdoutHandle: FileHandle) {
+    /// - Throws: CborPluginHostError if handshake fails
+    public init(stdinHandle: FileHandle, stdoutHandle: FileHandle) throws {
         self.stdinHandle = stdinHandle
         self.stdoutHandle = stdoutHandle
         self.limits = CborLimits()
-        self.frameReader = CborFrameReader(handle: stdoutHandle, limits: limits)
         self.frameWriter = CborFrameWriter(handle: stdinHandle, limits: limits)
-        self.chunkAssembler = CborChunkAssembler(limits: limits)
+
+        // Perform handshake synchronously before starting reader
+        try performHandshake()
+
+        // Start background reader thread
+        startReaderLoop()
+    }
+
+    deinit {
+        close()
     }
 
     // MARK: - Handshake
 
-    /// Perform HELLO handshake with the plugin.
-    ///
-    /// This MUST be called before any other communication.
-    /// Sends our HELLO, receives plugin's HELLO, negotiates limits.
-    ///
-    /// - Throws: CborPluginHostError if handshake fails
-    public func performHandshake() throws {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard !handshakeComplete else { return }
+    private func performHandshake() throws {
+        let frameReader = CborFrameReader(handle: stdoutHandle, limits: limits)
 
         // Send our HELLO
         let ourHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
@@ -180,424 +214,311 @@ public final class CborPluginHost: @unchecked Sendable {
         )
 
         self.limits = negotiatedLimits
-        self.frameReader.setLimits(negotiatedLimits)
         self.frameWriter.setLimits(negotiatedLimits)
-        self.chunkAssembler = CborChunkAssembler(limits: negotiatedLimits)
-        self.handshakeComplete = true
     }
 
-    /// Check if handshake has been completed
-    public var isHandshakeComplete: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return handshakeComplete
+    // MARK: - Background Reader
+
+    private func startReaderLoop() {
+        let thread = Thread { [weak self] in
+            self?.readerLoop()
+        }
+        thread.name = "CborPluginHost.readerLoop"
+        self.readerThread = thread
+        thread.start()
     }
 
-    /// Get the negotiated limits
-    public var negotiatedLimits: CborLimits {
-        lock.lock()
-        defer { lock.unlock() }
-        return limits
-    }
-
-    // MARK: - Sending Requests
-
-    /// Send a request to invoke a cap on the plugin.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke
-    ///   - payload: Request payload (typically JSON)
-    ///   - contentType: Content type of payload (default: "application/json")
-    /// - Returns: The message ID for this request (use to correlate responses)
-    /// - Throws: CborPluginHostError if send fails
-    @discardableResult
-    public func sendRequest(capUrn: String, payload: Data, contentType: String = "application/json") throws -> CborMessageId {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard handshakeComplete else {
-            throw CborPluginHostError.handshakeNotComplete
-        }
-
-        let requestId = CborMessageId.newUUID()
-        let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: payload, contentType: contentType)
-
-        do {
-            try frameWriter.write(frame)
-            activeRequests.insert(requestId)
-        } catch {
-            throw CborPluginHostError.sendFailed("\(error)")
-        }
-
-        return requestId
-    }
-
-    /// Send a heartbeat to the plugin.
-    ///
-    /// - Returns: The message ID for this heartbeat
-    /// - Throws: CborPluginHostError if send fails
-    @discardableResult
-    public func sendHeartbeat() throws -> CborMessageId {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard handshakeComplete else {
-            throw CborPluginHostError.handshakeNotComplete
-        }
-
-        let heartbeatId = CborMessageId.newUUID()
-        let frame = CborFrame.heartbeat(id: heartbeatId)
-
-        do {
-            try frameWriter.write(frame)
-        } catch {
-            throw CborPluginHostError.sendFailed("\(error)")
-        }
-
-        return heartbeatId
-    }
-
-    /// Respond to a cap invocation from the plugin.
-    ///
-    /// When a plugin sends a REQ to the host (for cap invocation),
-    /// use this to send the response back.
-    ///
-    /// - Parameters:
-    ///   - requestId: The request ID from the plugin's REQ
-    ///   - payload: Response payload
-    ///   - contentType: Content type of payload
-    public func respondToPluginRequest(requestId: CborMessageId, payload: Data, contentType: String = "application/json") throws {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard handshakeComplete else {
-            throw CborPluginHostError.handshakeNotComplete
-        }
-
-        let frame = CborFrame.res(id: requestId, payload: payload, contentType: contentType)
-
-        do {
-            try frameWriter.write(frame)
-        } catch {
-            throw CborPluginHostError.sendFailed("\(error)")
-        }
-    }
-
-    /// Send an error response to a plugin's cap invocation request.
-    public func respondToPluginRequestWithError(requestId: CborMessageId, code: String, message: String) throws {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard handshakeComplete else {
-            throw CborPluginHostError.handshakeNotComplete
-        }
-
-        let frame = CborFrame.err(id: requestId, code: code, message: message)
-
-        do {
-            try frameWriter.write(frame)
-        } catch {
-            throw CborPluginHostError.sendFailed("\(error)")
-        }
-    }
-
-    // MARK: - Receiving Responses
-
-    /// Read and process the next frame from the plugin.
-    ///
-    /// This is the main receive loop method. Call this repeatedly to process
-    /// incoming frames. Frames are dispatched to the delegate.
-    ///
-    /// - Returns: true if a frame was processed, false if no frame available
-    /// - Throws: CborPluginHostError on protocol errors
-    public func processNextFrame() throws -> Bool {
-        lock.lock()
-        guard handshakeComplete else {
-            lock.unlock()
-            throw CborPluginHostError.handshakeNotComplete
-        }
-        lock.unlock()
-
-        // Read outside the lock to avoid blocking other operations
-        let frame: CborFrame
-        do {
-            guard let f = try frameReader.read() else {
-                return false
-            }
-            frame = f
-        } catch {
-            throw CborPluginHostError.receiveFailed("\(error)")
-        }
-
-        // Process the frame
-        try processFrame(frame)
-        return true
-    }
-
-    /// Process a single frame and dispatch to delegate
-    private func processFrame(_ frame: CborFrame) throws {
-        switch frame.frameType {
-        case .chunk:
-            // Streaming chunk - may need assembly for large payloads
-            if let totalLen = frame.len, Int(totalLen) > limits.maxChunk {
-                // Multi-chunk stream - use assembler
-                if let assembled = try chunkAssembler.processChunk(frame) {
-                    delegate?.pluginHost(self, didCompleteRequest: frame.id, response: .single(assembled))
-                    lock.lock()
-                    activeRequests.remove(frame.id)
-                    lock.unlock()
-                }
-                // Not complete yet, will get more chunks
-            } else {
-                // Single chunk - deliver directly
-                let payload = frame.payload ?? Data()
-                delegate?.pluginHost(self, didReceiveChunk: payload, forRequest: frame.id, seq: frame.seq)
-
-                if frame.isEof {
-                    delegate?.pluginHost(self, didCompleteRequest: frame.id, response: .streamEnd(payload))
-                    lock.lock()
-                    activeRequests.remove(frame.id)
-                    lock.unlock()
-                }
-            }
-
-        case .res:
-            // Single complete response
-            let payload = frame.payload ?? Data()
-            delegate?.pluginHost(self, didCompleteRequest: frame.id, response: .single(payload))
-            lock.lock()
-            activeRequests.remove(frame.id)
-            lock.unlock()
-
-        case .end:
-            // Stream complete
-            delegate?.pluginHost(self, didCompleteRequest: frame.id, response: .streamEnd(frame.payload))
-            lock.lock()
-            activeRequests.remove(frame.id)
-            lock.unlock()
-
-        case .log:
-            // Log message from plugin
-            let level = frame.logLevel ?? "info"
-            let message = frame.logMessage ?? ""
-            delegate?.pluginHost(self, didReceiveLog: level, message: message, forRequest: frame.id)
-
-        case .err:
-            // Error response from plugin
-            let code = frame.errorCode ?? "UNKNOWN"
-            let message = frame.errorMessage ?? "Unknown error"
-            delegate?.pluginHost(self, didCompleteRequest: frame.id, response: .error(code: code, message: message))
-            lock.lock()
-            activeRequests.remove(frame.id)
-            lock.unlock()
-
-        case .heartbeat:
-            // Plugin sent us a heartbeat - respond immediately
-            lock.lock()
-            do {
-                let response = CborFrame.heartbeat(id: frame.id)
-                try frameWriter.write(response)
-            } catch {
-                lock.unlock()
-                throw CborPluginHostError.sendFailed("Failed to respond to heartbeat: \(error)")
-            }
-            lock.unlock()
-
-        case .req:
-            // Plugin is requesting a cap from us (cap invocation)
-            let capUrn = frame.cap ?? ""
-            let payload = frame.payload ?? Data()
-            delegate?.pluginHost(self, didReceiveCapRequest: frame.id, capUrn: capUrn, payload: payload)
-
-        case .hello:
-            // Unexpected HELLO after handshake
-            throw CborPluginHostError.protocolError("Unexpected HELLO after handshake")
-        }
-    }
-
-    // MARK: - Synchronous Request (Blocking)
-
-    /// Send a request and wait for the complete response.
-    ///
-    /// This is a blocking call that waits for the response.
-    /// For streaming responses, all chunks are collected.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke
-    ///   - payload: Request payload
-    ///   - timeoutSeconds: Maximum time to wait (0 = no timeout)
-    /// - Returns: The response data
-    /// - Throws: CborPluginHostError on failure
-    public func call(capUrn: String, payload: Data, timeoutSeconds: TimeInterval = 0) throws -> Data {
-        let requestId = try sendRequest(capUrn: capUrn, payload: payload)
-
-        let startTime = Date()
-        var chunks: [Data] = []
+    private func readerLoop() {
+        let frameReader = CborFrameReader(handle: stdoutHandle, limits: limits)
 
         while true {
-            // Check timeout
-            if timeoutSeconds > 0 && Date().timeIntervalSince(startTime) > timeoutSeconds {
-                throw CborPluginHostError.timeout
-            }
-
-            // Read next frame
             let frame: CborFrame
             do {
                 guard let f = try frameReader.read() else {
-                    throw CborPluginHostError.processExited(code: nil)
+                    // EOF - plugin closed
+                    notifyAllPending(error: .processExited)
+                    break
                 }
                 frame = f
-            } catch let error as CborError {
-                throw CborPluginHostError.receiveFailed("\(error)")
+            } catch {
+                // Read error - notify all pending requests
+                notifyAllPending(error: .receiveFailed("\(error)"))
+                break
             }
 
-            // Only process frames for our request
-            guard frame.id == requestId else {
-                // Could be heartbeat or other concurrent request
-                if frame.frameType == .heartbeat {
-                    // Respond to heartbeat
-                    lock.lock()
-                    do {
-                        let response = CborFrame.heartbeat(id: frame.id)
-                        try frameWriter.write(response)
-                    } catch {
-                        lock.unlock()
-                        throw CborPluginHostError.sendFailed("Failed to respond to heartbeat: \(error)")
-                    }
-                    lock.unlock()
+            // Handle heartbeats transparently - respond immediately before ID check
+            if frame.frameType == .heartbeat {
+                let response = CborFrame.heartbeat(id: frame.id)
+                writerLock.lock()
+                do {
+                    try frameWriter.write(response)
+                } catch {
+                    // Log but continue - heartbeat response failure is not fatal
+                    fputs("[CborPluginHost] Failed to respond to heartbeat: \(error)\n", stderr)
                 }
+                writerLock.unlock()
                 continue
             }
+
+            // Route frame to the appropriate pending request
+            let requestId = frame.id
+            pendingLock.lock()
+            let pendingRequest = pending[requestId]
+            pendingLock.unlock()
+
+            guard let request = pendingRequest else {
+                // Frame for unknown request ID - drop it
+                continue
+            }
+
+            var shouldRemove = false
 
             switch frame.frameType {
             case .chunk:
-                let payload = frame.payload ?? Data()
-                chunks.append(payload)
-                if frame.isEof {
-                    return combineChunks(chunks)
-                }
+                let isEof = frame.isEof
+                let chunk = CborResponseChunk(
+                    payload: frame.payload ?? Data(),
+                    seq: frame.seq,
+                    offset: frame.offset,
+                    len: frame.len,
+                    isEof: isEof
+                )
+                request.continuation.yield(.success(chunk))
+                shouldRemove = isEof
 
             case .res:
-                return frame.payload ?? Data()
+                // Single complete response - send as final chunk
+                let chunk = CborResponseChunk(
+                    payload: frame.payload ?? Data(),
+                    seq: 0,
+                    offset: nil,
+                    len: nil,
+                    isEof: true
+                )
+                request.continuation.yield(.success(chunk))
+                shouldRemove = true
 
             case .end:
-                if let finalPayload = frame.payload {
-                    chunks.append(finalPayload)
+                // Stream end - send final payload if any
+                if let payload = frame.payload {
+                    let chunk = CborResponseChunk(
+                        payload: payload,
+                        seq: frame.seq,
+                        offset: frame.offset,
+                        len: frame.len,
+                        isEof: true
+                    )
+                    request.continuation.yield(.success(chunk))
                 }
-                return combineChunks(chunks)
+                shouldRemove = true
 
             case .log:
-                // Log messages during sync call - just continue
-                continue
+                // Log frames don't produce response chunks, skip
+                break
 
             case .err:
                 let code = frame.errorCode ?? "UNKNOWN"
                 let message = frame.errorMessage ?? "Unknown error"
-                throw CborPluginHostError.pluginError(code: code, message: message)
+                request.continuation.yield(.failure(.pluginError(code: code, message: message)))
+                shouldRemove = true
 
-            default:
-                throw CborPluginHostError.unexpectedFrameType(frame.frameType)
+            case .hello, .req, .heartbeat:
+                // Protocol errors - Heartbeat is handled above, these should not happen
+                request.continuation.yield(.failure(.unexpectedFrameType(frame.frameType)))
+                shouldRemove = true
+            }
+
+            // Remove completed request
+            if shouldRemove {
+                pendingLock.lock()
+                if let removed = pending.removeValue(forKey: requestId) {
+                    removed.continuation.finish()
+                }
+                pendingLock.unlock()
             }
         }
+
+        // Mark as closed
+        pendingLock.lock()
+        closed = true
+        pendingLock.unlock()
     }
 
-    private func combineChunks(_ chunks: [Data]) -> Data {
-        var result = Data()
-        for chunk in chunks {
-            result.append(chunk)
+    private func notifyAllPending(error: CborPluginHostError) {
+        pendingLock.lock()
+        closed = true
+        let allPending = pending
+        pending.removeAll()
+        pendingLock.unlock()
+
+        for (_, request) in allPending {
+            request.continuation.yield(.failure(error))
+            request.continuation.finish()
         }
-        return result
     }
 
-    // MARK: - Low-Level Frame Access
+    // MARK: - Public API
 
-    /// Read the next frame without processing.
+    /// Send a cap request and receive responses via an AsyncStream.
     ///
-    /// This is for callers who want to handle frame dispatch themselves
-    /// (e.g., XPC service that needs to convert frames to its own response format).
+    /// Returns an AsyncStream that yields response chunks. Iterate over it
+    /// to receive all chunks until completion.
     ///
-    /// - Returns: The next frame, or nil if no data available
-    /// - Throws: CborError on read failure
-    public func readNextFrame() throws -> CborFrame? {
-        lock.lock()
-        guard handshakeComplete else {
-            lock.unlock()
-            throw CborPluginHostError.handshakeNotComplete
+    /// Multiple requests can be sent concurrently - each gets its own
+    /// response stream. The runtime handles all multiplexing and
+    /// heartbeats transparently.
+    ///
+    /// - Parameters:
+    ///   - capUrn: The cap URN to invoke
+    ///   - payload: Request payload
+    ///   - contentType: Content type of payload (default: "application/json")
+    /// - Returns: AsyncStream of response chunks
+    /// - Throws: CborPluginHostError if host is closed or send fails
+    public func request(
+        capUrn: String,
+        payload: Data,
+        contentType: String = "application/json"
+    ) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
+        pendingLock.lock()
+        if closed {
+            pendingLock.unlock()
+            throw CborPluginHostError.closed
         }
-        lock.unlock()
+        pendingLock.unlock()
 
-        // Read outside the lock to avoid blocking
-        return try frameReader.read()
-    }
+        let requestId = CborMessageId.newUUID()
+        let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: payload, contentType: contentType)
 
-    /// Respond to a heartbeat frame from the plugin.
-    ///
-    /// Call this when you receive a heartbeat frame via `readNextFrame()`.
-    ///
-    /// - Parameter id: The message ID from the heartbeat frame
-    /// - Throws: CborPluginHostError on send failure
-    public func respondToHeartbeat(_ id: CborMessageId) throws {
-        lock.lock()
-        defer { lock.unlock() }
+        // Create stream before sending request
+        let stream = AsyncStream<Result<CborResponseChunk, CborPluginHostError>> { continuation in
+            // Register pending request
+            pendingLock.lock()
+            pending[requestId] = PendingRequest(continuation: continuation)
+            pendingLock.unlock()
 
-        guard handshakeComplete else {
-            throw CborPluginHostError.handshakeNotComplete
+            continuation.onTermination = { [weak self] _ in
+                // Clean up if stream is cancelled
+                self?.pendingLock.lock()
+                self?.pending.removeValue(forKey: requestId)
+                self?.pendingLock.unlock()
+            }
         }
 
-        let response = CborFrame.heartbeat(id: id)
+        // Send request
+        writerLock.lock()
         do {
-            try frameWriter.write(response)
+            try frameWriter.write(frame)
         } catch {
-            throw CborPluginHostError.sendFailed("Failed to respond to heartbeat: \(error)")
+            writerLock.unlock()
+            // Remove pending request on send failure
+            pendingLock.lock()
+            if let removed = pending.removeValue(forKey: requestId) {
+                removed.continuation.finish()
+            }
+            pendingLock.unlock()
+            throw CborPluginHostError.sendFailed("\(error)")
+        }
+        writerLock.unlock()
+
+        return stream
+    }
+
+    /// Send a cap request and wait for the complete response.
+    ///
+    /// This is a convenience method that collects all chunks.
+    /// For streaming responses, use `request()` directly.
+    ///
+    /// - Parameters:
+    ///   - capUrn: The cap URN to invoke
+    ///   - payload: Request payload
+    ///   - contentType: Content type of payload (default: "application/json")
+    /// - Returns: The complete response
+    /// - Throws: CborPluginHostError on failure
+    public func call(
+        capUrn: String,
+        payload: Data,
+        contentType: String = "application/json"
+    ) async throws -> CborPluginResponse {
+        let stream = try request(capUrn: capUrn, payload: payload, contentType: contentType)
+
+        var chunks: [CborResponseChunk] = []
+        for await result in stream {
+            switch result {
+            case .success(let chunk):
+                let isEof = chunk.isEof
+                chunks.append(chunk)
+                if isEof {
+                    break
+                }
+            case .failure(let error):
+                throw error
+            }
+        }
+
+        if chunks.count == 1 && chunks[0].seq == 0 {
+            return .single(chunks[0].payload)
+        } else {
+            return .streaming(chunks)
         }
     }
 
-    // MARK: - Cleanup
-
-    /// Check if there are any active requests
-    public var hasActiveRequests: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return !activeRequests.isEmpty
-    }
-
-    /// Get count of active requests
-    public var activeRequestCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return activeRequests.count
-    }
-
-    /// Cancel tracking for a request (does not notify plugin)
-    public func cancelRequest(_ requestId: CborMessageId) {
-        lock.lock()
-        activeRequests.remove(requestId)
-        chunkAssembler.cancelStream(id: requestId)
-        lock.unlock()
-    }
-
-    /// Clean up all state
-    public func cleanup() {
-        lock.lock()
-        activeRequests.removeAll()
-        chunkAssembler.cleanup()
-        lock.unlock()
-    }
-
-    /// Close the plugin host, closing the stdin handle.
+    /// Send a heartbeat to the plugin.
     ///
-    /// This signals EOF to the plugin, which should trigger graceful shutdown.
-    /// Does not close stdout - caller may want to drain remaining output.
+    /// Note: Heartbeat response is handled by reader loop transparently.
+    /// This method returns immediately after sending.
+    ///
+    /// - Throws: CborPluginHostError if host is closed or send fails
+    public func sendHeartbeat() throws {
+        pendingLock.lock()
+        if closed {
+            pendingLock.unlock()
+            throw CborPluginHostError.closed
+        }
+        pendingLock.unlock()
+
+        let heartbeatId = CborMessageId.newUUID()
+        let frame = CborFrame.heartbeat(id: heartbeatId)
+
+        writerLock.lock()
+        do {
+            try frameWriter.write(frame)
+        } catch {
+            writerLock.unlock()
+            throw CborPluginHostError.sendFailed("\(error)")
+        }
+        writerLock.unlock()
+    }
+
+    /// Get the negotiated protocol limits
+    public var negotiatedLimits: CborLimits {
+        return limits
+    }
+
+    /// Check if the host is closed
+    public var isClosed: Bool {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return closed
+    }
+
+    /// Close the plugin host.
+    ///
+    /// Signals EOF to the plugin by closing stdin, marks as closed,
+    /// and notifies all pending requests.
     public func close() {
-        lock.lock()
-        defer { lock.unlock() }
+        pendingLock.lock()
+        if closed {
+            pendingLock.unlock()
+            return
+        }
+        closed = true
+        pendingLock.unlock()
 
         // Close stdin to signal EOF to plugin
         try? stdinHandle.close()
 
-        // Clean up state
-        activeRequests.removeAll()
-        chunkAssembler.cleanup()
+        // Notify all pending requests
+        notifyAllPending(error: .closed)
     }
 }
 
@@ -605,16 +526,16 @@ public final class CborPluginHost: @unchecked Sendable {
 
 @available(macOS 10.15.4, iOS 13.4, *)
 public extension CborPluginHost {
-    /// Send a JSON-encodable request
-    func sendRequest<T: Encodable>(capUrn: String, request: T) throws -> CborMessageId {
+    /// Send a JSON-encodable request and receive raw response
+    func request<T: Encodable>(capUrn: String, request: T) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
         let data = try JSONEncoder().encode(request)
-        return try sendRequest(capUrn: capUrn, payload: data)
+        return try self.request(capUrn: capUrn, payload: data)
     }
 
     /// Call with JSON-encodable request and JSON-decodable response
-    func call<Req: Encodable, Res: Decodable>(capUrn: String, request: Req, timeoutSeconds: TimeInterval = 0) throws -> Res {
+    func call<Req: Encodable, Res: Decodable>(capUrn: String, request: Req) async throws -> Res {
         let requestData = try JSONEncoder().encode(request)
-        let responseData = try call(capUrn: capUrn, payload: requestData, timeoutSeconds: timeoutSeconds)
-        return try JSONDecoder().decode(Res.self, from: responseData)
+        let response = try await call(capUrn: capUrn, payload: requestData)
+        return try JSONDecoder().decode(Res.self, from: response.concatenated())
     }
 }

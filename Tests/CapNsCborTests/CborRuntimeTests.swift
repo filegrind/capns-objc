@@ -23,12 +23,6 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     func testHandshakeSuccess() async throws {
         let pipes = createPipePair()
 
-        // Create host
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
-
         // Simulate plugin sending HELLO response in background
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -40,7 +34,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
                 throw CborPluginHostError.receiveFailed("No HELLO from host")
             }
             guard hostHello.frameType == .hello else {
-                throw CborPluginHostError.protocolError("Expected HELLO, got \(hostHello.frameType)")
+                throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(hostHello.frameType)")
             }
 
             // Send plugin's HELLO
@@ -48,9 +42,12 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(pluginHello)
         }
 
-        // Perform handshake
-        try host.performHandshake()
-        XCTAssertTrue(host.isHandshakeComplete)
+        // Create host (this performs handshake)
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
+        XCTAssertFalse(host.isClosed)
 
         // Wait for plugin task to complete
         try await pluginTask.value
@@ -58,11 +55,6 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     func testHandshakeLimitsNegotiation() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -79,7 +71,10 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(pluginHello)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
         // Negotiated limits should be minimum of both
         XCTAssertEqual(host.negotiatedLimits.maxFrame, pluginMaxFrame)
@@ -90,11 +85,6 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     func testHandshakeFailsOnWrongFrameType() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -109,7 +99,10 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         }
 
         do {
-            try host.performHandshake()
+            _ = try CborPluginHost(
+                stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+                stdoutHandle: pipes.pluginToHost.fileHandleForReading
+            )
             XCTFail("Should have thrown handshake error")
         } catch let error as CborPluginHostError {
             if case .handshakeFailed(let msg) = error {
@@ -126,11 +119,6 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     func testSendRequestReceiveSingleResponse() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -149,10 +137,10 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
                 throw CborPluginHostError.receiveFailed("No request")
             }
             guard req.frameType == .req else {
-                throw CborPluginHostError.protocolError("Expected REQ, got \(req.frameType)")
+                throw CborPluginHostError.handshakeFailed("Expected REQ, got \(req.frameType)")
             }
             guard req.cap == "cap:op=test" else {
-                throw CborPluginHostError.protocolError("Wrong cap: \(req.cap ?? "nil")")
+                throw CborPluginHostError.handshakeFailed("Wrong cap: \(req.cap ?? "nil")")
             }
 
             // Send response
@@ -160,21 +148,19 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(res)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
-        let response = try host.call(capUrn: "cap:op=test", payload: "request".data(using: .utf8)!)
-        XCTAssertEqual(response, expectedResponse)
+        let response = try await host.call(capUrn: "cap:op=test", payload: "request".data(using: .utf8)!)
+        XCTAssertEqual(response.concatenated(), expectedResponse)
 
         try await pluginTask.value
     }
 
     func testSendRequestReceiveStreamingResponse() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -203,24 +189,22 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             }
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
-        let response = try host.call(capUrn: "cap:op=stream", payload: Data())
+        let response = try await host.call(capUrn: "cap:op=stream", payload: Data())
 
         // Response should be all chunks concatenated
         let expectedResponse = chunks.joined()
-        XCTAssertEqual(String(data: response, encoding: .utf8), expectedResponse)
+        XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), expectedResponse)
 
         try await pluginTask.value
     }
 
     func testSendRequestReceiveEndFrame() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -244,21 +228,19 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(end)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
-        let response = try host.call(capUrn: "cap:op=test", payload: Data())
-        XCTAssertEqual(response, finalPayload)
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        XCTAssertEqual(response.concatenated(), finalPayload)
 
         try await pluginTask.value
     }
 
     func testChunksWithLogFramesInterleaved() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -284,10 +266,13 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(lastChunk)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
-        let response = try host.call(capUrn: "cap:op=test", payload: Data())
-        XCTAssertEqual(String(data: response, encoding: .utf8), "AB")
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "AB")
 
         try await pluginTask.value
     }
@@ -296,11 +281,6 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     func testPluginErrorResponse() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -322,10 +302,13 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(err)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
         do {
-            _ = try host.call(capUrn: "cap:op=missing", payload: Data())
+            _ = try await host.call(capUrn: "cap:op=missing", payload: Data())
             XCTFail("Should have thrown error")
         } catch let error as CborPluginHostError {
             if case .pluginError(let code, let message) = error {
@@ -339,36 +322,46 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try await pluginTask.value
     }
 
-    func testRequestBeforeHandshakeFails() throws {
+    func testRequestAfterCloseFails() async throws {
         let pipes = createPipePair()
 
-        let host = CborPluginHost(
+        let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            guard let _ = try pluginReader.read() else {
+                throw CborPluginHostError.receiveFailed("No HELLO")
+            }
+            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+        }
+
+        let host = try CborPluginHost(
             stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        // Try to send request without handshake
+        // Close the host
+        host.close()
+
+        // Try to send request after close
         do {
-            _ = try host.sendRequest(capUrn: "cap:op=test", payload: Data())
+            _ = try host.request(capUrn: "cap:op=test", payload: Data())
             XCTFail("Should have thrown error")
         } catch let error as CborPluginHostError {
-            if case .handshakeNotComplete = error {
+            if case .closed = error {
                 // Expected
             } else {
                 XCTFail("Wrong error: \(error)")
             }
         }
+
+        try? await pluginTask.value
     }
 
     // MARK: - Heartbeat Tests
 
     func testHeartbeatExchange() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -393,7 +386,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
                 throw CborPluginHostError.receiveFailed("No heartbeat")
             }
             guard heartbeat.frameType == .heartbeat else {
-                throw CborPluginHostError.protocolError("Expected HEARTBEAT, got \(heartbeat.frameType)")
+                throw CborPluginHostError.handshakeFailed("Expected HEARTBEAT, got \(heartbeat.frameType)")
             }
             await tracker.setId(heartbeat.id)
 
@@ -402,24 +395,22 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(response)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
-        let sentId = try host.sendHeartbeat()
+        try host.sendHeartbeat()
 
         // Wait for plugin to process
         try await pluginTask.value
 
         let receivedId = await tracker.getId()
-        XCTAssertEqual(sentId, receivedId)
+        XCTAssertNotNil(receivedId)
     }
 
     func testHeartbeatDuringRequest() async throws {
         let pipes = createPipePair()
-
-        let host = CborPluginHost(
-            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pipes.pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
@@ -445,7 +436,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
                 throw CborPluginHostError.receiveFailed("No heartbeat response")
             }
             guard heartbeatResp.frameType == .heartbeat else {
-                throw CborPluginHostError.protocolError("Expected heartbeat response")
+                throw CborPluginHostError.handshakeFailed("Expected heartbeat response")
             }
 
             // Send actual request response
@@ -453,11 +444,14 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(res)
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pipes.pluginToHost.fileHandleForReading
+        )
 
         // This should work even though plugin sends heartbeat mid-request
-        let response = try host.call(capUrn: "cap:op=test", payload: Data())
-        XCTAssertEqual(String(data: response, encoding: .utf8), "done")
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "done")
 
         try await pluginTask.value
     }
@@ -639,12 +633,6 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        // Host writes to hostToPlugin, reads from pluginToHost
-        let host = CborPluginHost(
-            stdinHandle: hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pluginToHost.fileHandleForReading
-        )
-
         // Plugin reads from hostToPlugin, writes to pluginToHost
         let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
@@ -656,7 +644,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
             guard hello.frameType == .hello else {
-                throw CborPluginHostError.protocolError("Expected HELLO")
+                throw CborPluginHostError.handshakeFailed("Expected HELLO")
             }
 
             // 2. Send HELLO response
@@ -685,19 +673,22 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
         }
 
         // Host behavior
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
 
         // Send requests and verify responses
         let testData1 = "Hello, Plugin!".data(using: .utf8)!
-        let response1 = try host.call(capUrn: "cap:op=echo", payload: testData1)
-        XCTAssertEqual(response1, testData1)
+        let response1 = try await host.call(capUrn: "cap:op=echo", payload: testData1)
+        XCTAssertEqual(response1.concatenated(), testData1)
 
         let testData2 = "Second request".data(using: .utf8)!
-        let response2 = try host.call(capUrn: "cap:op=echo", payload: testData2)
-        XCTAssertEqual(response2, testData2)
+        let response2 = try await host.call(capUrn: "cap:op=echo", payload: testData2)
+        XCTAssertEqual(response2.concatenated(), testData2)
 
         // Send heartbeat
-        _ = try host.sendHeartbeat()
+        try host.sendHeartbeat()
 
         // Wait for plugin to complete
         try await pluginTask.value
@@ -707,11 +698,6 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
     func testBinaryDataTransfer() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
-
-        let host = CborPluginHost(
-            stdinHandle: hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
@@ -730,17 +716,20 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
 
             // Verify we received the binary data correctly
             guard req.payload == binaryData else {
-                throw CborPluginHostError.protocolError("Binary data mismatch")
+                throw CborPluginHostError.handshakeFailed("Binary data mismatch")
             }
 
             // Echo it back
             try pluginWriter.write(CborFrame.res(id: req.id, payload: binaryData, contentType: "application/octet-stream"))
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
 
-        let response = try host.call(capUrn: "cap:op=binary", payload: binaryData)
-        XCTAssertEqual(response, binaryData)
+        let response = try await host.call(capUrn: "cap:op=binary", payload: binaryData)
+        XCTAssertEqual(response.concatenated(), binaryData)
 
         try await pluginTask.value
     }
@@ -749,11 +738,6 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
     func testLargePayloadChunking() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
-
-        let host = CborPluginHost(
-            stdinHandle: hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pluginToHost.fileHandleForReading
-        )
 
         let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
         let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
@@ -788,11 +772,64 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             }
         }
 
-        try host.performHandshake()
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
 
-        let response = try host.call(capUrn: "cap:op=large", payload: Data())
-        XCTAssertEqual(response.count, largePayload.count)
-        XCTAssertEqual(response, largePayload)
+        let response = try await host.call(capUrn: "cap:op=large", payload: Data())
+        XCTAssertEqual(response.concatenated().count, largePayload.count)
+        XCTAssertEqual(response.concatenated(), largePayload)
+
+        try await pluginTask.value
+    }
+
+    /// Tests concurrent requests are properly multiplexed
+    func testConcurrentRequests() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            // Handshake
+            guard let _ = try pluginReader.read() else {
+                throw CborPluginHostError.receiveFailed("No HELLO")
+            }
+            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+
+            // Process 3 requests (may arrive in any order)
+            var receivedRequests: [CborMessageId] = []
+            for _ in 0..<3 {
+                guard let req = try pluginReader.read() else {
+                    throw CborPluginHostError.receiveFailed("No request")
+                }
+                receivedRequests.append(req.id)
+            }
+
+            // Respond in reverse order to test multiplexing
+            for reqId in receivedRequests.reversed() {
+                try pluginWriter.write(CborFrame.res(id: reqId, payload: "response".data(using: .utf8)!, contentType: "text/plain"))
+            }
+        }
+
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        // Send 3 requests concurrently
+        async let r1 = host.call(capUrn: "cap:op=test1", payload: Data())
+        async let r2 = host.call(capUrn: "cap:op=test2", payload: Data())
+        async let r3 = host.call(capUrn: "cap:op=test3", payload: Data())
+
+        let responses = try await [r1, r2, r3]
+
+        // All should succeed despite out-of-order responses
+        for response in responses {
+            XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "response")
+        }
 
         try await pluginTask.value
     }
