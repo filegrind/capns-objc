@@ -357,20 +357,34 @@ public class CborFrameWriter: @unchecked Sendable {
 
 // MARK: - Handshake
 
-/// Perform HELLO handshake (host side - sends first)
+/// Handshake result including manifest (host side - receives plugin's HELLO with manifest)
+public struct HandshakeResult: Sendable {
+    /// Negotiated protocol limits
+    public let limits: CborLimits
+    /// Plugin manifest JSON data (from plugin's HELLO response)
+    public let manifest: Data?
+}
+
+/// Perform HELLO handshake and extract plugin manifest (host side - sends first)
+/// Returns HandshakeResult containing negotiated limits and plugin manifest.
 @available(macOS 10.15.4, iOS 13.4, *)
-public func performHandshake(reader: CborFrameReader, writer: CborFrameWriter) throws -> CborLimits {
+public func performHandshakeWithManifest(reader: CborFrameReader, writer: CborFrameWriter) throws -> HandshakeResult {
     // Send our HELLO
     let ourHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
     try writer.write(ourHello)
 
-    // Read their HELLO
+    // Read their HELLO (should include manifest)
     guard let theirFrame = try reader.read() else {
         throw CborError.handshakeFailed("Connection closed before receiving HELLO")
     }
 
     guard theirFrame.frameType == .hello else {
         throw CborError.handshakeFailed("Expected HELLO, got \(theirFrame.frameType)")
+    }
+
+    // Extract manifest - REQUIRED for plugins
+    guard let manifest = theirFrame.helloManifest else {
+        throw CborError.handshakeFailed("Plugin HELLO missing required manifest")
     }
 
     // Negotiate minimum of both
@@ -386,12 +400,17 @@ public func performHandshake(reader: CborFrameReader, writer: CborFrameWriter) t
     reader.setLimits(limits)
     writer.setLimits(limits)
 
-    return limits
+    return HandshakeResult(limits: limits, manifest: manifest)
 }
 
-/// Accept HELLO handshake (plugin side - receives first)
+/// Accept HELLO handshake with manifest (plugin side - receives first, sends manifest in response)
+/// - Parameters:
+///   - reader: Frame reader for incoming data
+///   - writer: Frame writer for outgoing data
+///   - manifest: Plugin manifest JSON data to include in HELLO response
+/// - Returns: Negotiated protocol limits
 @available(macOS 10.15.4, iOS 13.4, *)
-public func acceptHandshake(reader: CborFrameReader, writer: CborFrameWriter) throws -> CborLimits {
+public func acceptHandshakeWithManifest(reader: CborFrameReader, writer: CborFrameWriter, manifest: Data) throws -> CborLimits {
     // Read their HELLO first (host initiates)
     guard let theirFrame = try reader.read() else {
         throw CborError.handshakeFailed("Connection closed before receiving HELLO")
@@ -410,8 +429,8 @@ public func acceptHandshake(reader: CborFrameReader, writer: CborFrameWriter) th
         maxChunk: min(DEFAULT_MAX_CHUNK, theirMaxChunk)
     )
 
-    // Send our HELLO
-    let ourHello = CborFrame.hello(maxFrame: limits.maxFrame, maxChunk: limits.maxChunk)
+    // Send our HELLO with manifest
+    let ourHello = CborFrame.hello(maxFrame: limits.maxFrame, maxChunk: limits.maxChunk, manifest: manifest)
     try writer.write(ourHello)
 
     // Update both reader and writer with negotiated limits
@@ -420,3 +439,4 @@ public func acceptHandshake(reader: CborFrameReader, writer: CborFrameWriter) th
 
     return limits
 }
+

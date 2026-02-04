@@ -43,6 +43,41 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(frame.frameType, .hello)
         XCTAssertEqual(frame.helloMaxFrame, 1_000_000)
         XCTAssertEqual(frame.helloMaxChunk, 100_000)
+        XCTAssertNil(frame.helloManifest, "Host HELLO should not include manifest")
+    }
+
+    func testHelloFrameWithManifest() {
+        let manifestJSON = """
+        {"name":"TestPlugin","version":"1.0.0","description":"Test","caps":[]}
+        """
+        let manifestData = manifestJSON.data(using: .utf8)!
+        let frame = CborFrame.hello(maxFrame: 1_000_000, maxChunk: 100_000, manifest: manifestData)
+        XCTAssertEqual(frame.frameType, .hello)
+        XCTAssertEqual(frame.helloMaxFrame, 1_000_000)
+        XCTAssertEqual(frame.helloMaxChunk, 100_000)
+        XCTAssertNotNil(frame.helloManifest, "Plugin HELLO must include manifest")
+        XCTAssertEqual(frame.helloManifest, manifestData)
+    }
+
+    func testHelloFrameWithManifestRoundtrip() throws {
+        let manifestJSON = """
+        {"name":"TestPlugin","version":"1.0.0","description":"Test description","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
+        """
+        let manifestData = manifestJSON.data(using: .utf8)!
+        let original = CborFrame.hello(maxFrame: 500_000, maxChunk: 50_000, manifest: manifestData)
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .hello)
+        XCTAssertEqual(decoded.helloMaxFrame, 500_000)
+        XCTAssertEqual(decoded.helloMaxChunk, 50_000)
+        XCTAssertNotNil(decoded.helloManifest, "Decoded HELLO must preserve manifest")
+        XCTAssertEqual(decoded.helloManifest, manifestData, "Manifest data must be preserved exactly")
+
+        // Verify the manifest JSON is valid and matches
+        let decodedManifest = try JSONSerialization.jsonObject(with: decoded.helloManifest!) as! [String: Any]
+        XCTAssertEqual(decodedManifest["name"] as? String, "TestPlugin")
+        XCTAssertEqual(decodedManifest["version"] as? String, "1.0.0")
     }
 
     func testReqFrame() {

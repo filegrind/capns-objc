@@ -123,13 +123,27 @@ public struct CborFrame: @unchecked Sendable {
 
     // MARK: - Factory Methods
 
-    /// Create a HELLO frame for handshake
+    /// Create a HELLO frame for handshake (host side - no manifest)
     public static func hello(maxFrame: Int, maxChunk: Int) -> CborFrame {
         var frame = CborFrame(frameType: .hello, id: .uint(0))
         frame.meta = [
             "max_frame": .unsignedInt(UInt64(maxFrame)),
             "max_chunk": .unsignedInt(UInt64(maxChunk)),
             "version": .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION))
+        ]
+        return frame
+    }
+
+    /// Create a HELLO frame for handshake with manifest (plugin side)
+    /// The manifest is JSON-encoded plugin metadata including name, version, and caps.
+    /// This is the ONLY way for plugins to communicate their capabilities.
+    public static func hello(maxFrame: Int, maxChunk: Int, manifest: Data) -> CborFrame {
+        var frame = CborFrame(frameType: .hello, id: .uint(0))
+        frame.meta = [
+            "max_frame": .unsignedInt(UInt64(maxFrame)),
+            "max_chunk": .unsignedInt(UInt64(maxChunk)),
+            "version": .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION)),
+            "manifest": .byteString([UInt8](manifest))
         ]
         return frame
     }
@@ -268,6 +282,16 @@ public struct CborFrame: @unchecked Sendable {
             return nil
         }
         return Int(n)
+    }
+
+    /// Extract manifest from HELLO metadata (plugin side sends this)
+    /// Returns nil if no manifest present (host HELLO) or not a HELLO frame.
+    /// The manifest is JSON-encoded plugin metadata.
+    public var helloManifest: Data? {
+        guard frameType == .hello, let meta = meta, case .byteString(let bytes) = meta["manifest"] else {
+            return nil
+        }
+        return Data(bytes)
     }
 }
 

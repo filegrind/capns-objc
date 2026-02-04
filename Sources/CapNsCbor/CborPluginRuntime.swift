@@ -134,7 +134,7 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
 ///
 /// Plugins create a runtime, register handlers for their caps, then call `run()`.
 /// The runtime handles all I/O mechanics:
-/// - HELLO handshake for limit negotiation
+/// - HELLO handshake for limit negotiation (includes manifest in response)
 /// - Frame encoding/decoding
 /// - Request routing to handlers
 /// - Streaming response support
@@ -146,6 +146,7 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
 /// - Accept new requests while previous ones are still processing
 ///
 /// **This is the ONLY supported way for plugins to communicate with the host.**
+/// The manifest MUST be provided - plugins without a manifest will fail handshake.
 @available(macOS 10.15.4, iOS 13.4, *)
 public final class CborPluginRuntime: @unchecked Sendable {
 
@@ -156,9 +157,32 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
     private var limits = CborLimits()
 
+    /// Plugin manifest JSON data - sent in HELLO response.
+    /// This is REQUIRED - plugins must provide their manifest.
+    private let manifestData: Data
+
     // MARK: - Initialization
 
-    public init() {}
+    /// Create a plugin runtime with the required manifest.
+    ///
+    /// The manifest is JSON-encoded plugin metadata including:
+    /// - name: Plugin name
+    /// - version: Plugin version
+    /// - caps: Array of capability definitions
+    ///
+    /// This manifest is sent in the HELLO response to the host.
+    /// **Plugins MUST provide a manifest - there is no fallback.**
+    ///
+    /// - Parameter manifest: JSON-encoded manifest data
+    public init(manifest: Data) {
+        self.manifestData = manifest
+    }
+
+    /// Create a plugin runtime with manifest JSON string.
+    /// - Parameter manifestJSON: JSON string of the manifest
+    public convenience init(manifestJSON: String) {
+        self.init(manifest: manifestJSON.data(using: .utf8) ?? Data())
+    }
 
     // MARK: - Handler Registration
 
@@ -350,8 +374,9 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
         self.limits = negotiatedLimits
 
-        // Send our HELLO with negotiated limits
-        let ourHello = CborFrame.hello(maxFrame: negotiatedLimits.maxFrame, maxChunk: negotiatedLimits.maxChunk)
+        // Send our HELLO with negotiated limits AND manifest
+        // The manifest is REQUIRED - this is the ONLY way to communicate plugin capabilities
+        let ourHello = CborFrame.hello(maxFrame: negotiatedLimits.maxFrame, maxChunk: negotiatedLimits.maxChunk, manifest: manifestData)
         do {
             try writer.write(ourHello)
         } catch {

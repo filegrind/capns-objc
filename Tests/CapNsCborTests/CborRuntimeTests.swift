@@ -18,6 +18,17 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         return (hostToPlugin, pluginToHost)
     }
 
+    /// Test manifest JSON - plugins MUST include manifest in HELLO response
+    nonisolated static let testManifestJSON = """
+    {"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
+    """
+    nonisolated static let testManifestData = testManifestJSON.data(using: .utf8)!
+
+    /// Create a HELLO frame with required test manifest
+    nonisolated static func helloWithManifest(maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK) -> CborFrame {
+        return CborFrame.hello(maxFrame: maxFrame, maxChunk: maxChunk, manifest: testManifestData)
+    }
+
     // MARK: - Handshake Tests
 
     func testHandshakeSuccess() async throws {
@@ -37,9 +48,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
                 throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(hostHello.frameType)")
             }
 
-            // Send plugin's HELLO
-            let pluginHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
-            try pluginWriter.write(pluginHello)
+            // Send plugin's HELLO with manifest (required)
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
         }
 
         // Create host (this performs handshake)
@@ -48,6 +58,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
         XCTAssertFalse(host.isClosed)
+
+        // Verify manifest was received
+        XCTAssertNotNil(host.pluginManifest, "Host should have received plugin manifest")
+        let manifest = try JSONSerialization.jsonObject(with: host.pluginManifest!) as! [String: Any]
+        XCTAssertEqual(manifest["name"] as? String, "TestPlugin")
 
         // Wait for plugin task to complete
         try await pluginTask.value
@@ -67,7 +82,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            let pluginHello = CborFrame.hello(maxFrame: pluginMaxFrame, maxChunk: pluginMaxChunk)
+            // Use custom limits but still include manifest
+            let pluginHello = CborFrame.hello(maxFrame: pluginMaxFrame, maxChunk: pluginMaxChunk, manifest: CborRuntimeTests.testManifestData)
             try pluginWriter.write(pluginHello)
         }
 
@@ -81,6 +97,38 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(host.negotiatedLimits.maxChunk, pluginMaxChunk)
 
         try await pluginTask.value
+    }
+
+    func testHandshakeFailsOnMissingManifest() async throws {
+        let pipes = createPipePair()
+
+        let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pipes.pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            guard let _ = try pluginReader.read() else {
+                throw CborPluginHostError.receiveFailed("No HELLO")
+            }
+            // Send HELLO without manifest - this should fail
+            let pluginHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
+            try pluginWriter.write(pluginHello)
+        }
+
+        do {
+            _ = try CborPluginHost(
+                stdinHandle: pipes.hostToPlugin.fileHandleForWriting,
+                stdoutHandle: pipes.pluginToHost.fileHandleForReading
+            )
+            XCTFail("Should have thrown handshake error due to missing manifest")
+        } catch let error as CborPluginHostError {
+            if case .handshakeFailed(let msg) = error {
+                XCTAssertTrue(msg.contains("missing required manifest"), "Error should mention missing manifest: \(msg)")
+            } else {
+                XCTFail("Wrong error type: \(error)")
+            }
+        }
+
+        try? await pluginTask.value
     }
 
     func testHandshakeFailsOnWrongFrameType() async throws {
@@ -130,7 +178,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for request
             guard let req = try pluginReader.read() else {
@@ -172,7 +220,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for request
             guard let req = try pluginReader.read() else {
@@ -216,7 +264,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for request
             guard let req = try pluginReader.read() else {
@@ -250,7 +298,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for request
             guard let req = try pluginReader.read() else {
@@ -290,7 +338,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for request
             guard let req = try pluginReader.read() else {
@@ -332,7 +380,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
         }
 
         let host = try CborPluginHost(
@@ -379,7 +427,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for heartbeat from host
             guard let heartbeat = try pluginReader.read() else {
@@ -420,7 +468,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Wait for request
             guard let req = try pluginReader.read() else {
@@ -648,7 +696,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             }
 
             // 2. Send HELLO response
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // 3. Process requests (handle 3 requests then exit)
             for _ in 0..<3 {
@@ -710,7 +758,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
 
         let pluginTask = Task.detached { @Sendable [binaryData] in
             guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
 
@@ -747,7 +795,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
 
         let pluginTask = Task.detached { @Sendable [largePayload] in
             guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
 
@@ -797,7 +845,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else {
                 throw CborPluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Process 3 requests (may arrive in any order)
             var receivedRequests: [CborMessageId] = []

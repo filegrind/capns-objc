@@ -141,6 +141,11 @@ public final class CborPluginHost: @unchecked Sendable {
     private var limits: CborLimits
     private var closed = false
 
+    /// Plugin manifest extracted from HELLO response.
+    /// This is JSON-encoded plugin metadata including name, version, and caps.
+    /// Will be nil only if the plugin doesn't send a manifest (protocol violation).
+    private var _pluginManifest: Data?
+
     /// Pending requests waiting for responses
     private var pending: [CborMessageId: PendingRequest] = [:]
     private let pendingLock = NSLock()
@@ -207,6 +212,13 @@ public final class CborPluginHost: @unchecked Sendable {
         guard theirFrame.frameType == .hello else {
             throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(theirFrame.frameType)")
         }
+
+        // Extract manifest from plugin's HELLO response
+        // This is REQUIRED - plugins MUST include their manifest in HELLO
+        guard let manifest = theirFrame.helloManifest else {
+            throw CborPluginHostError.handshakeFailed("Plugin HELLO missing required manifest")
+        }
+        self._pluginManifest = manifest
 
         // Negotiate limits (use minimum of both)
         let theirMaxFrame = theirFrame.helloMaxFrame ?? DEFAULT_MAX_FRAME
@@ -523,6 +535,13 @@ public final class CborPluginHost: @unchecked Sendable {
     /// Get the negotiated protocol limits
     public var negotiatedLimits: CborLimits {
         return limits
+    }
+
+    /// Get the plugin manifest extracted from HELLO handshake.
+    /// This is JSON-encoded plugin metadata including name, version, and caps.
+    /// Returns the manifest data received from the plugin during handshake.
+    public var pluginManifest: Data? {
+        return _pluginManifest
     }
 
     /// Check if the host is closed
