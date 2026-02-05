@@ -881,4 +881,176 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
 
         try await pluginTask.value
     }
+
+    /// Tests the wire protocol for bidirectional communication (plugin invoking host caps).
+    ///
+    /// This test manually exercises the protocol:
+    /// 1. Host sends REQ to plugin
+    /// 2. Plugin sends REQ back to host (plugin invoking host cap)
+    /// 3. Host receives the plugin's REQ and sends RES back
+    /// 4. Plugin receives response and completes original request
+    ///
+    /// This uses raw frame reader/writer to test the protocol without CborPluginHost,
+    /// since CborPluginHost's call() API doesn't expose cap_request handling.
+    func testBidirectionalProtocolWireFormat() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        // Host-side frame reader/writer (manual protocol handling)
+        let hostReader = CborFrameReader(handle: pluginToHost.fileHandleForReading)
+        let hostWriter = CborFrameWriter(handle: hostToPlugin.fileHandleForWriting)
+
+        // Plugin-side frame reader/writer
+        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        // Track the request IDs for verification
+        actor RequestTracker {
+            var hostRequestId: CborMessageId?
+            var pluginPeerRequestId: CborMessageId?
+            var pluginPeerCapUrn: String?
+            var pluginPeerPayload: Data?
+            var hostPeerResponsePayload: Data?
+            var pluginFinalResponse: Data?
+
+            func setHostRequest(_ id: CborMessageId) { hostRequestId = id }
+            func setPluginPeerRequest(id: CborMessageId, capUrn: String, payload: Data) {
+                pluginPeerRequestId = id
+                pluginPeerCapUrn = capUrn
+                pluginPeerPayload = payload
+            }
+            func setHostPeerResponse(_ payload: Data) { hostPeerResponsePayload = payload }
+            func setPluginFinalResponse(_ payload: Data) { pluginFinalResponse = payload }
+
+            func getHostRequestId() -> CborMessageId? { hostRequestId }
+            func getPluginPeerCapUrn() -> String? { pluginPeerCapUrn }
+            func getPluginFinalResponse() -> Data? { pluginFinalResponse }
+        }
+        let tracker = RequestTracker()
+
+        // Plugin task - simulates a plugin that invokes a host cap during request handling
+        let pluginTask = Task.detached { @Sendable [tracker] in
+            // 1. Receive HELLO from host
+            guard let hello = try pluginReader.read() else {
+                throw CborPluginHostError.receiveFailed("No HELLO from host")
+            }
+            guard hello.frameType == .hello else {
+                throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(hello.frameType)")
+            }
+
+            // 2. Send HELLO response with manifest
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+
+            // 3. Receive REQ from host
+            guard let req = try pluginReader.read() else {
+                throw CborPluginHostError.receiveFailed("No REQ from host")
+            }
+            guard req.frameType == .req else {
+                throw CborPluginHostError.handshakeFailed("Expected REQ, got \(req.frameType)")
+            }
+            let hostRequestId = req.id
+
+            // 4. Plugin sends its own REQ to host (bidirectional: plugin -> host)
+            let peerRequestId = CborMessageId.newUUID()
+            let peerCapUrn = "cap:op=host_download"
+            let peerPayload = "model-id:llama-3".data(using: .utf8)!
+            let peerReq = CborFrame.req(id: peerRequestId, capUrn: peerCapUrn, payload: peerPayload, contentType: "text/plain")
+            try pluginWriter.write(peerReq)
+
+            // 5. Wait for response from host to our peer request
+            guard let peerRes = try pluginReader.read() else {
+                throw CborPluginHostError.receiveFailed("No response to peer request")
+            }
+            guard peerRes.id == peerRequestId else {
+                throw CborPluginHostError.handshakeFailed("Response ID mismatch")
+            }
+            guard peerRes.frameType == .res || peerRes.frameType == .end else {
+                throw CborPluginHostError.handshakeFailed("Expected RES/END, got \(peerRes.frameType)")
+            }
+
+            // Use what we received from host
+            let hostResponsePayload = peerRes.payload ?? Data()
+
+            // 6. Send response to original host request
+            let finalResponse = "processed_with:\(String(data: hostResponsePayload, encoding: .utf8) ?? "")".data(using: .utf8)!
+            let res = CborFrame.res(id: hostRequestId, payload: finalResponse, contentType: "text/plain")
+            try pluginWriter.write(res)
+
+            await tracker.setPluginFinalResponse(finalResponse)
+        }
+
+        // Host task - manually handles the protocol
+        let hostTask = Task.detached { @Sendable [tracker] in
+            // 1. Send HELLO to plugin
+            let hostHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
+            try hostWriter.write(hostHello)
+
+            // 2. Receive HELLO from plugin
+            guard let pluginHello = try hostReader.read() else {
+                throw CborPluginHostError.receiveFailed("No HELLO from plugin")
+            }
+            guard pluginHello.frameType == .hello else {
+                throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(pluginHello.frameType)")
+            }
+
+            // 3. Send REQ to plugin
+            let hostRequestId = CborMessageId.newUUID()
+            let hostReq = CborFrame.req(id: hostRequestId, capUrn: "cap:op=plugin_inference", payload: "input_text".data(using: .utf8)!, contentType: "text/plain")
+            try hostWriter.write(hostReq)
+            await tracker.setHostRequest(hostRequestId)
+
+            // 4. Read next frame - could be plugin's REQ (peer invocation) or final response
+            guard let frame1 = try hostReader.read() else {
+                throw CborPluginHostError.receiveFailed("No response from plugin")
+            }
+
+            // 5. If it's a REQ from plugin (bidirectional), respond to it
+            if frame1.frameType == .req {
+                let pluginPeerRequestId = frame1.id
+                let pluginPeerCapUrn = frame1.cap ?? ""
+                let pluginPeerPayload = frame1.payload ?? Data()
+
+                await tracker.setPluginPeerRequest(id: pluginPeerRequestId, capUrn: pluginPeerCapUrn, payload: pluginPeerPayload)
+
+                // Host responds to plugin's peer request
+                let hostPeerResponse = "downloaded_model_path".data(using: .utf8)!
+                let peerRes = CborFrame.res(id: pluginPeerRequestId, payload: hostPeerResponse, contentType: "text/plain")
+                try hostWriter.write(peerRes)
+                await tracker.setHostPeerResponse(hostPeerResponse)
+
+                // 6. Now read the final response to our original request
+                guard let finalRes = try hostReader.read() else {
+                    throw CborPluginHostError.receiveFailed("No final response from plugin")
+                }
+                guard finalRes.frameType == .res || finalRes.frameType == .end else {
+                    throw CborPluginHostError.handshakeFailed("Expected final RES/END, got \(finalRes.frameType)")
+                }
+                guard finalRes.id == hostRequestId else {
+                    throw CborPluginHostError.handshakeFailed("Final response ID mismatch")
+                }
+
+                return finalRes.payload
+            } else if frame1.frameType == .res || frame1.frameType == .end {
+                // Direct response without peer invocation
+                return frame1.payload
+            } else {
+                throw CborPluginHostError.handshakeFailed("Unexpected frame type: \(frame1.frameType)")
+            }
+        }
+
+        // Wait for both tasks
+        let hostResponse = try await hostTask.value
+        try await pluginTask.value
+
+        // Verify the bidirectional communication worked
+        let pluginPeerCapUrn = await tracker.getPluginPeerCapUrn()
+        XCTAssertEqual(pluginPeerCapUrn, "cap:op=host_download", "Plugin should have invoked host cap")
+
+        let finalResponse = await tracker.getPluginFinalResponse()
+        XCTAssertNotNil(finalResponse, "Should have final response")
+
+        let responseString = String(data: hostResponse ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(responseString.contains("processed_with:downloaded_model_path"),
+            "Response should contain host's peer response: \(responseString)")
+    }
 }
