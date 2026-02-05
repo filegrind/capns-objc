@@ -628,6 +628,41 @@ public final class CborPluginHost: @unchecked Sendable {
         return stream
     }
 
+    /// Send a cap request with unified arguments.
+    ///
+    /// This is the primary method for invoking caps on plugins. Arguments are
+    /// identified by media_urn and the plugin runtime extracts the appropriate
+    /// data based on the cap's input type.
+    ///
+    /// The arguments are serialized as CBOR: `[{media_urn: string, value: bytes}, ...]`
+    /// with content_type "application/cbor".
+    ///
+    /// - Parameters:
+    ///   - capUrn: The cap URN to invoke
+    ///   - arguments: Unified arguments as array of (mediaUrn, value) pairs
+    /// - Returns: AsyncStream of response chunks
+    /// - Throws: CborPluginHostError if host is closed, serialization fails, or send fails
+    public func requestWithUnifiedArguments(
+        capUrn: String,
+        arguments: [(mediaUrn: String, value: Data)]
+    ) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
+        // Serialize arguments as CBOR array of maps
+        // Format: [{media_urn: string, value: bytes}, ...]
+        var cborArray: [CBOR] = []
+        for arg in arguments {
+            let argMap: CBOR = .map([
+                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
+                .utf8String("value"): .byteString([UInt8](arg.value))
+            ])
+            cborArray.append(argMap)
+        }
+
+        let cborPayload = CBOR.array(cborArray)
+        let payloadData = Data(cborPayload.encode())
+
+        return try request(capUrn: capUrn, payload: payloadData, contentType: "application/cbor")
+    }
+
     /// Send a cap request and wait for the complete response.
     ///
     /// This is a convenience method that collects all chunks.
