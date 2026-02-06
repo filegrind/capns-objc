@@ -360,16 +360,13 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
     }
 
     func emitStatus(operation: String, details: String) {
-        let status: [String: String] = [
-            "type": "status",
-            "operation": operation,
-            "details": details
-        ]
-        do {
-            try emit(value: status)
-        } catch {
-            fputs("[CborPluginRuntime] Failed to emit status: \(error)\n", stderr)
-        }
+        // Use LOG frame for status updates - they should not be part of response data
+        let message = "\(operation): \(details)"
+        let frame = CborFrame.log(id: requestId, level: "status", message: message)
+
+        writerLock.lock()
+        try? writer.write(frame)
+        writerLock.unlock()
     }
 
     func log(level: String, message: String) {
@@ -1089,6 +1086,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 // Clone values for handler thread
                 let requestId = frame.id
                 let payload = frame.payload ?? Data()
+                let maxChunk = self.limits.maxChunk
 
                 let handlerThread = Thread { [writerLock, pendingPeerRequests, pendingPeerRequestsLock] in
                     let emitter = ThreadSafeStreamEmitter(writer: frameWriter, writerLock: writerLock, requestId: requestId)
@@ -1099,12 +1097,41 @@ public final class CborPluginRuntime: @unchecked Sendable {
                         pendingRequestsLock: pendingPeerRequestsLock
                     )
 
+                    // Execute handler and send response with automatic chunking
                     do {
                         let result = try handler(payload, emitter, peer)
-                        let endFrame = CborFrame.end(id: requestId, finalPayload: result)
+
+                        // Automatic chunking: split large payloads into CHUNK frames
                         writerLock.lock()
-                        try frameWriter.write(endFrame)
-                        writerLock.unlock()
+                        defer { writerLock.unlock() }
+
+                        if result.count <= maxChunk {
+                            // Small payload: send single END frame
+                            let endFrame = CborFrame.end(id: requestId, finalPayload: result)
+                            try frameWriter.write(endFrame)
+                        } else {
+                            // Large payload: send CHUNK frames + final END
+                            var offset = 0
+                            var seq: UInt64 = 0
+
+                            while offset < result.count {
+                                let remaining = result.count - offset
+                                let chunkSize = min(remaining, maxChunk)
+                                let chunkData = result.subdata(in: offset..<offset + chunkSize)
+                                offset += chunkSize
+
+                                if offset < result.count {
+                                    // Not the last chunk - send CHUNK frame
+                                    let chunkFrame = CborFrame.chunk(id: requestId, seq: seq, payload: chunkData)
+                                    try frameWriter.write(chunkFrame)
+                                    seq += 1
+                                } else {
+                                    // Last chunk - send END frame with remaining data
+                                    let endFrame = CborFrame.end(id: requestId, finalPayload: chunkData)
+                                    try frameWriter.write(endFrame)
+                                }
+                            }
+                        }
                     } catch {
                         let errFrame = CborFrame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
                         writerLock.lock()
