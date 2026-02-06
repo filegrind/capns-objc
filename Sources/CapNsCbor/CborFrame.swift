@@ -4,8 +4,8 @@ import Foundation
 /// Protocol version. Always 1 for this implementation.
 public let CBOR_PROTOCOL_VERSION: UInt8 = 1
 
-/// Default maximum frame size (1 MB)
-public let DEFAULT_MAX_FRAME: Int = 1_048_576
+/// Default maximum frame size (2 MB) - allows 1MB payloads with CBOR overhead
+public let DEFAULT_MAX_FRAME: Int = 2_097_152
 
 /// Default maximum chunk size (256 KB)
 public let DEFAULT_MAX_CHUNK: Int = 262_144
