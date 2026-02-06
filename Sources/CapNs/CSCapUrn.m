@@ -10,6 +10,23 @@
 
 NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 
+/// Check if a media URN instance matches a media URN pattern using TaggedUrn matching.
+/// Delegates directly to [CSTaggedUrn matches:error:] — all tag semantics (*, !, ?, exact, missing) apply.
+static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *pattern) {
+    NSError *error = nil;
+    CSTaggedUrn *instUrn = [CSTaggedUrn fromString:instance error:&error];
+    NSCAssert(instUrn != nil, @"CU2: Failed to parse media URN instance '%@': %@", instance, error.localizedDescription);
+
+    error = nil;
+    CSTaggedUrn *pattUrn = [CSTaggedUrn fromString:pattern error:&error];
+    NSCAssert(pattUrn != nil, @"CU2: Failed to parse media URN pattern '%@': %@", pattern, error.localizedDescription);
+
+    error = nil;
+    BOOL result = [instUrn matches:pattUrn error:&error];
+    NSCAssert(error == nil, @"CU2: media URN prefix mismatch in direction spec matching: %@", error.localizedDescription);
+    return result;
+}
+
 @interface CSCapUrn ()
 @property (nonatomic, strong) NSString *inSpec;
 @property (nonatomic, strong) NSString *outSpec;
@@ -304,18 +321,22 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
         return YES;
     }
 
-    // Check direction (inSpec) FIRST
+    // Check direction (inSpec) using TaggedUrn matching
+    // Request's input (instance) must match cap's input (pattern)
     if (![self.inSpec isEqualToString:@"*"] &&
-        ![request.inSpec isEqualToString:@"*"] &&
-        ![self.inSpec isEqualToString:request.inSpec]) {
-        return NO;
+        ![request.inSpec isEqualToString:@"*"]) {
+        if (!CSMediaUrnInstanceMatchesPattern(request.inSpec, self.inSpec)) {
+            return NO;
+        }
     }
 
-    // Check direction (outSpec)
+    // Check direction (outSpec) using TaggedUrn matching
+    // Cap's output (instance) must match request's output (pattern)
     if (![self.outSpec isEqualToString:@"*"] &&
-        ![request.outSpec isEqualToString:@"*"] &&
-        ![self.outSpec isEqualToString:request.outSpec]) {
-        return NO;
+        ![request.outSpec isEqualToString:@"*"]) {
+        if (!CSMediaUrnInstanceMatchesPattern(self.outSpec, request.outSpec)) {
+            return NO;
+        }
     }
 
     // Check all tags that the request specifies
@@ -356,12 +377,18 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 - (NSUInteger)specificity {
     NSUInteger count = 0;
 
-    // Count non-wildcard direction specs
+    // Direction specs contribute their MediaUrn tag count (more tags = more specific)
     if (![self.inSpec isEqualToString:@"*"]) {
-        count++;
+        NSError *error = nil;
+        CSTaggedUrn *inUrn = [CSTaggedUrn fromString:self.inSpec error:&error];
+        NSAssert(inUrn != nil, @"CU2: Failed to parse in media URN '%@': %@", self.inSpec, error.localizedDescription);
+        count += inUrn.tags.count;
     }
     if (![self.outSpec isEqualToString:@"*"]) {
-        count++;
+        NSError *error = nil;
+        CSTaggedUrn *outUrn = [CSTaggedUrn fromString:self.outSpec error:&error];
+        NSAssert(outUrn != nil, @"CU2: Failed to parse out media URN '%@': %@", self.outSpec, error.localizedDescription);
+        count += outUrn.tags.count;
     }
 
     // Count non-wildcard tags
@@ -391,18 +418,23 @@ NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
         return YES;
     }
 
-    // Check direction compatibility (inSpec)
+    // Check direction compatibility (inSpec) using TaggedUrn matching
+    // Compatible if either direction of matches succeeds
     if (![self.inSpec isEqualToString:@"*"] &&
-        ![other.inSpec isEqualToString:@"*"] &&
-        ![self.inSpec isEqualToString:other.inSpec]) {
-        return NO;
+        ![other.inSpec isEqualToString:@"*"]) {
+        if (!CSMediaUrnInstanceMatchesPattern(self.inSpec, other.inSpec) &&
+            !CSMediaUrnInstanceMatchesPattern(other.inSpec, self.inSpec)) {
+            return NO;
+        }
     }
 
     // Check direction compatibility (outSpec)
     if (![self.outSpec isEqualToString:@"*"] &&
-        ![other.outSpec isEqualToString:@"*"] &&
-        ![self.outSpec isEqualToString:other.outSpec]) {
-        return NO;
+        ![other.outSpec isEqualToString:@"*"]) {
+        if (!CSMediaUrnInstanceMatchesPattern(self.outSpec, other.outSpec) &&
+            !CSMediaUrnInstanceMatchesPattern(other.outSpec, self.outSpec)) {
+            return NO;
+        }
     }
 
     // Get all unique tag keys from both caps

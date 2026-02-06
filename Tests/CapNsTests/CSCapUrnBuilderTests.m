@@ -167,7 +167,7 @@
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap toString], @"cap:in=media:void;out=\"media:form=map;textable\"");
     XCTAssertEqual(cap.tags.count, 0);
-    XCTAssertEqual([cap specificity], 2); // in + out
+    XCTAssertEqual([cap specificity], 3); // void(1) + object(2)
 }
 
 - (void)testBuilderComplex {
@@ -276,9 +276,9 @@
 
     // Check specificity (includes in + out now)
     XCTAssertTrue([specificCap isMoreSpecificThan:generalRequest]);
-    XCTAssertEqual([specificCap specificity], 5); // in, out, op, target, format
-    XCTAssertEqual([generalRequest specificity], 3); // in, out, op
-    XCTAssertEqual([wildcardRequest specificity], 4); // in, out, op, target (ext=* doesn't count)
+    XCTAssertEqual([specificCap specificity], 6); // void(1) + object(2) + op + target + format
+    XCTAssertEqual([generalRequest specificity], 4); // void(1) + object(2) + op
+    XCTAssertEqual([wildcardRequest specificity], 5); // void(1) + object(2) + op + target (ext=* doesn't count)
 }
 
 - (void)testBuilderDirectionMismatchNoMatch {

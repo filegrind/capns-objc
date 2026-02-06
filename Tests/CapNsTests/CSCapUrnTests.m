@@ -273,8 +273,9 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(cap3);
 
     XCTAssertEqual([cap1 specificity], 0); // all wildcards
-    XCTAssertEqual([cap2 specificity], 3); // in=\"media:void" + out=\"media:object" + op=generate
-    XCTAssertEqual([cap3 specificity], 1); // only ext=pdf counts
+    // Direction specs contribute MediaUrn tag count: void(1) + object(2) + op(1) = 4
+    XCTAssertEqual([cap2 specificity], 4); // void(1) + object(2) + op=generate(1)
+    XCTAssertEqual([cap3 specificity], 1); // only ext=pdf counts (direction wildcards contribute 0)
 
     XCTAssertTrue([cap2 isMoreSpecificThan:cap1]);
 }
@@ -886,6 +887,73 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(request);
 
     XCTAssertFalse([cap matches:request], @"Test 10: Direction mismatch should prevent match");
+}
+
+// TEST051: Semantic direction matching - generic provider matches specific request
+- (void)testDirectionSemanticMatching {
+    NSError *error = nil;
+
+    // A cap accepting media:bytes (generic) should match a request with media:pdf;bytes (specific)
+    CSCapUrn *genericCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(genericCap, @"Failed to parse generic cap: %@", error);
+    CSCapUrn *pdfRequest = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(pdfRequest, @"Failed to parse pdf request: %@", error);
+    XCTAssertTrue([genericCap matches:pdfRequest],
+        @"Generic bytes provider must match specific pdf;bytes request");
+
+    // Generic cap also matches epub;bytes (any bytes subtype)
+    CSCapUrn *epubRequest = [CSCapUrn fromString:@"cap:in=\"media:epub;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(epubRequest, @"Failed to parse epub request: %@", error);
+    XCTAssertTrue([genericCap matches:epubRequest],
+        @"Generic bytes provider must match epub;bytes request");
+
+    // Reverse: specific cap does NOT match generic request
+    CSCapUrn *pdfCap = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(pdfCap, @"Failed to parse pdf cap: %@", error);
+    CSCapUrn *genericRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(genericRequest, @"Failed to parse generic request: %@", error);
+    XCTAssertFalse([pdfCap matches:genericRequest],
+        @"Specific pdf;bytes cap must NOT match generic bytes request");
+
+    // Incompatible types: pdf cap does NOT match epub request
+    XCTAssertFalse([pdfCap matches:epubRequest],
+        @"PDF-specific cap must NOT match epub request (epub lacks pdf marker)");
+
+    // Output direction: cap producing more specific output matches less specific request
+    CSCapUrn *specificOutCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(specificOutCap);
+    CSCapUrn *genericOutRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;bytes\"" error:&error];
+    XCTAssertNotNil(genericOutRequest);
+    XCTAssertTrue([specificOutCap matches:genericOutRequest],
+        @"Cap producing image;png;bytes;thumbnail must satisfy request for image;bytes");
+
+    // Reverse output: generic output cap does NOT match specific output request
+    CSCapUrn *genericOutCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;bytes\"" error:&error];
+    XCTAssertNotNil(genericOutCap);
+    CSCapUrn *specificOutRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(specificOutRequest);
+    XCTAssertFalse([genericOutCap matches:specificOutRequest],
+        @"Cap producing generic image;bytes must NOT satisfy request requiring image;png;bytes;thumbnail");
+}
+
+// TEST052: Semantic direction specificity - more media URN tags = higher specificity
+- (void)testDirectionSemanticSpecificity {
+    NSError *error = nil;
+
+    CSCapUrn *genericCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(genericCap, @"Failed to parse generic cap: %@", error);
+    CSCapUrn *specificCap = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    XCTAssertNotNil(specificCap, @"Failed to parse specific cap: %@", error);
+
+    // generic: bytes(1) + image;png;bytes;thumbnail(4) + op(1) = 6
+    XCTAssertEqual([genericCap specificity], 6,
+        @"Generic cap specificity: bytes(1) + image;png;bytes;thumbnail(4) + op(1)");
+    // specific: pdf;bytes(2) + image;png;bytes;thumbnail(4) + op(1) = 7
+    XCTAssertEqual([specificCap specificity], 7,
+        @"Specific cap specificity: pdf;bytes(2) + image;png;bytes;thumbnail(4) + op(1)");
+
+    XCTAssertGreaterThan([specificCap specificity], [genericCap specificity],
+        @"pdf;bytes cap must be more specific than bytes cap");
 }
 
 @end
