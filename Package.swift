@@ -46,6 +46,9 @@ let package = Package(
             dependencies: ["CapNs"]),
         .testTarget(
             name: "CapNsCborTests",
-            dependencies: ["CapNsCbor"]),
+            dependencies: [
+                "CapNsCbor",
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+            ]),
     ]
 )

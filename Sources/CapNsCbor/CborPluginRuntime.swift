@@ -26,6 +26,8 @@
 //  ```
 
 import Foundation
+import CapNs
+import TaggedUrn
 @preconcurrency import SwiftCBOR
 
 // MARK: - Error Types
@@ -158,7 +160,7 @@ public struct NoCborPeerInvoker: CborPeerInvoker {
 /// Used when the plugin is invoked via CLI (with arguments).
 public final class CliStreamEmitter: CborStreamEmitter, @unchecked Sendable {
     /// Whether to add newlines after each emit (NDJSON style)
-    private let ndjson: Bool
+    let ndjson: Bool
     private let stdoutHandle: FileHandle
 
     /// Create a new CLI emitter with NDJSON formatting (newline after each emit)
@@ -224,10 +226,14 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
         return payload
     }
 
-    // Parse the cap URN to get the expected input media type
-    // Cap URN format: cap:op=xxx;in=media:yyy;out=media:zzz
-    // We need to extract the "in" spec
-    let expectedInput = extractInputSpec(from: capUrn)
+    // Parse the cap URN to get the expected input media type using proper CSCapUrn
+    let parsedUrn: CSCapUrn
+    do {
+        parsedUrn = try CSCapUrn.fromString(capUrn)
+    } catch {
+        throw CborPluginRuntimeError.capUrnError("Failed to parse cap URN '\(capUrn)': \(error.localizedDescription)")
+    }
+    let expectedInput = parsedUrn.getInSpec()
 
     // Parse the CBOR payload as an array of argument maps
     let cborValue: CBOR
@@ -244,6 +250,9 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
     guard case .array(let arguments) = cborValue else {
         throw CborPluginRuntimeError.deserializationError("CBOR unified arguments must be an array")
     }
+
+    // Parse the expected input as a tagged URN for proper matching
+    let expectedUrn = try? CSTaggedUrn.fromString(expectedInput)
 
     // Find the argument with matching media_urn
     for arg in arguments {
@@ -271,12 +280,16 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
             }
         }
 
-        // Check if this argument matches the expected input
-        if let urn = mediaUrn, let val = value {
-            // Match if the media_urn contains the expected input or vice versa
-            // This allows for flexible matching
-            if urn.contains(expectedInput) || expectedInput.contains(urn) || expectedInput.isEmpty {
-                return val
+        // Check if this argument matches the expected input using tagged URN matching
+        if let urnStr = mediaUrn, let val = value {
+            if let expectedUrn = expectedUrn,
+               let argUrn = try? CSTaggedUrn.fromString(urnStr) {
+                // Use proper semantic matching in both directions
+                let matchesForward = (try? argUrn.matches(expectedUrn)) != nil
+                let matchesReverse = (try? expectedUrn.matches(argUrn)) != nil
+                if matchesForward || matchesReverse {
+                    return val
+                }
             }
         }
     }
@@ -287,23 +300,6 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
     )
 }
 
-/// Extract the input spec from a cap URN.
-/// Cap URN format: cap:op=xxx;in=media:yyy;out=media:zzz
-private func extractInputSpec(from capUrn: String) -> String {
-    // Look for ;in= in the URN
-    guard let inRange = capUrn.range(of: ";in=") else {
-        return ""
-    }
-
-    let afterIn = capUrn[inRange.upperBound...]
-
-    // Find the end of the in spec (next ; or end of string)
-    if let semiRange = afterIn.range(of: ";") {
-        return String(afterIn[..<semiRange.lowerBound])
-    } else {
-        return String(afterIn)
-    }
-}
 
 // MARK: - Handler Type
 
@@ -653,11 +649,11 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
     /// Plugin manifest JSON data - sent in HELLO response.
     /// This is REQUIRED - plugins must provide their manifest.
-    private let manifestData: Data
+    let manifestData: Data
 
     /// Parsed manifest for CLI mode support.
     /// Contains cap definitions with command names and argument sources.
-    private let parsedManifest: CborManifest?
+    let parsedManifest: CborManifest?
 
     // MARK: - Initialization
 
@@ -721,7 +717,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     }
 
     /// Find a handler for a cap URN (supports exact match and pattern matching)
-    private func findHandler(capUrn: String) -> CborCapHandler? {
+    func findHandler(capUrn: String) -> CborCapHandler? {
         handlersLock.lock()
         defer { handlersLock.unlock() }
 
