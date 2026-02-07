@@ -1126,4 +1126,199 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(responseString.contains("processed_with:downloaded_model_path"),
             "Response should contain host's peer response: \(responseString)")
     }
+
+    // MARK: - Chunking/Reassembly Tests (TEST313-317)
+
+    // TEST313: Auto-chunking splits payload larger than max_chunk into CHUNK frames + END frame,
+    // and host concatenated() reassembles the full original data
+    func testAutoChunkingReassembly() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let maxChunk = 100
+        var data = Data(count: 250)
+        for i in 0..<250 {
+            data[i] = UInt8(i % 256)
+        }
+
+        let pluginTask = Task.detached { @Sendable [data] in
+            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No HELLO") }
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+
+            guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No request") }
+
+            // Simulate auto-chunking: 250 bytes with max_chunk=100 → CHUNK(100) + CHUNK(100) + END(50)
+            var offset = 0
+            var seq: UInt64 = 0
+            while offset < data.count {
+                let chunkSize = min(data.count - offset, maxChunk)
+                let chunkData = data.subdata(in: offset..<offset + chunkSize)
+                offset += chunkSize
+
+                if offset < data.count {
+                    let frame = CborFrame.chunk(id: req.id, seq: seq, payload: chunkData)
+                    try pluginWriter.write(frame)
+                    seq += 1
+                } else {
+                    let frame = CborFrame.end(id: req.id, finalPayload: chunkData)
+                    try pluginWriter.write(frame)
+                }
+            }
+        }
+
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let reassembled = response.concatenated()
+        XCTAssertEqual(reassembled.count, 250)
+        XCTAssertEqual(reassembled, data, "concatenated must reconstruct the original payload exactly")
+
+        try await pluginTask.value
+    }
+
+    // TEST314: Payload exactly equal to max_chunk produces single END frame (no CHUNK frames)
+    func testExactMaxChunkSingleEnd() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let data = Data(repeating: 0xAB, count: 100)
+
+        let pluginTask = Task.detached { @Sendable [data] in
+            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No HELLO") }
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+
+            guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No request") }
+
+            // Single END frame for payload exactly at max_chunk
+            let frame = CborFrame.end(id: req.id, finalPayload: data)
+            try pluginWriter.write(frame)
+        }
+
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let result = response.concatenated()
+        XCTAssertEqual(result.count, 100)
+        XCTAssertEqual(result, data)
+
+        try await pluginTask.value
+    }
+
+    // TEST315: Payload of max_chunk + 1 produces exactly one CHUNK frame + one END frame
+    func testMaxChunkPlusOneSplitsIntoTwo() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        var data = Data(count: 101)
+        for i in 0..<101 {
+            data[i] = UInt8(i % 256)
+        }
+
+        let pluginTask = Task.detached { @Sendable [data] in
+            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No HELLO") }
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+
+            guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No request") }
+
+            // CHUNK(100) + END(1)
+            let chunk = CborFrame.chunk(id: req.id, seq: 0, payload: data.subdata(in: 0..<100))
+            try pluginWriter.write(chunk)
+
+            let end = CborFrame.end(id: req.id, finalPayload: data.subdata(in: 100..<101))
+            try pluginWriter.write(end)
+        }
+
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let reassembled = response.concatenated()
+        XCTAssertEqual(reassembled.count, 101)
+        XCTAssertEqual(reassembled, data, "101-byte payload must reassemble correctly from CHUNK+END")
+
+        try await pluginTask.value
+    }
+
+    // TEST316: concatenated() returns full payload while finalPayload returns only last chunk
+    func testConcatenatedVsFinalPayloadDivergence() {
+        let chunks = [
+            CborResponseChunk(payload: "AAAA".data(using: .utf8)!, seq: 0, offset: nil, len: nil, isEof: false),
+            CborResponseChunk(payload: "BBBB".data(using: .utf8)!, seq: 1, offset: nil, len: nil, isEof: false),
+            CborResponseChunk(payload: "CCCC".data(using: .utf8)!, seq: 2, offset: nil, len: nil, isEof: true),
+        ]
+
+        let response = CborPluginResponse.streaming(chunks)
+
+        // concatenated() returns ALL chunk data joined
+        XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "AAAABBBBCCCC")
+
+        // finalPayload returns ONLY the last chunk's data
+        XCTAssertEqual(String(data: response.finalPayload!, encoding: .utf8), "CCCC")
+
+        // They must NOT be equal
+        XCTAssertNotEqual(response.concatenated(), response.finalPayload!,
+            "concatenated and finalPayload must diverge for multi-chunk responses")
+    }
+
+    // TEST317: Auto-chunking preserves data integrity across chunk boundaries for 3x max_chunk payload
+    func testChunkingDataIntegrity3x() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let pattern = "ABCDEFGHIJ".data(using: .utf8)!
+        var data = Data()
+        for _ in 0..<30 {
+            data.append(pattern)
+        }
+        // data is 300 bytes
+
+        let pluginTask = Task.detached { @Sendable [data] in
+            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No HELLO") }
+            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+
+            guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No request") }
+
+            let maxChunk = 100
+            // CHUNK(100) + CHUNK(100) + END(100)
+            let chunk0 = CborFrame.chunk(id: req.id, seq: 0, payload: data.subdata(in: 0..<maxChunk))
+            let chunk1 = CborFrame.chunk(id: req.id, seq: 1, payload: data.subdata(in: maxChunk..<2*maxChunk))
+            let end = CborFrame.end(id: req.id, finalPayload: data.subdata(in: 2*maxChunk..<data.count))
+
+            try pluginWriter.write(chunk0)
+            try pluginWriter.write(chunk1)
+            try pluginWriter.write(end)
+        }
+
+        let host = try CborPluginHost(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let reassembled = response.concatenated()
+        XCTAssertEqual(reassembled.count, 300)
+        XCTAssertEqual(reassembled, data, "pattern must be preserved across chunk boundaries")
+
+        try await pluginTask.value
+    }
 }
