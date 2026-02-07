@@ -124,10 +124,10 @@
                       metadataJSON:nil];
 
     // URN tags are sorted alphabetically
-    XCTAssertTrue([cap matchesRequest:@"cap:format=json;in=media:void;op=transform;out=\"media:form=map;textable\";type=data_processing"]);
-    XCTAssertTrue([cap matchesRequest:@"cap:format=*;in=media:void;op=transform;out=\"media:form=map;textable\";type=data_processing"]); // Request wants any format, cap handles json specifically
-    XCTAssertTrue([cap matchesRequest:@"cap:in=media:void;out=\"media:form=map;textable\";type=data_processing"]);
-    XCTAssertFalse([cap matchesRequest:@"cap:in=media:void;out=\"media:form=map;textable\";type=compute"]);
+    XCTAssertTrue([cap acceptsRequest:@"cap:format=json;in=media:void;op=transform;out=\"media:form=map;textable\";type=data_processing"]);
+    XCTAssertTrue([cap acceptsRequest:@"cap:format=*;in=media:void;op=transform;out=\"media:form=map;textable\";type=data_processing"]); // Request wants any format, cap handles json specifically
+    XCTAssertTrue([cap acceptsRequest:@"cap:in=media:void;out=\"media:form=map;textable\";type=data_processing"]);
+    XCTAssertFalse([cap acceptsRequest:@"cap:in=media:void;out=\"media:form=map;textable\";type=compute"]);
 }
 
 - (void)testCapStdinSerialization {

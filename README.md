@@ -54,8 +54,8 @@ CSCapUrn *built = [[[[CSCapUrnBuilder builder]
 
 // Check matching
 CSCapUrn *pattern = [CSCapUrn fromString:@"cap:in=\"media:binary\";op=extract;out=\"media:object\"" error:&error];
-if ([cap matches:pattern]) {
-    NSLog(@"Cap matches pattern");
+if ([cap accepts:pattern]) {
+    NSLog(@"Cap accepts pattern");
 }
 ```
 
@@ -83,8 +83,8 @@ let built = try CSCapUrnBuilder.builder()
 
 // Check matching
 let pattern = try CSCapUrn.fromString("cap:in=\"media:binary\";op=extract;out=\"media:object\"")
-if cap.matches(pattern) {
-    print("Cap matches pattern")
+if cap.accepts(pattern) {
+    print("Cap accepts pattern")
 }
 ```
 
@@ -102,7 +102,7 @@ if cap.matches(pattern) {
 | `-withTag:value:` | Return new CapUrn with tag added/updated |
 | `-withInSpec:` | Return new CapUrn with changed input spec |
 | `-withOutSpec:` | Return new CapUrn with changed output spec |
-| `-matches:` | Check if Cap matches a pattern |
+| `-accepts:` | Check if Cap (as pattern) accepts a request |
 | `-specificity` | Get graded specificity score |
 | `-toString` | Get canonical string representation |
 

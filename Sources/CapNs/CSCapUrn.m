@@ -10,9 +10,9 @@
 
 NSErrorDomain const CSCapUrnErrorDomain = @"CSCapUrnErrorDomain";
 
-/// Check if a media URN instance matches a media URN pattern using TaggedUrn matching.
-/// Delegates directly to [CSTaggedUrn matches:error:] — all tag semantics (*, !, ?, exact, missing) apply.
-static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *pattern) {
+/// Check if a media URN instance conforms to a media URN pattern using TaggedUrn matching.
+/// Delegates directly to [CSTaggedUrn conformsTo:error:] — all tag semantics (*, !, ?, exact, missing) apply.
+static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pattern) {
     NSError *error = nil;
     CSTaggedUrn *instUrn = [CSTaggedUrn fromString:instance error:&error];
     NSCAssert(instUrn != nil, @"CU2: Failed to parse media URN instance '%@': %@", instance, error.localizedDescription);
@@ -22,7 +22,7 @@ static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *patte
     NSCAssert(pattUrn != nil, @"CU2: Failed to parse media URN pattern '%@': %@", pattern, error.localizedDescription);
 
     error = nil;
-    BOOL result = [instUrn matches:pattUrn error:&error];
+    BOOL result = [instUrn conformsTo:pattUrn error:&error];
     NSCAssert(error == nil, @"CU2: media URN prefix mismatch in direction spec matching: %@", error.localizedDescription);
     return result;
 }
@@ -316,25 +316,25 @@ static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *patte
     return [CSCapUrn fromInSpec:self.inSpec outSpec:self.outSpec tags:newTags error:nil];
 }
 
-- (BOOL)matches:(CSCapUrn *)request {
+- (BOOL)accepts:(CSCapUrn *)request {
     if (!request) {
         return YES;
     }
 
     // Check direction (inSpec) using TaggedUrn matching
-    // Request's input (instance) must match cap's input (pattern)
+    // Request's input (instance) must conform to cap's input (pattern)
     if (![self.inSpec isEqualToString:@"*"] &&
         ![request.inSpec isEqualToString:@"*"]) {
-        if (!CSMediaUrnInstanceMatchesPattern(request.inSpec, self.inSpec)) {
+        if (!CSMediaUrnInstanceConformsToPattern(request.inSpec, self.inSpec)) {
             return NO;
         }
     }
 
     // Check direction (outSpec) using TaggedUrn matching
-    // Cap's output (instance) must match request's output (pattern)
+    // Cap's output (instance) must conform to request's output (pattern)
     if (![self.outSpec isEqualToString:@"*"] &&
         ![request.outSpec isEqualToString:@"*"]) {
-        if (!CSMediaUrnInstanceMatchesPattern(self.outSpec, request.outSpec)) {
+        if (!CSMediaUrnInstanceConformsToPattern(self.outSpec, request.outSpec)) {
             return NO;
         }
     }
@@ -345,12 +345,12 @@ static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *patte
         NSString *capValue = self.mutableTags[requestKey];
 
         if (!capValue) {
-            // Missing tag in cap is treated as wildcard - can handle any value
+            // Missing tag in cap is treated as wildcard - accepts any value
             continue;
         }
 
         if ([capValue isEqualToString:@"*"]) {
-            // Cap has wildcard - can handle any value
+            // Cap has wildcard - accepts any value
             continue;
         }
 
@@ -370,8 +370,8 @@ static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *patte
     return YES;
 }
 
-- (BOOL)canHandle:(CSCapUrn *)request {
-    return [self matches:request];
+- (BOOL)conformsTo:(CSCapUrn *)pattern {
+    return [pattern accepts:self];
 }
 
 - (NSUInteger)specificity {
@@ -422,8 +422,8 @@ static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *patte
     // Compatible if either direction of matches succeeds
     if (![self.inSpec isEqualToString:@"*"] &&
         ![other.inSpec isEqualToString:@"*"]) {
-        if (!CSMediaUrnInstanceMatchesPattern(self.inSpec, other.inSpec) &&
-            !CSMediaUrnInstanceMatchesPattern(other.inSpec, self.inSpec)) {
+        if (!CSMediaUrnInstanceConformsToPattern(self.inSpec, other.inSpec) &&
+            !CSMediaUrnInstanceConformsToPattern(other.inSpec, self.inSpec)) {
             return NO;
         }
     }
@@ -431,8 +431,8 @@ static BOOL CSMediaUrnInstanceMatchesPattern(NSString *instance, NSString *patte
     // Check direction compatibility (outSpec)
     if (![self.outSpec isEqualToString:@"*"] &&
         ![other.outSpec isEqualToString:@"*"]) {
-        if (!CSMediaUrnInstanceMatchesPattern(self.outSpec, other.outSpec) &&
-            !CSMediaUrnInstanceMatchesPattern(other.outSpec, self.outSpec)) {
+        if (!CSMediaUrnInstanceConformsToPattern(self.outSpec, other.outSpec) &&
+            !CSMediaUrnInstanceConformsToPattern(other.outSpec, self.outSpec)) {
             return NO;
         }
     }

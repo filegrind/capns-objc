@@ -285,9 +285,9 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
             if let expectedUrn = expectedUrn,
                let argUrn = try? CSTaggedUrn.fromString(urnStr) {
                 // Use proper semantic matching in both directions
-                let matchesForward = (try? argUrn.matches(expectedUrn)) != nil
-                let matchesReverse = (try? expectedUrn.matches(argUrn)) != nil
-                if matchesForward || matchesReverse {
+                let conformsForward = (try? argUrn.conforms(to: expectedUrn)) != nil
+                let conformsReverse = (try? expectedUrn.conforms(to: argUrn)) != nil
+                if conformsForward || conformsReverse {
                     return val
                 }
             }

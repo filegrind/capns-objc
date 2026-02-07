@@ -109,13 +109,13 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     
     for (CSCapSetEntry *entry in [self.sets allValues]) {
         for (CSCap *cap in entry.capabilities) {
-            if ([cap.capUrn matches:request]) {
+            if ([cap.capUrn accepts:request]) {
                 [matchingHosts addObject:entry.host];
                 break; // Found a matching capability for this host, no need to check others
             }
         }
     }
-    
+
     if (matchingHosts.count == 0) {
         if (error) {
             *error = [CSCapMatrixError noHostsFoundErrorForCapability:requestUrn];
@@ -146,7 +146,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     
     for (CSCapSetEntry *entry in [self.sets allValues]) {
         for (CSCap *cap in entry.capabilities) {
-            if ([cap.capUrn matches:request]) {
+            if ([cap.capUrn accepts:request]) {
                 NSInteger specificity = [cap.capUrn specificity];
                 if (bestSpecificity == -1 || specificity > bestSpecificity) {
                     bestHost = entry.host;
@@ -184,7 +184,7 @@ static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";
     return [allCapabilities copy];
 }
 
-- (BOOL)canHandle:(NSString *)requestUrn {
+- (BOOL)acceptsRequest:(NSString *)requestUrn {
     NSArray<id<CSCapSet>> *sets = [self findCapSets:requestUrn error:nil];
     return sets != nil && sets.count > 0;
 }

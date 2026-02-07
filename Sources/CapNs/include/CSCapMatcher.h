@@ -42,14 +42,14 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<CSCapUrn *> * _Nonnull)sortCapsBySpecificity:(NSArray<CSCapUrn *> * _Nonnull)caps;
 
 /**
- * Check if a cap can handle a request with additional context
+ * Check if a cap accepts a request with additional context
  * @param cap The cap to check
  * @param request The requested cap
  * @param context Additional context for matching (optional)
- * @return YES if the cap can handle the request
+ * @return YES if the cap accepts the request
  */
-+ (BOOL)cap:(CSCapUrn * _Nonnull)cap 
-    canHandleRequest:(CSCapUrn * _Nonnull)request 
++ (BOOL)cap:(CSCapUrn * _Nonnull)cap
+    acceptsRequest:(CSCapUrn * _Nonnull)request
          withContext:(nullable NSDictionary<NSString *, id> *)context;
 
 @end

@@ -144,27 +144,31 @@ NS_ASSUME_NONNULL_BEGIN
 - (CSCapUrn * _Nonnull)withoutTag:(NSString * _Nonnull)key;
 
 /**
- * Check if this cap (instance) matches a pattern based on tag compatibility
+ * Check if this cap (as a handler/pattern) accepts the given request (instance).
  *
- * Per-tag matching semantics:
- *   Pattern (missing) or K=?  → always matches
- *   Pattern K=!               → instance must NOT have K
- *   Pattern K=*               → instance must have K with any value
- *   Pattern K=v               → instance must have K with exact value v
+ * Direction matching:
+ *   Input:  request's inSpec (instance) must conformTo cap's inSpec (pattern)
+ *   Output: cap's outSpec (instance) must conformTo request's outSpec (pattern)
  *
- * Direction specs (in/out) follow the same matching rules.
+ * Tag matching:
+ *   Cap missing tag = implicit wildcard (accepts any value)
+ *   Cap has wildcard = accepts any value
+ *   Request has wildcard = any cap value matches
+ *   Otherwise exact value match required
  *
- * @param pattern The pattern cap to match against
- * @return YES if this cap matches the pattern
+ * @param request The request cap to check against
+ * @return YES if this cap accepts the request
  */
-- (BOOL)matches:(CSCapUrn * _Nonnull)pattern;
+- (BOOL)accepts:(CSCapUrn * _Nonnull)request;
 
 /**
- * Check if this cap can handle a request
- * @param request The requested cap
- * @return YES if this cap can handle the request
+ * Check if this cap (as an instance/request) conforms to the given pattern.
+ * Equivalent to [pattern accepts:self].
+ *
+ * @param pattern The pattern cap to check against
+ * @return YES if this cap conforms to the pattern
  */
-- (BOOL)canHandle:(CSCapUrn * _Nonnull)request;
+- (BOOL)conformsTo:(CSCapUrn * _Nonnull)pattern;
 
 /**
  * Get the specificity score for cap matching using graded scoring:

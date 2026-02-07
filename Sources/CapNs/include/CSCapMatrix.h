@@ -100,11 +100,11 @@ typedef NS_ENUM(NSInteger, CSCapMatrixErrorType) {
 - (NSArray<CSCap *> *)getAllCapabilities;
 
 /**
- * Check if any host can handle the specified capability
+ * Check if any host accepts the specified capability request
  * @param requestUrn The capability URN to check
- * @return YES if at least one host can handle the capability
+ * @return YES if at least one host accepts the capability
  */
-- (BOOL)canHandle:(NSString *)requestUrn;
+- (BOOL)acceptsRequest:(NSString *)requestUrn;
 
 /**
  * Unregister a capability host

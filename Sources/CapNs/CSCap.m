@@ -896,15 +896,15 @@
     return [dict copy];
 }
 
-- (BOOL)matchesRequest:(NSString *)request {
+- (BOOL)acceptsRequest:(NSString *)request {
     NSError *error;
     CSCapUrn *requestId = [CSCapUrn fromString:request error:&error];
     if (!requestId) return NO;
-    return [self.capUrn canHandle:requestId];
+    return [self.capUrn accepts:requestId];
 }
 
-- (BOOL)canHandleRequest:(CSCapUrn *)request {
-    return [self.capUrn canHandle:request];
+- (BOOL)conformsToRequest:(CSCapUrn *)request {
+    return [self.capUrn conformsTo:request];
 }
 
 - (BOOL)isMoreSpecificThan:(CSCap *)other {

@@ -152,7 +152,7 @@
 
 - (void)testCanHandle {
     // Empty registry
-    BOOL canHandle = [self.registry canHandle:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""];
+    BOOL canHandle = [self.registry acceptsRequest:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""];
     XCTAssertFalse(canHandle, @"Empty registry should not handle any capability");
 
     // After registration
@@ -170,13 +170,13 @@
 
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
 
-    canHandle = [self.registry canHandle:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""];
+    canHandle = [self.registry acceptsRequest:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""];
     XCTAssertTrue(canHandle, @"Registry should handle registered capability");
 
-    canHandle = [self.registry canHandle:@"cap:extra=param;in=media:void;op=test;out=\"media:form=map;textable\""];
+    canHandle = [self.registry acceptsRequest:@"cap:extra=param;in=media:void;op=test;out=\"media:form=map;textable\""];
     XCTAssertTrue(canHandle, @"Registry should handle capability with extra parameters");
 
-    canHandle = [self.registry canHandle:@"cap:in=media:void;op=different;out=\"media:form=map;textable\""];
+    canHandle = [self.registry acceptsRequest:@"cap:in=media:void;op=different;out=\"media:form=map;textable\""];
     XCTAssertFalse(canHandle, @"Registry should not handle unregistered capability");
 }
 
@@ -196,14 +196,14 @@
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
 
     // Verify it's registered
-    XCTAssertTrue([self.registry canHandle:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should handle capability before unregistering");
+    XCTAssertTrue([self.registry acceptsRequest:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should handle capability before unregistering");
 
     // Unregister
     BOOL success = [self.registry unregisterCapSet:@"test"];
     XCTAssertTrue(success, @"Should successfully unregister existing host");
 
     // Verify it's gone
-    XCTAssertFalse([self.registry canHandle:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should not handle capability after unregistering");
+    XCTAssertFalse([self.registry acceptsRequest:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should not handle capability after unregistering");
 
     // Try to unregister non-existent host
     success = [self.registry unregisterCapSet:@"nonexistent"];
@@ -226,14 +226,14 @@
     [self.registry registerCapSet:@"test" host:host capabilities:@[cap] error:nil];
 
     // Verify it's registered
-    XCTAssertTrue([self.registry canHandle:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should handle capability before clearing");
+    XCTAssertTrue([self.registry acceptsRequest:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should handle capability before clearing");
     XCTAssertEqual([self.registry getHostNames].count, 1, @"Should have one host before clearing");
 
     // Clear
     [self.registry clear];
 
     // Verify everything is gone
-    XCTAssertFalse([self.registry canHandle:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should not handle any capabilities after clearing");
+    XCTAssertFalse([self.registry acceptsRequest:@"cap:in=media:void;op=test;out=\"media:form=map;textable\""], @"Should not handle any capabilities after clearing");
     XCTAssertEqual([self.registry getHostNames].count, 0, @"Should have no sets after clearing");
 }
 

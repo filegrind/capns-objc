@@ -96,8 +96,8 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap1 toString], [cap2 toString]);
 
     // They should match each other
-    XCTAssertTrue([cap1 matches:cap2]);
-    XCTAssertTrue([cap2 matches:cap1]);
+    XCTAssertTrue([cap1 accepts:cap2]);
+    XCTAssertTrue([cap2 accepts:cap1]);
 }
 
 // TEST001 variant: Test empty URN fails
@@ -192,14 +192,14 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(cap1);
     CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:bytes;op=test;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(cap2);
-    XCTAssertFalse([cap1 matches:cap2]);
+    XCTAssertFalse([cap1 accepts:cap2]);
 
     // Different outSpec should not match
     CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(cap3);
     CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=media:binary" error:&error];
     XCTAssertNotNil(cap4);
-    XCTAssertFalse([cap3 matches:cap4]);
+    XCTAssertFalse([cap3 accepts:cap4]);
 }
 
 // TEST003: Direction wildcard matching
@@ -210,14 +210,14 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(wildcardIn);
     CSCapUrn *specificIn = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(specificIn);
-    XCTAssertTrue([wildcardIn matches:specificIn]);
+    XCTAssertTrue([wildcardIn accepts:specificIn]);
 
     // Wildcard outSpec matches any
     CSCapUrn *wildcardOut = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=*" error:&error];
     XCTAssertNotNil(wildcardOut);
     CSCapUrn *specificOut = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=media:binary" error:&error];
     XCTAssertNotNil(specificOut);
-    XCTAssertTrue([wildcardOut matches:specificOut]);
+    XCTAssertTrue([wildcardOut accepts:specificOut]);
 }
 
 #pragma mark - Tag Matching Tests
@@ -230,19 +230,19 @@ static NSString* testUrn(NSString *tags) {
 
     // Exact match (same direction, same tags)
     CSCapUrn *request1 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;target=thumbnail") error:&error];
-    XCTAssertTrue([cap matches:request1]);
+    XCTAssertTrue([cap accepts:request1]);
 
     // Subset match (cap has more tags than request)
     CSCapUrn *request2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertTrue([cap matches:request2]);
+    XCTAssertTrue([cap accepts:request2]);
 
     // Wildcard request should match specific cap
     CSCapUrn *request3 = [CSCapUrn fromString:testUrn(@"ext=*") error:&error];
-    XCTAssertTrue([cap matches:request3]);
+    XCTAssertTrue([cap accepts:request3]);
 
     // No match - conflicting value
     CSCapUrn *request4 = [CSCapUrn fromString:testUrn(@"op=extract") error:&error];
-    XCTAssertFalse([cap matches:request4]);
+    XCTAssertFalse([cap accepts:request4]);
 }
 
 // TEST019: Test that missing tags are treated as wildcards (cap without tag matches any value for that tag)
@@ -253,12 +253,12 @@ static NSString* testUrn(NSString *tags) {
 
     // Request with tag should match cap without tag (treated as wildcard)
     CSCapUrn *request1 = [CSCapUrn fromString:testUrn(@"ext=pdf") error:&error];
-    XCTAssertTrue([cap matches:request1]); // cap missing ext tag = wildcard, can handle any ext
+    XCTAssertTrue([cap accepts:request1]); // cap missing ext tag = wildcard, can handle any ext
 
     // But cap with extra tags can match subset requests
     CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     CSCapUrn *request2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertTrue([cap2 matches:request2]);
+    XCTAssertTrue([cap2 accepts:request2]);
 }
 
 // TEST020: Test specificity calculation (in/out base, wildcards don't count)
@@ -398,8 +398,8 @@ static NSString* testUrn(NSString *tags) {
 
     // Test that wildcarded cap can match more requests
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"ext=jpg") error:&error];
-    XCTAssertFalse([cap matches:request]);
-    XCTAssertTrue([wildcarded matches:request]);
+    XCTAssertFalse([cap accepts:request]);
+    XCTAssertTrue([wildcarded accepts:request]);
 }
 
 // TEST027: with_wildcard_tag for in/out direction
@@ -768,7 +768,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 1: Exact match should succeed");
+    XCTAssertTrue([cap accepts:request], @"Test 1: Exact match should succeed");
 }
 
 // TEST041: Matching semantics - cap missing tag matches (implicit wildcard)
@@ -781,7 +781,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 2: Cap missing tag should match (implicit wildcard)");
+    XCTAssertTrue([cap accepts:request], @"Test 2: Cap missing tag should match (implicit wildcard)");
 }
 
 // TEST042: Matching semantics - cap with extra tag matches
@@ -794,7 +794,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 3: Cap with extra tag should match");
+    XCTAssertTrue([cap accepts:request], @"Test 3: Cap with extra tag should match");
 }
 
 // TEST043: Matching semantics - request wildcard matches specific cap value
@@ -807,7 +807,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=*") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 4: Request wildcard should match");
+    XCTAssertTrue([cap accepts:request], @"Test 4: Request wildcard should match");
 }
 
 // TEST044: Matching semantics - cap wildcard matches specific request value
@@ -820,7 +820,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 5: Cap wildcard should match");
+    XCTAssertTrue([cap accepts:request], @"Test 5: Cap wildcard should match");
 }
 
 // TEST045: Matching semantics - value mismatch does not match
@@ -833,7 +833,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=docx") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertFalse([cap matches:request], @"Test 6: Value mismatch should not match");
+    XCTAssertFalse([cap accepts:request], @"Test 6: Value mismatch should not match");
 }
 
 // TEST046: Matching semantics - fallback pattern (cap missing tag = implicit wildcard)
@@ -846,7 +846,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate_thumbnail;ext=wav") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 7: Fallback pattern should match");
+    XCTAssertTrue([cap accepts:request], @"Test 7: Fallback pattern should match");
 }
 
 // TEST048: Matching semantics - wildcard direction matches anything
@@ -860,7 +860,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([wildcardCap matches:request], @"Test 8: Wildcard cap should match anything");
+    XCTAssertTrue([wildcardCap accepts:request], @"Test 8: Wildcard cap should match anything");
 }
 
 // TEST049: Matching semantics - cross-dimension independence
@@ -873,7 +873,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"ext=pdf") error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertTrue([cap matches:request], @"Test 9: Cross-dimension independence should match");
+    XCTAssertTrue([cap accepts:request], @"Test 9: Cross-dimension independence should match");
 }
 
 // TEST050: Matching semantics - direction mismatch prevents matching
@@ -886,7 +886,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:bytes;op=generate;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(request);
 
-    XCTAssertFalse([cap matches:request], @"Test 10: Direction mismatch should prevent match");
+    XCTAssertFalse([cap accepts:request], @"Test 10: Direction mismatch should prevent match");
 }
 
 // TEST051: Semantic direction matching - generic provider matches specific request
@@ -898,13 +898,13 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(genericCap, @"Failed to parse generic cap: %@", error);
     CSCapUrn *pdfRequest = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
     XCTAssertNotNil(pdfRequest, @"Failed to parse pdf request: %@", error);
-    XCTAssertTrue([genericCap matches:pdfRequest],
+    XCTAssertTrue([genericCap accepts:pdfRequest],
         @"Generic bytes provider must match specific pdf;bytes request");
 
     // Generic cap also matches epub;bytes (any bytes subtype)
     CSCapUrn *epubRequest = [CSCapUrn fromString:@"cap:in=\"media:epub;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
     XCTAssertNotNil(epubRequest, @"Failed to parse epub request: %@", error);
-    XCTAssertTrue([genericCap matches:epubRequest],
+    XCTAssertTrue([genericCap accepts:epubRequest],
         @"Generic bytes provider must match epub;bytes request");
 
     // Reverse: specific cap does NOT match generic request
@@ -912,11 +912,11 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(pdfCap, @"Failed to parse pdf cap: %@", error);
     CSCapUrn *genericRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
     XCTAssertNotNil(genericRequest, @"Failed to parse generic request: %@", error);
-    XCTAssertFalse([pdfCap matches:genericRequest],
+    XCTAssertFalse([pdfCap accepts:genericRequest],
         @"Specific pdf;bytes cap must NOT match generic bytes request");
 
     // Incompatible types: pdf cap does NOT match epub request
-    XCTAssertFalse([pdfCap matches:epubRequest],
+    XCTAssertFalse([pdfCap accepts:epubRequest],
         @"PDF-specific cap must NOT match epub request (epub lacks pdf marker)");
 
     // Output direction: cap producing more specific output matches less specific request
@@ -924,7 +924,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(specificOutCap);
     CSCapUrn *genericOutRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;bytes\"" error:&error];
     XCTAssertNotNil(genericOutRequest);
-    XCTAssertTrue([specificOutCap matches:genericOutRequest],
+    XCTAssertTrue([specificOutCap accepts:genericOutRequest],
         @"Cap producing image;png;bytes;thumbnail must satisfy request for image;bytes");
 
     // Reverse output: generic output cap does NOT match specific output request
@@ -932,7 +932,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(genericOutCap);
     CSCapUrn *specificOutRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
     XCTAssertNotNil(specificOutRequest);
-    XCTAssertFalse([genericOutCap matches:specificOutRequest],
+    XCTAssertFalse([genericOutCap accepts:specificOutRequest],
         @"Cap producing generic image;bytes must NOT satisfy request requiring image;png;bytes;thumbnail");
 }
 

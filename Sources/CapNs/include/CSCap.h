@@ -420,18 +420,19 @@ typedef NS_ENUM(NSInteger, CSArgSourceType) {
 
 
 /**
- * Check if this cap matches a request string
+ * Check if this cap accepts a request string
  * @param request The request string
- * @return YES if this cap matches the request
+ * @return YES if this cap accepts the request
  */
-- (BOOL)matchesRequest:(NSString * _Nonnull)request;
+- (BOOL)acceptsRequest:(NSString * _Nonnull)request;
 
 /**
- * Check if this cap can handle a request
+ * Check if this cap conforms to the given request pattern
+ * Equivalent to [request.capUrn accepts:self.capUrn]
  * @param request The request cap URN
- * @return YES if this cap can handle the request
+ * @return YES if this cap conforms to the request
  */
-- (BOOL)canHandleRequest:(CSCapUrn * _Nonnull)request;
+- (BOOL)conformsToRequest:(CSCapUrn * _Nonnull)request;
 
 /**
  * Check if this cap is more specific than another

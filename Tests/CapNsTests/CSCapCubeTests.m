@@ -260,8 +260,8 @@
     XCTAssertNil(error, @"Should not have error");
 
     // Verify we got the right cap via CanHandle checks
-    XCTAssertTrue([composite canHandle:[self testUrnWithTags:@"ext=pdf;op=generate"]], @"Should handle matching cap");
-    XCTAssertFalse([composite canHandle:[self testUrnWithTags:@"op=nonexistent"]], @"Should not handle non-matching cap");
+    XCTAssertTrue([composite acceptsRequest:[self testUrnWithTags:@"ext=pdf;op=generate"]], @"Should handle matching cap");
+    XCTAssertFalse([composite acceptsRequest:[self testUrnWithTags:@"op=nonexistent"]], @"Should not handle non-matching cap");
 }
 
 - (void)testCapCubeRegistryManagement {

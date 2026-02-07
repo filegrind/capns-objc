@@ -129,11 +129,11 @@ NS_ASSUME_NONNULL_BEGIN
                                           error:(NSError * _Nullable * _Nullable)error;
 
 /**
- * Check if any registry can handle the specified capability
+ * Check if any registry accepts the specified capability request
  * @param requestUrn The capability URN to check
- * @return YES if at least one registry can handle the capability
+ * @return YES if at least one registry accepts the capability
  */
-- (BOOL)canHandle:(NSString *)requestUrn;
+- (BOOL)acceptsRequest:(NSString *)requestUrn;
 
 /**
  * Build a directed graph from all capabilities across all registries.

@@ -145,8 +145,8 @@
 
         // Use proper TaggedUrn matching
         NSError *matchError = nil;
-        BOOL matches = [providedUrn matches:requirementUrn error:&matchError];
-        if (!matchError && matches) {
+        BOOL conforms = [providedUrn conformsTo:requirementUrn error:&matchError];
+        if (!matchError && conforms) {
             [result addObject:edge];
         }
     }

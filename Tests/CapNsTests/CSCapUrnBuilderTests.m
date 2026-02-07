@@ -269,10 +269,10 @@
     XCTAssertNotNil(wildcardRequest);
 
     // Specific cap should handle general request
-    XCTAssertTrue([specificCap matches:generalRequest]);
+    XCTAssertTrue([specificCap accepts:generalRequest]);
 
     // Specific cap should handle wildcard request
-    XCTAssertTrue([specificCap matches:wildcardRequest]);
+    XCTAssertTrue([specificCap accepts:wildcardRequest]);
 
     // Check specificity (includes in + out now)
     XCTAssertTrue([specificCap isMoreSpecificThan:generalRequest]);
@@ -301,8 +301,8 @@
     XCTAssertNotNil(cap2);
 
     // They should NOT match due to different inSpec
-    XCTAssertFalse([cap1 matches:cap2]);
-    XCTAssertFalse([cap2 matches:cap1]);
+    XCTAssertFalse([cap1 accepts:cap2]);
+    XCTAssertFalse([cap2 accepts:cap1]);
 }
 
 @end

@@ -18,7 +18,7 @@
     NSMutableArray<CSCapUrn *> *matches = [NSMutableArray array];
     
     for (CSCapUrn *cap in caps) {
-        if ([cap canHandle:request]) {
+        if ([cap accepts:request]) {
             [matches addObject:cap];
         }
     }
@@ -49,11 +49,11 @@
     }];
 }
 
-+ (BOOL)cap:(CSCapUrn *)cap 
-    canHandleRequest:(CSCapUrn *)request 
++ (BOOL)cap:(CSCapUrn *)cap
+    acceptsRequest:(CSCapUrn *)request
          withContext:(nullable NSDictionary<NSString *, id> *)context {
     // Basic cap matching
-    if (![cap canHandle:request]) {
+    if (![cap accepts:request]) {
         return NO;
     }
     

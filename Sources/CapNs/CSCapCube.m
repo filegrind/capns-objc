@@ -255,7 +255,7 @@
     return bestOverall;
 }
 
-- (BOOL)canHandle:(NSString *)requestUrn {
+- (BOOL)acceptsRequest:(NSString *)requestUrn {
     return [self findBestCapSet:requestUrn error:nil] != nil;
 }
 
