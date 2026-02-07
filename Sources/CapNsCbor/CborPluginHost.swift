@@ -417,7 +417,7 @@ public final class CborPluginHost: @unchecked Sendable {
     ///
     /// This encodes the request as a special NDJSON message and yields it to ALL pending
     /// host requests' streams. The PluginStreamingSession's readNextMessage will receive
-    /// it and forward it to fgnd via PluginGRPCBridge. The response comes back via
+    /// it and forward it to macina via PluginGRPCBridge. The response comes back via
     /// handleCapResponse, which sends CHUNK/END/ERR frames back to the plugin.
     private func handlePluginRequest(_ frame: CborFrame) {
         let pluginRequestId = frame.id
@@ -470,7 +470,7 @@ public final class CborPluginHost: @unchecked Sendable {
         pendingPluginCapRequestsLock.unlock()
 
         // Yield the cap_request message to ALL pending host requests' streams.
-        // This way, readNextMessage will see it and can forward it to fgnd.
+        // This way, readNextMessage will see it and can forward it to macina.
         // Create a special chunk that contains the cap_request NDJSON.
         let capRequestChunk = CborResponseChunk(
             payload: messageData,
@@ -520,7 +520,7 @@ public final class CborPluginHost: @unchecked Sendable {
     }
 
     /// Handle a cap response message from the host.
-    /// Called when fgnd responds to a plugin-initiated cap request.
+    /// Called when macina responds to a plugin-initiated cap request.
     /// Routes the response to the pending plugin request's continuation,
     /// which then sends CHUNK/END/ERR frames back to the plugin.
     public func handleCapResponse(requestIdString: String, payload: Data?, error: Error?) {
