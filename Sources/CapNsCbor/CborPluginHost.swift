@@ -628,7 +628,7 @@ public final class CborPluginHost: @unchecked Sendable {
         return stream
     }
 
-    /// Send a cap request with unified arguments.
+    /// Send a cap request with arguments.
     ///
     /// This is the primary method for invoking caps on plugins. Arguments are
     /// identified by media_urn and the plugin runtime extracts the appropriate
@@ -639,10 +639,10 @@ public final class CborPluginHost: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - capUrn: The cap URN to invoke
-    ///   - arguments: Unified arguments as array of (mediaUrn, value) pairs
+    ///   - arguments: Arguments as array of (mediaUrn, value) pairs
     /// - Returns: AsyncStream of response chunks
     /// - Throws: CborPluginHostError if host is closed, serialization fails, or send fails
-    public func requestWithUnifiedArguments(
+    public func requestWithArguments(
         capUrn: String,
         arguments: [(mediaUrn: String, value: Data)]
     ) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {

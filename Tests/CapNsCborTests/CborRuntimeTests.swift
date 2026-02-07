@@ -522,10 +522,10 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try await pluginTask.value
     }
 
-    // MARK: - Unified Arguments (TEST297, TEST303)
+    // MARK: - Arguments (TEST297, TEST303)
 
     // TEST297: Host call with unified CBOR arguments sends correct content_type and payload
-    func testUnifiedArgumentsRoundtrip() async throws {
+    func testArgumentsRoundtrip() async throws {
         let pipes = createPipePair()
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
@@ -579,8 +579,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        // Use requestWithUnifiedArguments and collect response
-        let stream = try host.requestWithUnifiedArguments(
+        // Use requestWithArguments and collect response
+        let stream = try host.requestWithArguments(
             capUrn: "cap:op=test",
             arguments: [(mediaUrn: "media:model-spec;textable", value: "gpt-4".data(using: .utf8)!)]
         )
@@ -599,8 +599,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try await pluginTask.value
     }
 
-    // TEST303: Multiple unified arguments are correctly serialized in CBOR payload
-    func testUnifiedArgumentsMultiple() async throws {
+    // TEST303: Multiple arguments are correctly serialized in CBOR payload
+    func testArgumentsMultiple() async throws {
         let pipes = createPipePair()
 
         let pluginReader = CborFrameReader(handle: pipes.hostToPlugin.fileHandleForReading)
@@ -628,7 +628,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let stream = try host.requestWithUnifiedArguments(
+        let stream = try host.requestWithArguments(
             capUrn: "cap:op=test",
             arguments: [
                 (mediaUrn: "media:model-spec;textable", value: "gpt-4".data(using: .utf8)!),

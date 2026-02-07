@@ -130,7 +130,7 @@ public protocol CborStreamEmitter: Sendable {
 /// The `invoke` method sends a REQ frame to the host and returns an iterator
 /// that yields response chunks as they arrive.
 public protocol CborPeerInvoker: Sendable {
-    /// Invoke a cap on the host with unified arguments.
+    /// Invoke a cap on the host with arguments.
     ///
     /// Sends a REQ frame to the host with the specified cap URN and arguments.
     /// Arguments are serialized as CBOR with native binary values.
@@ -208,7 +208,7 @@ public final class CliStreamEmitter: CborStreamEmitter, @unchecked Sendable {
 /// Extract the effective payload from a REQ frame.
 ///
 /// If the content_type is "application/cbor", the payload is expected to be
-/// CBOR unified arguments: `[{media_urn: string, value: bytes}, ...]`
+/// CBOR arguments: `[{media_urn: string, value: bytes}, ...]`
 /// The function extracts the value whose media_urn matches the cap's input type.
 ///
 /// For other content types (or if content_type is nil), returns the raw payload.
@@ -220,9 +220,9 @@ public final class CliStreamEmitter: CborStreamEmitter, @unchecked Sendable {
 /// - Returns: The effective payload bytes
 /// - Throws: CborPluginRuntimeError if parsing fails or no matching argument found
 func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String) throws -> Data {
-    // Check if this is CBOR unified arguments
+    // Check if this is CBOR arguments
     guard contentType == "application/cbor" else {
-        // Not CBOR unified arguments - return raw payload
+        // Not CBOR arguments - return raw payload
         return payload
     }
 
@@ -243,12 +243,12 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
         }
         cborValue = decoded
     } catch {
-        throw CborPluginRuntimeError.deserializationError("Failed to parse CBOR unified arguments: \(error)")
+        throw CborPluginRuntimeError.deserializationError("Failed to parse CBOR arguments: \(error)")
     }
 
     // Must be an array
     guard case .array(let arguments) = cborValue else {
-        throw CborPluginRuntimeError.deserializationError("CBOR unified arguments must be an array")
+        throw CborPluginRuntimeError.deserializationError("CBOR arguments must be an array")
     }
 
     // Parse the expected input as a tagged URN for proper matching
@@ -296,7 +296,7 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
 
     // No matching argument found - this is an error, no fallbacks
     throw CborPluginRuntimeError.deserializationError(
-        "No argument found matching expected input media type '\(expectedInput)' in CBOR unified arguments"
+        "No argument found matching expected input media type '\(expectedInput)' in CBOR arguments"
     )
 }
 
