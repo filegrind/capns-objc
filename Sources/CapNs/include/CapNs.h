@@ -35,7 +35,7 @@ FOUNDATION_EXPORT const unsigned char CapNsVersionString[];
 #import "CSSchemaValidator.h"
 #import "CSCapRegistry.h"
 #import "CSCapMatrix.h"
-#import "CSCapCube.h"
+#import "CSCapBlock.h"
 #import "CSCapGraph.h"
 
 // Plugin communication infrastructure

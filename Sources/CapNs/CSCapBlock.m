@@ -1,11 +1,11 @@
 //
-//  CSCapCube.m
+//  CSCapBlock.m
 //  CapNs
 //
 //  Composite registry implementation
 //
 
-#import "include/CSCapCube.h"
+#import "include/CSCapBlock.h"
 #import "include/CSCapUrn.h"
 #import "include/CSCapGraph.h"
 #import "include/CSStdinSource.h"
@@ -34,12 +34,12 @@
 // Internal registry entry
 // ============================================================================
 
-@interface CSCapCubeEntry : NSObject
+@interface CSCapBlockEntry : NSObject
 @property (nonatomic, strong) NSString *name;
 @property (nonatomic, strong) CSCapMatrix *registry;
 @end
 
-@implementation CSCapCubeEntry
+@implementation CSCapBlockEntry
 @end
 
 // ============================================================================
@@ -78,7 +78,7 @@
     id<CSCapSet> bestHost = nil;
     NSInteger bestSpecificity = -1;
 
-    for (CSCapCubeEntry *entry in self.registries) {
+    for (CSCapBlockEntry *entry in self.registries) {
         // Access registry's internal sets through findBestCapSet
         CSCap *capDef = nil;
         NSError *findError = nil;
@@ -109,7 +109,7 @@
 - (CSCapGraph *)graph {
     CSCapGraph *graph = [CSCapGraph graph];
 
-    for (CSCapCubeEntry *entry in self.registries) {
+    for (CSCapBlockEntry *entry in self.registries) {
         NSArray<CSCap *> *capabilities = [entry.registry getAllCapabilities];
         for (CSCap *cap in capabilities) {
             [graph addCap:cap registryName:entry.name];
@@ -122,14 +122,14 @@
 @end
 
 // ============================================================================
-// CSCapCube
+// CSCapBlock
 // ============================================================================
 
-@interface CSCapCube ()
-@property (nonatomic, strong) NSMutableArray<CSCapCubeEntry *> *registries;
+@interface CSCapBlock ()
+@property (nonatomic, strong) NSMutableArray<CSCapBlockEntry *> *registries;
 @end
 
-@implementation CSCapCube
+@implementation CSCapBlock
 
 + (instancetype)cube {
     return [[self alloc] init];
@@ -145,7 +145,7 @@
 
 - (void)addRegistry:(NSString *)name registry:(CSCapMatrix *)registry {
     @synchronized (self) {
-        CSCapCubeEntry *entry = [[CSCapCubeEntry alloc] init];
+        CSCapBlockEntry *entry = [[CSCapBlockEntry alloc] init];
         entry.name = name;
         entry.registry = registry;
         [self.registries addObject:entry];
@@ -155,7 +155,7 @@
 - (CSCapMatrix * _Nullable)removeRegistry:(NSString *)name {
     @synchronized (self) {
         for (NSUInteger i = 0; i < self.registries.count; i++) {
-            CSCapCubeEntry *entry = self.registries[i];
+            CSCapBlockEntry *entry = self.registries[i];
             if ([entry.name isEqualToString:name]) {
                 CSCapMatrix *removed = entry.registry;
                 [self.registries removeObjectAtIndex:i];
@@ -168,7 +168,7 @@
 
 - (CSCapMatrix * _Nullable)getRegistry:(NSString *)name {
     @synchronized (self) {
-        for (CSCapCubeEntry *entry in self.registries) {
+        for (CSCapBlockEntry *entry in self.registries) {
             if ([entry.name isEqualToString:name]) {
                 return entry.registry;
             }
@@ -180,7 +180,7 @@
 - (NSArray<NSString *> *)getRegistryNames {
     @synchronized (self) {
         NSMutableArray<NSString *> *names = [[NSMutableArray alloc] initWithCapacity:self.registries.count];
-        for (CSCapCubeEntry *entry in self.registries) {
+        for (CSCapBlockEntry *entry in self.registries) {
             [names addObject:entry.name];
         }
         return [names copy];
@@ -222,7 +222,7 @@
     CSBestCapSetMatch *bestOverall = nil;
 
     @synchronized (self) {
-        for (CSCapCubeEntry *entry in self.registries) {
+        for (CSCapBlockEntry *entry in self.registries) {
             // Find the best match within this registry
             CSCap *capDef = nil;
             id<CSCapSet> host = [entry.registry findBestCapSet:requestUrn error:nil capDefinition:&capDef];
@@ -263,7 +263,7 @@
     @synchronized (self) {
         CSCapGraph *graph = [CSCapGraph graph];
 
-        for (CSCapCubeEntry *entry in self.registries) {
+        for (CSCapBlockEntry *entry in self.registries) {
             NSArray<CSCap *> *capabilities = [entry.registry getAllCapabilities];
             for (CSCap *cap in capabilities) {
                 [graph addCap:cap registryName:entry.name];

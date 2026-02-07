@@ -1,5 +1,5 @@
 //
-//  CSCapCube.h
+//  CSCapBlock.h
 //  CapNs
 //
 //  Composite registry that wraps multiple CSCapMatrix instances
@@ -71,7 +71,7 @@ NS_ASSUME_NONNULL_BEGIN
  * specificity scores and returns the most specific match.
  * On tie, defaults to the first registry that was added (priority order).
  */
-@interface CSCapCube : NSObject
+@interface CSCapBlock : NSObject
 
 /**
  * Create a new empty composite registry

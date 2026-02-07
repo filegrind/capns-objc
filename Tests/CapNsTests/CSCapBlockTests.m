@@ -1,6 +1,6 @@
 //
-//  CSCapCubeTests.m
-//  Tests for CSCapCube
+//  CSCapBlockTests.m
+//  Tests for CSCapBlock
 //
 
 #import <XCTest/XCTest.h>
@@ -34,10 +34,10 @@
 
 @end
 
-@interface CSCapCubeTests : XCTestCase
+@interface CSCapBlockTests : XCTestCase
 @end
 
-@implementation CSCapCubeTests
+@implementation CSCapBlockTests
 
 // Helper to create a Cap for testing
 - (CSCap *)makeCapWithUrn:(NSString *)urnString title:(NSString *)title {
@@ -61,7 +61,7 @@
     return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:form=map;textable\";%@", tags];
 }
 
-- (void)testCapCubeMoreSpecificWins {
+- (void)testCapBlockMoreSpecificWins {
     // This is the key test: provider has less specific cap, plugin has more specific
     // The more specific one should win regardless of registry order
 
@@ -81,7 +81,7 @@
     [pluginRegistry registerCapSet:@"plugin" host:pluginHost capabilities:@[pluginCap] error:nil];
 
     // Create composite with provider first (normally would have priority on ties)
-    CSCapCube *composite = [CSCapCube cube];
+    CSCapBlock *composite = [CSCapBlock cube];
     [composite addRegistry:@"providers" registry:providerRegistry];
     [composite addRegistry:@"plugins" registry:pluginRegistry];
 
@@ -101,7 +101,7 @@
     XCTAssertEqualObjects(best.cap.title, @"Plugin PDF Thumbnail Generator (specific)", @"Should get plugin cap");
 }
 
-- (void)testCapCubeTieGoesToFirst {
+- (void)testCapBlockTieGoesToFirst {
     // When specificity is equal, first registry wins
 
     CSCapMatrix *registry1 = [CSCapMatrix registry];
@@ -118,7 +118,7 @@
                                  title:@"Registry 2 Cap"];
     [registry2 registerCapSet:@"host2" host:host2 capabilities:@[cap2] error:nil];
 
-    CSCapCube *composite = [CSCapCube cube];
+    CSCapBlock *composite = [CSCapBlock cube];
     [composite addRegistry:@"first" registry:registry1];
     [composite addRegistry:@"second" registry:registry2];
 
@@ -133,7 +133,7 @@
     XCTAssertEqualObjects(best.cap.title, @"Registry 1 Cap", @"Should get first registry's cap");
 }
 
-- (void)testCapCubePollsAll {
+- (void)testCapBlockPollsAll {
     // Test that all registries are polled
 
     CSCapMatrix *registry1 = [CSCapMatrix registry];
@@ -158,7 +158,7 @@
                                  title:@"Registry 3"];
     [registry3 registerCapSet:@"host3" host:host3 capabilities:@[cap3] error:nil];
 
-    CSCapCube *composite = [CSCapCube cube];
+    CSCapBlock *composite = [CSCapBlock cube];
     [composite addRegistry:@"r1" registry:registry1];
     [composite addRegistry:@"r2" registry:registry2];
     [composite addRegistry:@"r3" registry:registry3];
@@ -173,10 +173,10 @@
     XCTAssertEqualObjects(best.registryName, @"r3", @"Most specific registry should win");
 }
 
-- (void)testCapCubeNoMatch {
+- (void)testCapBlockNoMatch {
     CSCapMatrix *registry = [CSCapMatrix registry];
 
-    CSCapCube *composite = [CSCapCube cube];
+    CSCapBlock *composite = [CSCapBlock cube];
     [composite addRegistry:@"empty" registry:registry];
 
     NSError *error = nil;
@@ -187,7 +187,7 @@
     XCTAssertEqual(error.code, CSCapMatrixErrorTypeNoSetsFound, @"Should be NoSetsFound error");
 }
 
-- (void)testCapCubeFallbackScenario {
+- (void)testCapBlockFallbackScenario {
     // Test the exact scenario from the user's issue:
     // Provider: generic fallback (can handle any file type)
     // Plugin:   PDF-specific handler
@@ -210,7 +210,7 @@
     [pluginRegistry registerCapSet:@"pdf_plugin" host:pluginHost capabilities:@[pluginCap] error:nil];
 
     // Providers first (would win on tie)
-    CSCapCube *composite = [CSCapCube cube];
+    CSCapBlock *composite = [CSCapBlock cube];
     [composite addRegistry:@"providers" registry:providerRegistry];
     [composite addRegistry:@"plugins" registry:pluginRegistry];
 
@@ -239,7 +239,7 @@
     XCTAssertEqualObjects(bestWav.cap.title, @"Generic Thumbnail Provider", @"Should get provider cap");
 }
 
-- (void)testCapCubeCanMethod {
+- (void)testCapBlockCanMethod {
     // Test the can() method that returns a CSCapCaller
 
     CSCapMatrix *providerRegistry = [CSCapMatrix registry];
@@ -249,7 +249,7 @@
                                        title:@"Test Provider"];
     [providerRegistry registerCapSet:@"test_provider" host:providerHost capabilities:@[providerCap] error:nil];
 
-    CSCapCube *composite = [CSCapCube cube];
+    CSCapBlock *composite = [CSCapBlock cube];
     [composite addRegistry:@"providers" registry:providerRegistry];
 
     // Test can() returns a CSCapCaller
@@ -264,8 +264,8 @@
     XCTAssertFalse([composite acceptsRequest:[self testUrnWithTags:@"op=nonexistent"]], @"Should not handle non-matching cap");
 }
 
-- (void)testCapCubeRegistryManagement {
-    CSCapCube *composite = [CSCapCube cube];
+- (void)testCapBlockRegistryManagement {
+    CSCapBlock *composite = [CSCapBlock cube];
 
     CSCapMatrix *registry1 = [CSCapMatrix registry];
     CSCapMatrix *registry2 = [CSCapMatrix registry];

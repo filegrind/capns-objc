@@ -66,7 +66,7 @@
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"converters" registry:registry];
 
     CSCapGraph *graph = [cube graph];
@@ -96,7 +96,7 @@
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"converters" registry:registry];
 
     CSCapGraph *graph = [cube graph];
@@ -125,7 +125,7 @@
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"converters" registry:registry];
 
     CSCapGraph *graph = [cube graph];
@@ -156,7 +156,7 @@
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"converters" registry:registry];
 
     CSCapGraph *graph = [cube graph];
@@ -197,7 +197,7 @@
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2, cap3] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"converters" registry:registry];
 
     CSCapGraph *graph = [cube graph];
@@ -237,7 +237,7 @@
     [registry1 registerCapSet:@"converter1" host:host1 capabilities:@[cap1] error:nil];
     [registry2 registerCapSet:@"converter2" host:host2 capabilities:@[cap2] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"reg1" registry:registry1];
     [cube addRegistry:@"reg2" registry:registry2];
 
@@ -266,7 +266,7 @@
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2, cap3] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"converters" registry:registry];
 
     CSCapGraph *graph = [cube graph];
@@ -285,8 +285,8 @@
     XCTAssertEqual(stats.outputSpecCount, 3, @"Expected 3 output specs");
 }
 
-- (void)testCapGraphWithCapCube {
-    // Integration test: build graph from CapCube
+- (void)testCapGraphWithCapBlock {
+    // Integration test: build graph from CapBlock
     CSCapMatrix *providerRegistry = [CSCapMatrix registry];
     CSCapMatrix *pluginRegistry = [CSCapMatrix registry];
 
@@ -301,7 +301,7 @@
     CSCap *pluginCap = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"Plugin String to Object"];
     [pluginRegistry registerCapSet:@"plugin" host:pluginHost capabilities:@[pluginCap] error:nil];
 
-    CSCapCube *cube = [CSCapCube cube];
+    CSCapBlock *cube = [CSCapBlock cube];
     [cube addRegistry:@"providers" registry:providerRegistry];
     [cube addRegistry:@"plugins" registry:pluginRegistry];
 
