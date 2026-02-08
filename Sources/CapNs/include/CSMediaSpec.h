@@ -69,6 +69,9 @@ FOUNDATION_EXPORT NSString * const CSMediaYaml;         // media:yaml;textable;f
 // Semantic input types
 FOUNDATION_EXPORT NSString * const CSMediaModelSpec;    // media:model-spec;textable;form=scalar
 FOUNDATION_EXPORT NSString * const CSMediaModelRepo;    // media:model-repo;textable;form=map
+// File path types
+FOUNDATION_EXPORT NSString * const CSMediaFilePath;     // media:file-path;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaFilePathArray; // media:file-path;textable;form=list
 // Semantic output types
 FOUNDATION_EXPORT NSString * const CSMediaModelDim;     // media:model-dim;integer;textable;numeric;form=scalar
 FOUNDATION_EXPORT NSString * const CSMediaDecision;     // media:decision;bool;textable;form=scalar

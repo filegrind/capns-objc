@@ -586,10 +586,10 @@ public final class CborPluginHost: @unchecked Sendable {
             pendingLock.unlock()
             throw CborPluginHostError.closed
         }
+        let maxChunk = limits.maxChunk
         pendingLock.unlock()
 
         let requestId = CborMessageId.newUUID()
-        let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: payload, contentType: contentType)
 
         // Create stream before sending request
         let stream = AsyncStream<Result<CborResponseChunk, CborPluginHostError>> { continuation in
@@ -606,24 +606,111 @@ public final class CborPluginHost: @unchecked Sendable {
             }
         }
 
-        // Send request
-        writerLock.lock()
-        do {
-            try frameWriter.write(frame)
-        } catch {
-            writerLock.unlock()
-            // Remove pending request on send failure - extract continuation while holding lock,
-            // then finish OUTSIDE the lock to avoid deadlock with onTermination handler
-            var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-            pendingLock.lock()
-            if let removed = pending.removeValue(forKey: requestId) {
-                continuationToFinish = removed.continuation
+        // Automatic chunking for large request payloads (or empty payloads to avoid ambiguity)
+        if !payload.isEmpty && payload.count <= maxChunk {
+            // Small non-empty payload: send single REQ frame with full payload
+            let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: payload, contentType: contentType)
+            writerLock.lock()
+            do {
+                try frameWriter.write(frame)
+            } catch {
+                writerLock.unlock()
+                // Remove pending request on send failure - extract continuation while holding lock,
+                // then finish OUTSIDE the lock to avoid deadlock with onTermination handler
+                var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
+                pendingLock.lock()
+                if let removed = pending.removeValue(forKey: requestId) {
+                    continuationToFinish = removed.continuation
+                }
+                pendingLock.unlock()
+                continuationToFinish?.finish()
+                throw CborPluginHostError.sendFailed("\(error)")
             }
-            pendingLock.unlock()
-            continuationToFinish?.finish()
-            throw CborPluginHostError.sendFailed("\(error)")
+            writerLock.unlock()
+        } else {
+            // Large payload: send REQ + CHUNK frames + END
+            fputs("[CborPluginHost] request: large payload (\(payload.count) bytes), chunking with max_chunk=\(maxChunk)\n", stderr)
+
+            // Send initial REQ frame with cap_urn and content_type, but empty payload
+            let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: contentType)
+            writerLock.lock()
+            do {
+                try frameWriter.write(frame)
+            } catch {
+                writerLock.unlock()
+                // Remove pending request on send failure
+                var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
+                pendingLock.lock()
+                if let removed = pending.removeValue(forKey: requestId) {
+                    continuationToFinish = removed.continuation
+                }
+                pendingLock.unlock()
+                continuationToFinish?.finish()
+                throw CborPluginHostError.sendFailed("\(error)")
+            }
+            writerLock.unlock()
+
+            // Send payload in CHUNK frames
+            var offset = 0
+            var seq: UInt64 = 0
+
+            if payload.isEmpty {
+                // Empty payload: send END frame immediately with no chunks
+                writerLock.lock()
+                do {
+                    let endFrame = CborFrame.end(id: requestId, finalPayload: Data())
+                    try frameWriter.write(endFrame)
+                } catch {
+                    writerLock.unlock()
+                    // Remove pending request on send failure
+                    var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
+                    pendingLock.lock()
+                    if let removed = pending.removeValue(forKey: requestId) {
+                        continuationToFinish = removed.continuation
+                    }
+                    pendingLock.unlock()
+                    continuationToFinish?.finish()
+                    throw CborPluginHostError.sendFailed("\(error)")
+                }
+                writerLock.unlock()
+            } else {
+                // Non-empty payload: send CHUNK frames + END
+                while offset < payload.count {
+                    let remaining = payload.count - offset
+                    let chunkSize = min(remaining, maxChunk)
+                    let chunkData = payload.subdata(in: offset..<(offset + chunkSize))
+                    offset += chunkSize
+
+                    writerLock.lock()
+                    do {
+                        if offset < payload.count {
+                            // Not the last chunk - send CHUNK frame
+                            let chunkFrame = CborFrame.chunk(id: requestId, seq: seq, payload: chunkData)
+                            try frameWriter.write(chunkFrame)
+                            seq += 1
+                        } else {
+                            // Last chunk - send END frame
+                            let endFrame = CborFrame.end(id: requestId, finalPayload: chunkData)
+                            try frameWriter.write(endFrame)
+                        }
+                    } catch {
+                        writerLock.unlock()
+                        // Remove pending request on send failure
+                        var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
+                        pendingLock.lock()
+                        if let removed = pending.removeValue(forKey: requestId) {
+                            continuationToFinish = removed.continuation
+                        }
+                        pendingLock.unlock()
+                        continuationToFinish?.finish()
+                        throw CborPluginHostError.sendFailed("\(error)")
+                    }
+                    writerLock.unlock()
+                }
+            }
+
+            fputs("[CborPluginHost] request: sent \(seq) chunk frames + END for request_id=\(requestId)\n", stderr)
         }
-        writerLock.unlock()
 
         return stream
     }

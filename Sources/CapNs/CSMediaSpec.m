@@ -49,6 +49,9 @@ NSString * const CSMediaYaml = @"media:yaml;textable;form=map";
 // Semantic input types
 NSString * const CSMediaModelSpec = @"media:model-spec;textable;form=scalar";
 NSString * const CSMediaModelRepo = @"media:model-repo;textable;form=map";
+// File path types
+NSString * const CSMediaFilePath = @"media:file-path;textable;form=scalar";
+NSString * const CSMediaFilePathArray = @"media:file-path;textable;form=list";
 // Semantic output types
 NSString * const CSMediaModelDim = @"media:model-dim;integer;textable;numeric;form=scalar";
 NSString * const CSMediaDecision = @"media:decision;bool;textable;form=scalar";

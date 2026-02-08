@@ -29,6 +29,7 @@ import Foundation
 import CapNs
 import TaggedUrn
 @preconcurrency import SwiftCBOR
+import Glob
 
 // MARK: - Error Types
 
@@ -500,43 +501,41 @@ final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
 public enum CborArgSource: Codable, Sendable {
     case cliFlag(String)
     case positional(Int)
-    case stdin
+    case stdin(String)  // Media URN for stdin input
 
     enum CodingKeys: String, CodingKey {
         case type
         case cliFlag = "cli_flag"
         case position
+        case stdin
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(String.self, forKey: .type)
 
-        switch type {
-        case "cli_flag":
-            let flag = try container.decode(String.self, forKey: .cliFlag)
+        // The format is a single-key object: {"stdin": "..."}, {"position": 0}, or {"cli_flag": "..."}
+        // NOT {"type": "stdin", "stdin": "..."}
+        if let flag = try? container.decode(String.self, forKey: .cliFlag) {
             self = .cliFlag(flag)
-        case "positional":
-            let pos = try container.decode(Int.self, forKey: .position)
+        } else if let pos = try? container.decode(Int.self, forKey: .position) {
             self = .positional(pos)
-        case "stdin":
-            self = .stdin
-        default:
-            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown source type: \(type)")
+        } else if let mediaUrn = try? container.decode(String.self, forKey: .stdin) {
+            self = .stdin(mediaUrn)
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid source format: must have exactly one of 'cli_flag', 'position', or 'stdin'")
         }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        // Encode as single-key object: {"stdin": "..."}, {"position": 0}, or {"cli_flag": "..."}
         switch self {
         case .cliFlag(let flag):
-            try container.encode("cli_flag", forKey: .type)
             try container.encode(flag, forKey: .cliFlag)
         case .positional(let pos):
-            try container.encode("positional", forKey: .type)
             try container.encode(pos, forKey: .position)
-        case .stdin:
-            try container.encode("stdin", forKey: .type)
+        case .stdin(let mediaUrn):
+            try container.encode(mediaUrn, forKey: .stdin)
         }
     }
 }
@@ -555,6 +554,14 @@ public struct CborCapArg: Codable, Sendable {
         case sources
         case argDescription = "description"
         case defaultValue = "default"
+    }
+
+    public init(mediaUrn: String, required: Bool, sources: [CborArgSource], argDescription: String? = nil, defaultValue: String? = nil) {
+        self.mediaUrn = mediaUrn
+        self.required = required
+        self.sources = sources
+        self.argDescription = argDescription
+        self.defaultValue = defaultValue
     }
 
     public init(from decoder: Decoder) throws {
@@ -583,6 +590,14 @@ public struct CborCapDefinition: Codable, Sendable {
         case args
     }
 
+    public init(urn: String, title: String, command: String, capDescription: String? = nil, args: [CborCapArg] = []) {
+        self.urn = urn
+        self.title = title
+        self.command = command
+        self.capDescription = capDescription
+        self.args = args
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         urn = try container.decode(String.self, forKey: .urn)
@@ -596,7 +611,7 @@ public struct CborCapDefinition: Codable, Sendable {
     public func acceptsStdin() -> Bool {
         for arg in args {
             for source in arg.sources {
-                if case .stdin = source {
+                if case .stdin(_) = source {
                     return true
                 }
             }
@@ -611,6 +626,13 @@ public struct CborManifest: Codable, Sendable {
     public let version: String
     public let description: String
     public let caps: [CborCapDefinition]
+
+    public init(name: String, version: String, description: String, caps: [CborCapDefinition]) {
+        self.name = name
+        self.version = version
+        self.description = description
+        self.caps = caps
+    }
 }
 
 // MARK: - CborPluginRuntime
@@ -805,12 +827,16 @@ public final class CborPluginRuntime: @unchecked Sendable {
         let cliArgs = Array(args.dropFirst(2))
         let payload = try buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
 
+        // Extract effective payload from CBOR arguments (same as CBOR mode)
+        // CLI mode builds CBOR arguments, so content type is application/cbor
+        let effectivePayload = try extractEffectivePayload(payload: payload, contentType: "application/cbor", capUrn: cap.urn)
+
         // Create CLI-mode emitter and no-op peer invoker
         let emitter = CliStreamEmitter()
         let peer = NoCborPeerInvoker()
 
         // Invoke handler
-        let result = try handler(payload, emitter, peer)
+        let result = try handler(effectivePayload, emitter, peer)
 
         // Output final response if not empty
         if !result.isEmpty {
@@ -824,8 +850,112 @@ public final class CborPluginRuntime: @unchecked Sendable {
         return manifest.caps.first { $0.command == commandName }
     }
 
+    /// Read file(s) for file-path arguments and return bytes.
+    ///
+    /// This method implements automatic file-path to bytes conversion when:
+    /// - arg.media_urn is "media:file-path" or "media:file-path-array"
+    /// - arg has a stdin source (indicating bytes are the canonical type)
+    ///
+    /// - Parameters:
+    ///   - pathValue: File path string (single path or JSON array of path patterns)
+    ///   - isArray: True if media:file-path-array (read multiple files with glob expansion)
+    /// - Returns:
+    ///   - For single file: Data containing raw file bytes
+    ///   - For array: CBOR-encoded array of file bytes (each element is one file's contents)
+    /// - Throws: CborPluginRuntimeError.ioError if file cannot be read with clear error message
+    private func readFilePathToBytes(_ pathValue: String, isArray: Bool) throws -> Data {
+        if isArray {
+            // Parse JSON array of path patterns
+            guard let pathData = pathValue.data(using: .utf8),
+                  let pathPatterns = try? JSONSerialization.jsonObject(with: pathData) as? [String] else {
+                throw CborPluginRuntimeError.cliError(
+                    "Failed to parse file-path-array: expected JSON array of path patterns, got '\(pathValue)'"
+                )
+            }
+
+            // Expand globs and collect all file paths
+            var allFiles: [URL] = []
+            let fileManager = FileManager.default
+
+            for pattern in pathPatterns {
+                // Check if this is a literal path (no glob metacharacters) or a glob pattern
+                let isGlob = pattern.contains("*") || pattern.contains("?") || pattern.contains("[")
+
+                if !isGlob {
+                    // Literal path - verify it exists and is a file
+                    let url = URL(fileURLWithPath: pattern)
+                    if !fileManager.fileExists(atPath: pattern) {
+                        throw CborPluginRuntimeError.ioError(
+                            "Failed to read file '\(pattern)' from file-path-array: No such file or directory"
+                        )
+                    }
+                    var isDirectory: ObjCBool = false
+                    fileManager.fileExists(atPath: pattern, isDirectory: &isDirectory)
+                    if !isDirectory.boolValue {
+                        allFiles.append(url)
+                    }
+                    // Skip directories silently for consistency with glob behavior
+                } else {
+                    // Glob pattern - validate and expand it
+                    // Check for unclosed brackets (invalid pattern)
+                    var bracketDepth = 0
+                    for char in pattern {
+                        if char == "[" {
+                            bracketDepth += 1
+                        } else if char == "]" {
+                            bracketDepth -= 1
+                        }
+                    }
+                    if bracketDepth != 0 {
+                        throw CborPluginRuntimeError.cliError(
+                            "Invalid glob pattern '\(pattern)': unclosed bracket"
+                        )
+                    }
+
+                    let paths = Glob(pattern: pattern)
+                    for path in paths {
+                        let url = URL(fileURLWithPath: path)
+                        // Only include files (skip directories)
+                        var isDirectory: ObjCBool = false
+                        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory) && !isDirectory.boolValue {
+                            allFiles.append(url)
+                        }
+                    }
+                }
+            }
+
+            // Read each file sequentially
+            var filesData: [CBOR] = []
+            for url in allFiles {
+                do {
+                    let bytes = try Data(contentsOf: url)
+                    filesData.append(.byteString([UInt8](bytes)))
+                } catch {
+                    throw CborPluginRuntimeError.ioError(
+                        "Failed to read file '\(url.path)' from file-path-array: \(error.localizedDescription)"
+                    )
+                }
+            }
+
+            // Encode as CBOR array
+            let cborArray = CBOR.array(filesData)
+            return Data(cborArray.encode())
+        } else {
+            // Single file path - read and return raw bytes
+            do {
+                let url = URL(fileURLWithPath: pathValue)
+                return try Data(contentsOf: url)
+            } catch {
+                throw CborPluginRuntimeError.ioError(
+                    "Failed to read file '\(pathValue)': \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
     /// Build payload from CLI arguments based on cap's arg definitions.
-    private func buildPayloadFromCli(cap: CborCapDefinition, cliArgs: [String]) throws -> Data {
+    /// Internal for testing purposes.
+    func buildPayloadFromCli(cap: CborCapDefinition, cliArgs: [String]) throws -> Data {
         var arguments: [CborCapArgumentValue] = []
 
         // Check for stdin data if cap accepts stdin
@@ -841,22 +971,70 @@ public final class CborPluginRuntime: @unchecked Sendable {
             let value = try extractArgValue(argDef: argDef, cliArgs: cliArgs, stdinData: stdinData)
 
             if let v = value {
-                arguments.append(CborCapArgumentValue(mediaUrn: argDef.mediaUrn, value: v))
+                // Determine the media URN to use in the CBOR payload:
+                // - For file-path args, use the stdin source's media URN if present (the target type)
+                // - Otherwise, use the arg's media URN
+                let argMediaUrn = try CSTaggedUrn.fromString(argDef.mediaUrn)
+                let filePathPattern = try CSTaggedUrn.fromString(CSMediaFilePath)
+                let filePathArrayPattern = try CSTaggedUrn.fromString(CSMediaFilePathArray)
+
+                let isFilePath = (try? filePathPattern.accepts(argMediaUrn)) != nil ||
+                                 (try? filePathArrayPattern.accepts(argMediaUrn)) != nil
+
+                var mediaUrn = argDef.mediaUrn
+                if isFilePath {
+                    // Check if there's a stdin source and use its media URN
+                    for source in argDef.sources {
+                        if case .stdin(let stdinMediaUrn) = source {
+                            mediaUrn = stdinMediaUrn
+                            break
+                        }
+                    }
+                }
+
+                arguments.append(CborCapArgumentValue(mediaUrn: mediaUrn, value: v))
             } else if argDef.required {
                 // Required argument not found
                 let sources = argDef.sources.map { source -> String in
                     switch source {
                     case .cliFlag(let flag): return flag
                     case .positional(let pos): return "<pos \(pos)>"
-                    case .stdin: return "<stdin>"
+                    case .stdin(_): return "<stdin>"
                     }
                 }.joined(separator: " or ")
                 throw CborPluginRuntimeError.missingArgument("Required argument '\(argDef.mediaUrn)' not provided. Use: \(sources)")
             }
         }
 
-        // Serialize arguments to JSON payload
-        if !arguments.isEmpty {
+        // Check if any argument has stdin source (indicates file-path conversion happened)
+        var hasStdinSourceArg = false
+        for argDef in cap.args {
+            if argDef.sources.contains(where: { source in
+                if case .stdin(_) = source { return true }
+                return false
+            }) {
+                hasStdinSourceArg = true
+                break
+            }
+        }
+
+        // Build CBOR arguments array if we have arguments with stdin sources
+        // (this matches the Rust implementation for file-path conversion)
+        if !arguments.isEmpty && hasStdinSourceArg {
+            // Build CBOR: [{media_urn: "...", value: bytes}, ...]
+            var cborArgs: [CBOR] = []
+            for arg in arguments {
+                let argMap: CBOR = .map([
+                    .utf8String("media_urn"): .utf8String(arg.mediaUrn),
+                    .utf8String("value"): .byteString([UInt8](arg.value))
+                ])
+                cborArgs.append(argMap)
+            }
+
+            let cborArray = CBOR.array(cborArgs)
+            return Data(cborArray.encode())
+        } else if !arguments.isEmpty {
+            // No stdin sources - use JSON payload (old behavior)
             var jsonObj: [String: Any] = [:]
             for arg in arguments {
                 // Try to parse as JSON first
@@ -876,8 +1054,8 @@ public final class CborPluginRuntime: @unchecked Sendable {
             // No arguments but have stdin data
             return stdin
         } else {
-            // No arguments, no stdin - return empty object
-            return Data("{}".utf8)
+            // No arguments, no stdin - return empty payload
+            return Data()
         }
     }
 
@@ -896,19 +1074,46 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
     /// Extract a single argument value from CLI args or stdin.
     private func extractArgValue(argDef: CborCapArg, cliArgs: [String], stdinData: Data?) throws -> Data? {
+        // Check if this arg requires file-path to bytes conversion using proper URN matching
+        let argMediaUrn = try CSTaggedUrn.fromString(argDef.mediaUrn)
+
+        let filePathPattern = try CSTaggedUrn.fromString(CSMediaFilePath)
+        let filePathArrayPattern = try CSTaggedUrn.fromString(CSMediaFilePathArray)
+
+        // Check array first (more specific), then single file-path
+        let isArray = (try? filePathArrayPattern.accepts(argMediaUrn)) != nil
+        let isFilePath = isArray || (try? filePathPattern.accepts(argMediaUrn)) != nil
+
+        // Get stdin source media URN if it exists (tells us target type)
+        let hasStdinSource = argDef.sources.contains { source in
+            if case .stdin(_) = source {
+                return true
+            }
+            return false
+        }
+
         // Try each source in order
         for source in argDef.sources {
             switch source {
             case .cliFlag(let flag):
                 if let value = getCliFlagValue(args: cliArgs, flag: flag) {
+                    // If file-path type with stdin source, read file(s)
+                    if isFilePath && hasStdinSource {
+                        return try readFilePathToBytes(value, isArray: isArray)
+                    }
                     return Data(value.utf8)
                 }
             case .positional(let position):
                 let positional = getPositionalArgs(args: cliArgs)
                 if position < positional.count {
-                    return Data(positional[position].utf8)
+                    let value = positional[position]
+                    // If file-path type with stdin source, read file(s)
+                    if isFilePath && hasStdinSource {
+                        return try readFilePathToBytes(value, isArray: isArray)
+                    }
+                    return Data(value.utf8)
                 }
-            case .stdin:
+            case .stdin(_):
                 if let data = stdinData {
                     return data
                 }
@@ -1016,7 +1221,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     case .positional(let pos):
                         let line = String(format: "    <arg%d>          %@%@\n", pos, desc, requiredStr)
                         stderr.write(Data(line.utf8))
-                    case .stdin:
+                    case .stdin(_):
                         let line = "    <stdin>          \(desc)\(requiredStr)\n"
                         stderr.write(Data(line.utf8))
                     }
@@ -1042,6 +1247,15 @@ public final class CborPluginRuntime: @unchecked Sendable {
         // Track pending peer requests (plugin invoking host caps)
         let pendingPeerRequests = NSMutableDictionary()
         let pendingPeerRequestsLock = NSLock()
+
+        // Track incoming requests that are being chunked
+        struct PendingIncomingRequest {
+            let capUrn: String
+            let contentType: String?
+            var chunks: [Data]
+        }
+        var pendingIncoming: [CborMessageId: PendingIncomingRequest] = [:]
+        let pendingIncomingLock = NSLock()
 
         // Track active handler threads
         var activeHandlers: [Thread] = []
@@ -1075,6 +1289,22 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     continue
                 }
 
+                let rawPayload = frame.payload ?? Data()
+
+                // Check if this is a chunked request (empty payload means chunks will follow)
+                if rawPayload.isEmpty {
+                    // Start accumulating chunks for this request
+                    pendingIncomingLock.lock()
+                    pendingIncoming[frame.id] = PendingIncomingRequest(
+                        capUrn: capUrn,
+                        contentType: frame.contentType,
+                        chunks: []
+                    )
+                    pendingIncomingLock.unlock()
+                    continue  // Wait for CHUNK/END frames
+                }
+
+                // Complete payload in REQ frame - invoke handler immediately
                 guard let handler = findHandler(capUrn: capUrn) else {
                     let errFrame = CborFrame.err(id: frame.id, code: "NO_HANDLER", message: "No handler for cap: \(capUrn)")
                     writerLock.lock()
@@ -1085,7 +1315,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
                 // Clone values for handler thread
                 let requestId = frame.id
-                let payload = frame.payload ?? Data()
+                let contentType = frame.contentType
                 let maxChunk = self.limits.maxChunk
 
                 let handlerThread = Thread { [writerLock, pendingPeerRequests, pendingPeerRequestsLock] in
@@ -1099,7 +1329,9 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
                     // Execute handler and send response with automatic chunking
                     do {
-                        let result = try handler(payload, emitter, peer)
+                        // Extract effective payload from CBOR arguments if needed
+                        let effectivePayload = try extractEffectivePayload(payload: rawPayload, contentType: contentType, capUrn: capUrn)
+                        let result = try handler(effectivePayload, emitter, peer)
 
                         // Automatic chunking: split large payloads into CHUNK frames
                         writerLock.lock()
@@ -1160,18 +1392,147 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 try frameWriter.write(errFrame)
                 writerLock.unlock()
 
-            case .res, .chunk, .end:
-                // Response frames from host - route to pending peer request by frame.id
+            case .res:
+                // Response frame from host - route to pending peer request by frame.id
                 pendingPeerRequestsLock.lock()
                 if var pending = pendingPeerRequests[frame.id] as? PendingPeerRequest {
                     let payload = frame.payload ?? Data()
                     pending.chunks.append(payload)
+                    pending.isComplete = true
+                    pendingPeerRequests[frame.id] = pending
+                    pending.condition.lock()
+                    pending.condition.signal()
+                    pending.condition.unlock()
+                }
+                pendingPeerRequestsLock.unlock()
 
-                    // Mark complete on RES or END frame
-                    if frame.frameType == .res || frame.frameType == .end {
-                        pending.isComplete = true
+            case .chunk:
+                // Check if this is a chunk for an incoming request
+                pendingIncomingLock.lock()
+                if var pendingReq = pendingIncoming[frame.id] {
+                    if let payload = frame.payload {
+                        pendingReq.chunks.append(payload)
+                        pendingIncoming[frame.id] = pendingReq
+                    }
+                    pendingIncomingLock.unlock()
+                    continue  // Wait for more chunks or END
+                }
+                pendingIncomingLock.unlock()
+
+                // Not an incoming request chunk - must be a response chunk
+                pendingPeerRequestsLock.lock()
+                if var pending = pendingPeerRequests[frame.id] as? PendingPeerRequest {
+                    let payload = frame.payload ?? Data()
+                    pending.chunks.append(payload)
+                    pendingPeerRequests[frame.id] = pending
+                    pending.condition.lock()
+                    pending.condition.signal()
+                    pending.condition.unlock()
+                }
+                pendingPeerRequestsLock.unlock()
+
+            case .end:
+                // Check if this is the end of an incoming chunked request
+                var pendingReq: PendingIncomingRequest? = nil
+                pendingIncomingLock.lock()
+                if let req = pendingIncoming.removeValue(forKey: frame.id) {
+                    pendingReq = req
+                }
+                pendingIncomingLock.unlock()
+
+                if var pendingReq = pendingReq {
+                    // Concatenate all chunks into final payload
+                    if let finalChunk = frame.payload {
+                        pendingReq.chunks.append(finalChunk)
+                    }
+                    var allChunks = Data()
+                    for chunk in pendingReq.chunks {
+                        allChunks.append(chunk)
+                    }
+                    let rawPayload = allChunks  // Make immutable for capture
+
+                    // Find handler
+                    let handler: CborCapHandler?
+                    handlersLock.lock()
+                    handler = handlers[pendingReq.capUrn]
+                    handlersLock.unlock()
+
+                    guard let handler = handler else {
+                        let errFrame = CborFrame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(pendingReq.capUrn)")
+                        writerLock.lock()
+                        try? frameWriter.write(errFrame)
+                        writerLock.unlock()
+                        continue
                     }
 
+                    // Spawn thread to invoke handler (use DispatchQueue.global())
+                    let requestId = frame.id
+                    let capUrn = pendingReq.capUrn
+                    let contentType = pendingReq.contentType
+                    let maxChunk = self.limits.maxChunk
+
+                    DispatchQueue.global().async { [writerLock, pendingPeerRequests, pendingPeerRequestsLock] in
+                        let emitter = ThreadSafeStreamEmitter(writer: frameWriter, writerLock: writerLock, requestId: requestId)
+                        let peer = PeerInvokerImpl(
+                            writer: frameWriter,
+                            writerLock: writerLock,
+                            pendingRequests: pendingPeerRequests,
+                            pendingRequestsLock: pendingPeerRequestsLock
+                        )
+
+                        // Execute handler and send response with automatic chunking
+                        do {
+                            // Extract effective payload from CBOR arguments if needed
+                            let effectivePayload = try extractEffectivePayload(payload: rawPayload, contentType: contentType, capUrn: capUrn)
+                            let result = try handler(effectivePayload, emitter, peer)
+
+                            // Automatic chunking: split large payloads into CHUNK frames
+                            writerLock.lock()
+                            defer { writerLock.unlock() }
+
+                            if result.count <= maxChunk {
+                                // Small payload: send single END frame
+                                let endFrame = CborFrame.end(id: requestId, finalPayload: result)
+                                try frameWriter.write(endFrame)
+                            } else {
+                                // Large payload: send CHUNK frames + final END
+                                var offset = 0
+                                var seq: UInt64 = 0
+
+                                while offset < result.count {
+                                    let remaining = result.count - offset
+                                    let chunkSize = min(remaining, maxChunk)
+                                    let chunkData = result.subdata(in: offset..<offset + chunkSize)
+                                    offset += chunkSize
+
+                                    if offset < result.count {
+                                        // Not the last chunk - send CHUNK frame
+                                        let chunkFrame = CborFrame.chunk(id: requestId, seq: seq, payload: chunkData)
+                                        try frameWriter.write(chunkFrame)
+                                        seq += 1
+                                    } else {
+                                        // Last chunk - send END frame with remaining data
+                                        let endFrame = CborFrame.end(id: requestId, finalPayload: chunkData)
+                                        try frameWriter.write(endFrame)
+                                    }
+                                }
+                            }
+                        } catch {
+                            let errFrame = CborFrame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
+                            writerLock.lock()
+                            try? frameWriter.write(errFrame)
+                            writerLock.unlock()
+                        }
+                    }
+                    continue
+                }
+
+                // Not an incoming request end - must be a response end
+                pendingPeerRequestsLock.lock()
+                if var pending = pendingPeerRequests[frame.id] as? PendingPeerRequest {
+                    let payload = frame.payload ?? Data()
+                    pending.chunks.append(payload)
+                    pending.isComplete = true
                     pendingPeerRequests[frame.id] = pending
                     pending.condition.lock()
                     pending.condition.signal()

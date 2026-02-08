@@ -19,6 +19,7 @@ let package = Package(
     dependencies: [
         .package(path: "../tagged-urn-objc"),
         .package(url: "https://github.com/unrelentingtech/SwiftCBOR.git", from: "0.4.7"),
+        .package(url: "https://github.com/Bouke/Glob.git", from: "1.0.0"),
     ],
     targets: [
         .target(
@@ -38,6 +39,7 @@ let package = Package(
             dependencies: [
                 "CapNs",
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+                .product(name: "Glob", package: "Glob"),
             ],
             path: "Sources/CapNsCbor"
         ),
