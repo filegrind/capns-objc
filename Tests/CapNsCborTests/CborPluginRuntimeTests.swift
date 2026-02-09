@@ -16,6 +16,38 @@ import SwiftCBOR
 //   TEST281: cap_argument_value_into_string (Rust Into trait - Swift uses String directly)
 // =============================================================================
 
+/// Test emitter that collects output for verification
+@available(macOS 10.15.4, iOS 13.4, *)
+final class TestStreamEmitter: CborStreamEmitter, @unchecked Sendable {
+        var collectedOutput = Data()
+
+        func emitCbor(_ value: CBOR) {
+            // Extract bytes from CBOR value
+            switch value {
+            case .byteString(let bytes):
+                collectedOutput.append(contentsOf: bytes)
+            case .utf8String(let str):
+                collectedOutput.append(contentsOf: str.utf8)
+            default:
+                // For other types, encode as CBOR
+                collectedOutput.append(contentsOf: value.encode())
+            }
+        }
+
+        func emit<T: Encodable>(value: T) throws {
+            let data = try JSONEncoder().encode(value)
+            collectedOutput.append(data)
+        }
+
+        func emitStatus(operation: String, details: String) {
+            // Ignored for tests
+        }
+
+        func log(level: String, message: String) {
+            // Ignored for tests
+        }
+}
+
 @available(macOS 10.15.4, iOS 13.4, *)
 final class CborPluginRuntimeTests: XCTestCase {
 
@@ -32,8 +64,12 @@ final class CborPluginRuntimeTests: XCTestCase {
     func testRegisterAndFindHandler() {
         let runtime = CborPluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:in=*;op=test;out=*") { payload, _, _ in
-            return "result".data(using: .utf8)!
+        runtime.registerRaw(capUrn: "cap:in=*;op=test;out=*") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            var data = Data()
+            for await chunk in stream {
+                data.append(chunk.data)
+            }
+            emitter.emitCbor(.byteString([UInt8]("result".utf8)))
         }
 
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:in=*;op=test;out=*"),
@@ -41,55 +77,83 @@ final class CborPluginRuntimeTests: XCTestCase {
     }
 
     // TEST249: register raw handler works with bytes directly without deserialization
-    func testRawHandler() throws {
+    func testRawHandler() async throws {
         let runtime = CborPluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:op=raw") { payload, _, _ in
-            return payload // echo
+        runtime.registerRaw(capUrn: "cap:op=raw") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            var data = Data()
+            for await chunk in stream {
+                data.append(chunk.data)
+            }
+            emitter.emitCbor(.byteString([UInt8](data)))
         }
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=raw"))
         let noPeer = NoCborPeerInvoker()
-        let emitter = CliStreamEmitter()
-        let result = try handler("echo this".data(using: .utf8)!, emitter, noPeer)
-        XCTAssertEqual(String(data: result, encoding: .utf8), "echo this", "raw handler must echo payload")
+        let emitter = TestStreamEmitter()
+
+        let inputData = "echo this".data(using: .utf8)!
+        let inputStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:bytes", data: inputData, isLast: true))
+            continuation.finish()
+        }
+
+        try await handler(inputStream, emitter, noPeer)
+        XCTAssertEqual(String(data: emitter.collectedOutput, encoding: .utf8), "echo this", "raw handler must echo payload")
     }
 
     // TEST250: register typed handler deserializes JSON and executes correctly
-    func testTypedHandlerDeserialization() throws {
+    func testTypedHandlerDeserialization() async throws {
         let runtime = CborPluginRuntime(manifest: Self.testManifestData)
 
         runtime.register(capUrn: "cap:op=test") {
-            (req: [String: String], _: CborStreamEmitter, _: CborPeerInvoker) throws -> [String: String] in
+            (req: [String: String], _: CborStreamEmitter, _: CborPeerInvoker) async throws -> [String: String] in
             let value = req["key"] ?? "missing"
             return ["result": value]
         }
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=test"))
         let noPeer = NoCborPeerInvoker()
-        let emitter = CliStreamEmitter()
-        let result = try handler("{\"key\":\"hello\"}".data(using: .utf8)!, emitter, noPeer)
+        let emitter = TestStreamEmitter()
+
+        let inputData = "{\"key\":\"hello\"}".data(using: .utf8)!
+        let inputStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:json", data: inputData, isLast: true))
+            continuation.finish()
+        }
+
+        try await handler(inputStream, emitter, noPeer)
 
         // Parse the JSON response
-        let resultDict = try JSONDecoder().decode([String: String].self, from: result)
+        let resultDict = try JSONDecoder().decode([String: String].self, from: emitter.collectedOutput)
         XCTAssertEqual(resultDict["result"], "hello")
     }
 
     // TEST251: typed handler returns error for invalid JSON input
-    func testTypedHandlerRejectsInvalidJson() throws {
+    func testTypedHandlerRejectsInvalidJson() async throws {
         let runtime = CborPluginRuntime(manifest: Self.testManifestData)
 
         runtime.register(capUrn: "cap:op=test") {
-            (req: [String: String], _: CborStreamEmitter, _: CborPeerInvoker) throws -> Data in
+            (req: [String: String], _: CborStreamEmitter, _: CborPeerInvoker) async throws -> Data in
             return Data()
         }
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=test"))
         let noPeer = NoCborPeerInvoker()
-        let emitter = CliStreamEmitter()
+        let emitter = TestStreamEmitter()
 
-        XCTAssertThrowsError(try handler("not json {{{{".data(using: .utf8)!, emitter, noPeer),
-            "invalid JSON must produce error")
+        let inputData = "not json {{{{".data(using: .utf8)!
+        let inputStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:json", data: inputData, isLast: true))
+            continuation.finish()
+        }
+
+        do {
+            try await handler(inputStream, emitter, noPeer)
+            XCTFail("Should have thrown error for invalid JSON")
+        } catch {
+            // Expected
+        }
     }
 
     // TEST252: find_handler returns None for unregistered cap URNs
@@ -100,38 +164,75 @@ final class CborPluginRuntimeTests: XCTestCase {
     }
 
     // TEST270: Registering multiple handlers for different caps and finding each independently
-    func testMultipleHandlers() throws {
+    func testMultipleHandlers() async throws {
         let runtime = CborPluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:op=alpha") { _, _, _ in "a".data(using: .utf8)! }
-        runtime.register(capUrn: "cap:op=beta") { _, _, _ in "b".data(using: .utf8)! }
-        runtime.register(capUrn: "cap:op=gamma") { _, _, _ in "g".data(using: .utf8)! }
+        runtime.registerRaw(capUrn: "cap:op=alpha") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            for await _ in stream { }
+            emitter.emitCbor(.byteString([UInt8]("a".utf8)))
+        }
+        runtime.registerRaw(capUrn: "cap:op=beta") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            for await _ in stream { }
+            emitter.emitCbor(.byteString([UInt8]("b".utf8)))
+        }
+        runtime.registerRaw(capUrn: "cap:op=gamma") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            for await _ in stream { }
+            emitter.emitCbor(.byteString([UInt8]("g".utf8)))
+        }
 
         let noPeer = NoCborPeerInvoker()
-        let emitter = CliStreamEmitter()
+
+        let emptyStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:void", data: Data(), isLast: true))
+            continuation.finish()
+        }
 
         let hAlpha = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=alpha"))
-        XCTAssertEqual(try hAlpha(Data(), emitter, noPeer), "a".data(using: .utf8)!)
+        let emitterA = TestStreamEmitter()
+        try await hAlpha(emptyStream, emitterA, noPeer)
+        XCTAssertEqual(emitterA.collectedOutput, "a".data(using: .utf8)!)
 
         let hBeta = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=beta"))
-        XCTAssertEqual(try hBeta(Data(), emitter, noPeer), "b".data(using: .utf8)!)
+        let emitterB = TestStreamEmitter()
+        let emptyStream2 = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:void", data: Data(), isLast: true))
+            continuation.finish()
+        }
+        try await hBeta(emptyStream2, emitterB, noPeer)
+        XCTAssertEqual(emitterB.collectedOutput, "b".data(using: .utf8)!)
 
         let hGamma = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=gamma"))
-        XCTAssertEqual(try hGamma(Data(), emitter, noPeer), "g".data(using: .utf8)!)
+        let emitterG = TestStreamEmitter()
+        let emptyStream3 = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:void", data: Data(), isLast: true))
+            continuation.finish()
+        }
+        try await hGamma(emptyStream3, emitterG, noPeer)
+        XCTAssertEqual(emitterG.collectedOutput, "g".data(using: .utf8)!)
     }
 
     // TEST271: Handler replacing an existing registration for the same cap URN
-    func testHandlerReplacement() throws {
+    func testHandlerReplacement() async throws {
         let runtime = CborPluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:op=test") { _, _, _ in "first".data(using: .utf8)! }
-        runtime.register(capUrn: "cap:op=test") { _, _, _ in "second".data(using: .utf8)! }
+        runtime.registerRaw(capUrn: "cap:op=test") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            for await _ in stream { }
+            emitter.emitCbor(.byteString([UInt8]("first".utf8)))
+        }
+        runtime.registerRaw(capUrn: "cap:op=test") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            for await _ in stream { }
+            emitter.emitCbor(.byteString([UInt8]("second".utf8)))
+        }
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=test"))
         let noPeer = NoCborPeerInvoker()
-        let emitter = CliStreamEmitter()
-        let result = try handler(Data(), emitter, noPeer)
-        XCTAssertEqual(String(data: result, encoding: .utf8), "second",
+        let emitter = TestStreamEmitter()
+        let emptyStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:void", data: Data(), isLast: true))
+            continuation.finish()
+        }
+        try await handler(emptyStream, emitter, noPeer)
+        XCTAssertEqual(String(data: emitter.collectedOutput, encoding: .utf8), "second",
             "later registration must replace earlier")
     }
 
@@ -499,7 +600,7 @@ final class CborFilePathConversionTests: XCTestCase {
     }
 
     // TEST336: Single file-path arg with stdin source reads file and passes bytes to handler
-    func test336_file_path_reads_file_passes_bytes() throws {
+    func test336_file_path_reads_file_passes_bytes() async throws {
         let tempDir = FileManager.default.temporaryDirectory
         let testFile = tempDir.appendingPathComponent("test336_input.pdf")
         try Data("PDF binary content 336".utf8).write(to: testFile)
@@ -522,9 +623,12 @@ final class CborFilePathConversionTests: XCTestCase {
         let runtime = CborPluginRuntime(manifest: manifest)
 
         // Register handler that echoes payload
-        runtime.register(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { payload, _, _ in
-            // Return the payload so we can verify it
-            return payload
+        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            var data = Data()
+            for await chunk in stream {
+                data.append(chunk.data)
+            }
+            emitter.emitCbor(.byteString([UInt8](data)))
         }
 
         // Simulate CLI invocation: plugin process /path/to/file.pdf
@@ -539,13 +643,18 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
-        let emitter = CliStreamEmitter()
+        let emitter = TestStreamEmitter()
         let peer = NoCborPeerInvoker()
-        let result = try handler(payload, emitter, peer)
+
+        let inputStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:pdf;bytes", data: payload, isLast: true))
+            continuation.finish()
+        }
+
+        try await handler(inputStream, emitter, peer)
 
         // Verify handler received file bytes, not file path
-        // Handler returns the payload, so result should contain file bytes
-        XCTAssertEqual(result, Data("PDF binary content 336".utf8), "Handler should receive file bytes")
+        XCTAssertEqual(emitter.collectedOutput, Data("PDF binary content 336".utf8), "Handler should receive file bytes")
         XCTAssertEqual(payload, Data("PDF binary content 336".utf8))
 
         try? FileManager.default.removeItem(at: testFile)
@@ -587,7 +696,7 @@ final class CborFilePathConversionTests: XCTestCase {
     }
 
     // TEST338: file-path arg reads file via --file CLI flag
-    func test338_file_path_via_cli_flag() throws {
+    func test338_file_path_via_cli_flag() async throws {
         let tempDir = FileManager.default.temporaryDirectory
         let testFile = tempDir.appendingPathComponent("test338.pdf")
         try Data("PDF via flag 338".utf8).write(to: testFile)
@@ -609,8 +718,12 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = CborPluginRuntime(manifest: manifest)
 
-        runtime.register(capUrn: cap.urn) { payload, _, _ in
-            return payload
+        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            var data = Data()
+            for await chunk in stream {
+                data.append(chunk.data)
+            }
+            emitter.emitCbor(.byteString([UInt8](data)))
         }
 
         let cliArgs = ["--file", testFile.path]
@@ -618,9 +731,14 @@ final class CborFilePathConversionTests: XCTestCase {
         let payload = try extractEffectivePayload(payload: rawPayload, contentType: "application/cbor", capUrn: cap.urn)
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
-        let result = try handler(payload, CliStreamEmitter(), NoCborPeerInvoker())
+        let emitter = TestStreamEmitter()
+        let inputStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:pdf;bytes", data: payload, isLast: true))
+            continuation.finish()
+        }
+        try await handler(inputStream, emitter, NoCborPeerInvoker())
 
-        XCTAssertEqual(result, Data("PDF via flag 338".utf8), "Should read file from --file flag")
+        XCTAssertEqual(emitter.collectedOutput, Data("PDF via flag 338".utf8), "Should read file from --file flag")
 
         try? FileManager.default.removeItem(at: testFile)
     }
@@ -719,7 +837,7 @@ final class CborFilePathConversionTests: XCTestCase {
     }
 
     // TEST341: stdin takes precedence over file-path in source order
-    func test341_stdin_precedence_over_file_path() throws {
+    func test341_stdin_precedence_over_file_path() async throws {
         let tempDir = FileManager.default.temporaryDirectory
         let testFile = tempDir.appendingPathComponent("test341_input.txt")
         try Data("file content".utf8).write(to: testFile)
@@ -742,8 +860,12 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = CborPluginRuntime(manifest: manifest)
 
-        runtime.register(capUrn: cap.urn) { payload, _, _ in
-            return payload
+        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            var data = Data()
+            for await chunk in stream {
+                data.append(chunk.data)
+            }
+            emitter.emitCbor(.byteString([UInt8](data)))
         }
 
         // Simulate stdin data being available
@@ -1032,7 +1154,7 @@ final class CborFilePathConversionTests: XCTestCase {
     }
 
     // TEST350: Integration test - full CLI mode invocation with file-path
-    func test350_full_cli_mode_with_file_path_integration() throws {
+    func test350_full_cli_mode_with_file_path_integration() async throws {
         let tempDir = FileManager.default.temporaryDirectory
         let testFile = tempDir.appendingPathComponent("test350_input.pdf")
         let testContent = Data("PDF file content for integration test".utf8)
@@ -1061,9 +1183,13 @@ final class CborFilePathConversionTests: XCTestCase {
         }
         let capture = PayloadCapture()
 
-        runtime.register(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") { payload, _, _ in
-            capture.data = payload
-            return Data("processed".utf8)
+        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            var data = Data()
+            for await chunk in stream {
+                data.append(chunk.data)
+            }
+            capture.data = data
+            emitter.emitCbor(.byteString([UInt8]("processed".utf8)))
         }
 
         // Simulate full CLI invocation
@@ -1078,13 +1204,19 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
-        let emitter = CliStreamEmitter()
+        let emitter = TestStreamEmitter()
         let peer = NoCborPeerInvoker()
-        let result = try handler(payload, emitter, peer)
+
+        let inputStream = AsyncStream<CborStreamChunk> { continuation in
+            continuation.yield(CborStreamChunk(streamId: "test", mediaUrn: "media:pdf;bytes", data: payload, isLast: true))
+            continuation.finish()
+        }
+
+        try await handler(inputStream, emitter, peer)
 
         // Verify handler received file bytes
         XCTAssertEqual(capture.data, testContent, "Handler should receive file bytes, not path")
-        XCTAssertEqual(result, Data("processed".utf8))
+        XCTAssertEqual(emitter.collectedOutput, Data("processed".utf8))
 
         try? FileManager.default.removeItem(at: testFile)
     }

@@ -82,6 +82,14 @@ public func encodeFrame(_ frame: CborFrame) throws -> Data {
         map[.unsignedInt(CborFrameKey.cap.rawValue)] = .utf8String(cap)
     }
 
+    if let streamId = frame.streamId {
+        map[.unsignedInt(CborFrameKey.streamId.rawValue)] = .utf8String(streamId)
+    }
+
+    if let mediaUrn = frame.mediaUrn {
+        map[.unsignedInt(CborFrameKey.mediaUrn.rawValue)] = .utf8String(mediaUrn)
+    }
+
     let cbor = CBOR.map(map)
     return Data(cbor.encode())
 }
@@ -171,6 +179,14 @@ public func decodeFrame(_ data: Data) throws -> CborFrame {
 
     if case .utf8String(let s) = map[.unsignedInt(CborFrameKey.cap.rawValue)] {
         frame.cap = s
+    }
+
+    if case .utf8String(let s) = map[.unsignedInt(CborFrameKey.streamId.rawValue)] {
+        frame.streamId = s
+    }
+
+    if case .utf8String(let s) = map[.unsignedInt(CborFrameKey.mediaUrn.rawValue)] {
+        frame.mediaUrn = s
     }
 
     return frame
@@ -305,8 +321,13 @@ public class CborFrameWriter: @unchecked Sendable {
         try writeFrame(frame, to: handle, limits: currentLimits)
     }
 
-    /// Write a large payload as multiple chunks
-    public func writeChunked(id: CborMessageId, contentType: String, data: Data) throws {
+    /// Write a large payload as multiple chunks for multiplexed streaming.
+    /// - Parameters:
+    ///   - id: Request ID
+    ///   - streamId: Stream ID for multiplexing
+    ///   - contentType: Content type
+    ///   - data: Data to chunk
+    public func writeChunked(id: CborMessageId, streamId: String, contentType: String, data: Data) throws {
         lock.lock()
         let currentLimits = limits
         lock.unlock()
@@ -316,7 +337,7 @@ public class CborFrameWriter: @unchecked Sendable {
 
         if data.isEmpty {
             // Empty payload - single chunk with eof
-            var frame = CborFrame.chunk(id: id, seq: 0, payload: Data())
+            var frame = CborFrame.chunk(reqId: id, streamId: streamId, seq: 0, payload: Data())
             frame.contentType = contentType
             frame.len = 0
             frame.offset = 0
@@ -334,7 +355,7 @@ public class CborFrameWriter: @unchecked Sendable {
 
             let chunkData = data.subdata(in: offset..<(offset + chunkSize))
 
-            var frame = CborFrame.chunk(id: id, seq: seq, payload: chunkData)
+            var frame = CborFrame.chunk(reqId: id, streamId: streamId, seq: seq, payload: chunkData)
             frame.offset = UInt64(offset)
 
             // Set content_type and total len on first chunk

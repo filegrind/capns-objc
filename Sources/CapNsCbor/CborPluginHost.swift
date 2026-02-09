@@ -53,8 +53,16 @@ public enum CborPluginHostError: Error, LocalizedError, Sendable {
     case receiveFailed(String)
     case pluginError(code: String, message: String)
     case unexpectedFrameType(CborFrameType)
+    case protocolError(String)
+    case peerInvokeNotSupported(String)
     case processExited
     case closed
+    // Protocol violation errors (per-request)
+    case duplicateStreamId(String)
+    case chunkAfterStreamEnd(String)
+    case unknownStreamId(String)
+    case chunkMissingStreamId
+    case streamAfterRequestEnd
 
     public var errorDescription: String? {
         switch self {
@@ -63,8 +71,15 @@ public enum CborPluginHostError: Error, LocalizedError, Sendable {
         case .receiveFailed(let msg): return "Receive failed: \(msg)"
         case .pluginError(let code, let message): return "Plugin error [\(code)]: \(message)"
         case .unexpectedFrameType(let t): return "Unexpected frame type: \(t)"
+        case .protocolError(let msg): return "Protocol error: \(msg)"
+        case .peerInvokeNotSupported(let capUrn): return "Peer invoke not supported for: \(capUrn)"
         case .processExited: return "Plugin process exited unexpectedly"
         case .closed: return "Host is closed"
+        case .duplicateStreamId(let streamId): return "Duplicate stream ID: \(streamId)"
+        case .chunkAfterStreamEnd(let streamId): return "Chunk after stream end: \(streamId)"
+        case .unknownStreamId(let streamId): return "Unknown stream ID: \(streamId)"
+        case .chunkMissingStreamId: return "Chunk missing stream ID"
+        case .streamAfterRequestEnd: return "Stream after request end"
         }
     }
 }
@@ -112,9 +127,17 @@ public enum CborPluginResponse: Sendable {
     }
 }
 
+/// Stream state for multiplexed responses
+private struct StreamState {
+    let mediaUrn: String
+    var active: Bool  // false after StreamEnd
+}
+
 /// Internal state for pending requests
 private struct PendingRequest: @unchecked Sendable {
     let continuation: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation
+    var streams: [(String, StreamState)]  // (stream_id, state) - ordered
+    var ended: Bool  // true after END frame - any stream activity after is FATAL
 }
 
 
@@ -310,45 +333,71 @@ public final class CborPluginHost: @unchecked Sendable {
                 continue
             }
 
+            // Per-request error handling: errors remove the request but don't crash the host
             var shouldRemove = false
 
             switch frame.frameType {
             case .chunk:
-                let isEof = frame.isEof
-                let chunk = CborResponseChunk(
-                    payload: frame.payload ?? Data(),
-                    seq: frame.seq,
-                    offset: frame.offset,
-                    len: frame.len,
-                    isEof: isEof
-                )
-                request.continuation.yield(.success(chunk))
-                shouldRemove = isEof
+                // STRICT: Validate chunk has stream_id and stream is active
+                guard let streamId = frame.streamId else {
+                    request.continuation.yield(.failure(.chunkMissingStreamId))
+                    shouldRemove = true
+                    break
+                }
 
-            case .res:
-                // Single complete response - send as final chunk
-                let chunk = CborResponseChunk(
-                    payload: frame.payload ?? Data(),
-                    seq: 0,
-                    offset: nil,
-                    len: nil,
-                    isEof: true
-                )
-                request.continuation.yield(.success(chunk))
-                shouldRemove = true
+                // Get mutable copy of request state
+                pendingLock.lock()
+                var requestState = pending[requestId]
+                pendingLock.unlock()
+
+                guard requestState != nil else {
+                    // Request was removed, drop frame
+                    break
+                }
+
+                // FAIL HARD: Request already ended
+                if requestState!.ended {
+                    requestState!.continuation.yield(.failure(.streamAfterRequestEnd))
+                    shouldRemove = true
+                    break
+                }
+
+                // FAIL HARD: Unknown or inactive stream
+                if let index = requestState!.streams.firstIndex(where: { $0.0 == streamId }) {
+                    let streamState = requestState!.streams[index].1
+                    if streamState.active {
+                        // ✅ Valid chunk for active stream
+                        let isEof = frame.isEof
+                        let chunk = CborResponseChunk(
+                            payload: frame.payload ?? Data(),
+                            seq: frame.seq,
+                            offset: frame.offset,
+                            len: frame.len,
+                            isEof: isEof
+                        )
+                        requestState!.continuation.yield(.success(chunk))
+                        shouldRemove = false
+                    } else {
+                        // FAIL HARD: Chunk for ended stream
+                        requestState!.continuation.yield(.failure(.chunkAfterStreamEnd(streamId)))
+                        shouldRemove = true
+                    }
+                } else {
+                    // FAIL HARD: Unknown stream
+                    requestState!.continuation.yield(.failure(.unknownStreamId(streamId)))
+                    shouldRemove = true
+                }
+
+            // case .res: REMOVED - old single-response protocol no longer supported
 
             case .end:
-                // Stream end - send final payload if any
-                if let payload = frame.payload {
-                    let chunk = CborResponseChunk(
-                        payload: payload,
-                        seq: frame.seq,
-                        offset: frame.offset,
-                        len: frame.len,
-                        isEof: true
-                    )
-                    request.continuation.yield(.success(chunk))
+                // Mark request as ended
+                pendingLock.lock()
+                if var requestState = pending[requestId] {
+                    requestState.ended = true
+                    pending[requestId] = requestState
                 }
+                pendingLock.unlock()
                 shouldRemove = true
 
             case .log:
@@ -370,6 +419,69 @@ public final class CborPluginHost: @unchecked Sendable {
                 // Plugin is invoking a cap on the host - this should be handled at top level,
                 // not routed to a pending request. If we get here, it's a bug.
                 fputs("[CborPluginHost] BUG: REQ frame routed to pending request handler\n", stderr)
+                shouldRemove = false
+
+            case .streamStart:
+                // STRICT: Track new stream, FAIL HARD on violations
+                guard let streamId = frame.streamId else {
+                    request.continuation.yield(.failure(.protocolError("STREAM_START missing stream ID")))
+                    shouldRemove = true
+                    break
+                }
+                guard let mediaUrn = frame.mediaUrn else {
+                    request.continuation.yield(.failure(.protocolError("STREAM_START missing media URN")))
+                    shouldRemove = true
+                    break
+                }
+
+                // Get mutable copy of request state
+                pendingLock.lock()
+                var requestState = pending[requestId]
+                pendingLock.unlock()
+
+                guard requestState != nil else {
+                    // Request was removed, drop frame
+                    break
+                }
+
+                // FAIL HARD: Request already ended
+                if requestState!.ended {
+                    requestState!.continuation.yield(.failure(.streamAfterRequestEnd))
+                    shouldRemove = true
+                    break
+                }
+
+                // FAIL HARD: Duplicate stream ID
+                if requestState!.streams.contains(where: { $0.0 == streamId }) {
+                    requestState!.continuation.yield(.failure(.duplicateStreamId(streamId)))
+                    shouldRemove = true
+                    break
+                }
+
+                // Register new stream
+                requestState!.streams.append((streamId, StreamState(mediaUrn: mediaUrn, active: true)))
+                pendingLock.lock()
+                pending[requestId] = requestState
+                pendingLock.unlock()
+                shouldRemove = false
+
+            case .streamEnd:
+                // Mark stream as ended
+                guard let streamId = frame.streamId else {
+                    request.continuation.yield(.failure(.protocolError("STREAM_END missing stream ID")))
+                    shouldRemove = true
+                    break
+                }
+
+                // Update stream state
+                pendingLock.lock()
+                if var requestState = pending[requestId] {
+                    if let index = requestState.streams.firstIndex(where: { $0.0 == streamId }) {
+                        requestState.streams[index].1.active = false
+                        pending[requestId] = requestState
+                    }
+                }
+                pendingLock.unlock()
                 shouldRemove = false
             }
 
@@ -497,7 +609,7 @@ public final class CborPluginHost: @unchecked Sendable {
                 switch result {
                 case .success(let data):
                     // Send CHUNK frame with the response data back to the plugin
-                    let chunk = CborFrame.chunk(id: pluginRequestId, seq: seq, payload: data)
+                    let chunk = CborFrame.chunk(reqId: pluginRequestId, streamId: "peer-response", seq: seq, payload: data)
                     self.writeFrameLocked(chunk)
                     seq += 1
 
@@ -595,7 +707,7 @@ public final class CborPluginHost: @unchecked Sendable {
         let stream = AsyncStream<Result<CborResponseChunk, CborPluginHostError>> { continuation in
             // Register pending request
             pendingLock.lock()
-            pending[requestId] = PendingRequest(continuation: continuation)
+            pending[requestId] = PendingRequest(continuation: continuation, streams: [], ended: false)
             pendingLock.unlock()
 
             continuation.onTermination = { [weak self] _ in
@@ -685,7 +797,7 @@ public final class CborPluginHost: @unchecked Sendable {
                     do {
                         if offset < payload.count {
                             // Not the last chunk - send CHUNK frame
-                            let chunkFrame = CborFrame.chunk(id: requestId, seq: seq, payload: chunkData)
+                            let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: "request-main", seq: seq, payload: chunkData)
                             try frameWriter.write(chunkFrame)
                             seq += 1
                         } else {
