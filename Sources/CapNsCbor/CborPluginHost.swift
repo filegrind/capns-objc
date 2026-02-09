@@ -96,6 +96,14 @@ public struct CborResponseChunk: Sendable {
     public let len: UInt64?
     /// Whether this is the final chunk
     public let isEof: Bool
+
+    public init(payload: Data, seq: UInt64, offset: UInt64?, len: UInt64?, isEof: Bool) {
+        self.payload = payload
+        self.seq = seq
+        self.offset = offset
+        self.len = len
+        self.isEof = isEof
+    }
 }
 
 /// Response from a plugin request (for convenience call() method)
@@ -181,25 +189,48 @@ public final class CborPluginHost: @unchecked Sendable {
     /// Background reader thread
     private var readerThread: Thread?
 
-    /// Pending plugin cap requests awaiting responses, keyed by request ID (CborMessageId).
-    /// When a cap_response message arrives via handleCapResponse, it's routed to the correct request.
-    private var pendingPluginCapRequests: [CborMessageId: AsyncStream<Result<Data, Error>>.Continuation] = [:]
-    private let pendingPluginCapRequestsLock = NSLock()
+    /// Router for dispatching peer invoke requests from plugins.
+    private let router: any CborCapRouter
+
+    /// Active peer invoke requests (plugin → host), keyed by request ID.
+    /// These are separate from `pending` which tracks host → plugin requests.
+    private var activePeerRequests: [CborMessageId: any CborPeerRequestHandle] = [:]
+    private let peerRequestsLock = NSLock()
+
+    /// Thread-safe register of a peer request handle (callable from async contexts)
+    private nonisolated func registerPeerRequest(id: CborMessageId, handle: any CborPeerRequestHandle) {
+        peerRequestsLock.lock()
+        activePeerRequests[id] = handle
+        peerRequestsLock.unlock()
+    }
+
+    /// Thread-safe removal of a peer request handle
+    private nonisolated func removePeerRequest(id: CborMessageId) {
+        peerRequestsLock.lock()
+        activePeerRequests.removeValue(forKey: id)
+        peerRequestsLock.unlock()
+    }
+
+    /// Thread-safe lookup of a peer request handle
+    private nonisolated func getPeerRequest(id: CborMessageId) -> (any CborPeerRequestHandle)? {
+        peerRequestsLock.lock()
+        defer { peerRequestsLock.unlock() }
+        return activePeerRequests[id]
+    }
 
     // MARK: - Initialization
 
     /// Create a new plugin host and perform handshake.
     ///
-    /// This sends a HELLO frame, waits for the plugin's HELLO,
-    /// negotiates protocol limits, then starts the background reader.
-    ///
     /// - Parameters:
     ///   - stdinHandle: FileHandle to write to the plugin's stdin
     ///   - stdoutHandle: FileHandle to read from the plugin's stdout
+    ///   - router: Router for dispatching peer invoke requests. Defaults to NoCborPeerRouter.
     /// - Throws: CborPluginHostError if handshake fails
-    public init(stdinHandle: FileHandle, stdoutHandle: FileHandle) throws {
+    public init(stdinHandle: FileHandle, stdoutHandle: FileHandle, router: any CborCapRouter = NoCborPeerRouter()) throws {
         self.stdinHandle = stdinHandle
         self.stdoutHandle = stdoutHandle
+        self.router = router
         self.limits = CborLimits()
         self.frameWriter = CborFrameWriter(handle: stdinHandle, limits: limits)
 
@@ -318,11 +349,29 @@ public final class CborPluginHost: @unchecked Sendable {
 
             // Handle plugin-initiated REQ frames (plugin invoking host caps)
             if frame.frameType == .req {
-                self.handlePluginRequest(frame)
+                // Only if this is NOT a response to one of our pending requests
+                pendingLock.lock()
+                let isHostRequest = pending[frame.id] != nil
+                pendingLock.unlock()
+                if !isHostRequest {
+                    self.handlePluginRequest(frame)
+                    continue
+                }
+            }
+
+            // Check if this frame belongs to an active peer request (plugin → host)
+            if let peerHandle = getPeerRequest(id: frame.id) {
+                // Forward frame synchronously from reader thread (matching Rust)
+                peerHandle.forwardFrame(frame)
+
+                // If this is an END frame, remove the peer request
+                if frame.frameType == .end {
+                    removePeerRequest(id: frame.id)
+                }
                 continue
             }
 
-            // Route frame to the appropriate pending request
+            // Route frame to the appropriate pending host request
             let requestId = frame.id
             pendingLock.lock()
             let pendingRequest = pending[requestId]
@@ -518,6 +567,25 @@ public final class CborPluginHost: @unchecked Sendable {
         }
     }
 
+    /// Write a frame or clean up the pending request on failure.
+    private func writeFrameOrCleanup(_ frame: CborFrame, requestId: CborMessageId) throws {
+        writerLock.lock()
+        do {
+            try frameWriter.write(frame)
+        } catch {
+            writerLock.unlock()
+            var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
+            pendingLock.lock()
+            if let removed = pending.removeValue(forKey: requestId) {
+                continuationToFinish = removed.continuation
+            }
+            pendingLock.unlock()
+            continuationToFinish?.finish()
+            throw CborPluginHostError.sendFailed("\(error)")
+        }
+        writerLock.unlock()
+    }
+
     /// Thread-safe write of a frame. This is nonisolated to allow calling from async contexts.
     private func writeFrameLocked(_ frame: CborFrame) {
         writerLock.lock()
@@ -527,148 +595,126 @@ public final class CborPluginHost: @unchecked Sendable {
 
     /// Handle a plugin-initiated REQ frame (plugin invoking a cap on the host).
     ///
-    /// This encodes the request as a special NDJSON message and yields it to ALL pending
-    /// host requests' streams. The PluginStreamingSession's readNextMessage will receive
-    /// it and forward it to macina via PluginGRPCBridge. The response comes back via
-    /// handleCapResponse, which sends CHUNK/END/ERR frames back to the plugin.
+    /// Uses the router to create a PeerRequestHandle. The REQ frame itself is
+    /// NOT forwarded to the handle (only STREAM_START/CHUNK/STREAM_END/END are).
+    /// The handle is registered in activePeerRequests so the readerLoop can
+    /// forward subsequent frames and read responses.
     private func handlePluginRequest(_ frame: CborFrame) {
         let pluginRequestId = frame.id
 
-        // Extract cap URN from the frame
         guard let capUrn = frame.cap else {
-            // Missing cap URN - send error back to plugin
             let errFrame = CborFrame.err(id: pluginRequestId, code: "INVALID_REQUEST", message: "Missing cap URN")
             writeFrameLocked(errFrame)
             return
         }
 
-        let payload = frame.payload ?? Data()
-
-        // Generate a string request ID for correlation with cap_response
-        let requestIdString: String
-        if let uuidString = pluginRequestId.uuidString {
-            requestIdString = uuidString
-        } else if case .uint(let n) = pluginRequestId {
-            requestIdString = String(n)
+        // Extract 16-byte UUID for the router
+        let reqIdBytes: Data
+        if case .uuid(let bytes) = pluginRequestId {
+            reqIdBytes = Data(bytes)
         } else {
-            requestIdString = UUID().uuidString
+            reqIdBytes = Data(count: 16)
         }
 
-        // Create the cap_request message as NDJSON
-        let capRequestMessage: [String: Any] = [
-            "type": "cap_request",
-            "request_id": requestIdString,
-            "cap": capUrn,
-            "payload": payload.base64EncodedString()
-        ]
+        // Call router SYNCHRONOUSLY from the reader thread (matching Rust exactly)
+        do {
+            let handle = try router.beginRequest(capUrn: capUrn, reqId: reqIdBytes)
 
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: capRequestMessage),
-              var jsonString = String(data: jsonData, encoding: .utf8) else {
-            let errFrame = CborFrame.err(id: pluginRequestId, code: "ENCODING_ERROR", message: "Failed to encode cap request")
+            // Register the handle IMMEDIATELY so subsequent frames find it
+            registerPeerRequest(id: pluginRequestId, handle: handle)
+
+            // Start forwarding responses from the handle back to the plugin (async)
+            forwardPeerResponses(requestId: pluginRequestId, handle: handle)
+        } catch {
+            let errFrame = CborFrame.err(
+                id: pluginRequestId,
+                code: "NO_HANDLER",
+                message: error.localizedDescription
+            )
             writeFrameLocked(errFrame)
-            return
         }
+    }
 
-        // Add newline for NDJSON format
-        jsonString += "\n"
-        let messageData = Data(jsonString.utf8)
-
-        // Create a continuation to receive the response from the host
-        let (responseStream, continuation) = AsyncStream<Result<Data, Error>>.makeStream()
-
-        // Register the pending plugin cap request
-        pendingPluginCapRequestsLock.lock()
-        pendingPluginCapRequests[pluginRequestId] = continuation
-        pendingPluginCapRequestsLock.unlock()
-
-        // Yield the cap_request message to ALL pending host requests' streams.
-        // This way, readNextMessage will see it and can forward it to macina.
-        // Create a special chunk that contains the cap_request NDJSON.
-        let capRequestChunk = CborResponseChunk(
-            payload: messageData,
-            seq: 0,
-            offset: nil,
-            len: nil,
-            isEof: false  // Not EOF - this is an intermediate message
-        )
-
-        pendingLock.lock()
-        let allPending = pending
-        pendingLock.unlock()
-
-        for (_, request) in allPending {
-            request.continuation.yield(.success(capRequestChunk))
-        }
-
-        // Handle the response asynchronously and stream it back to the plugin
-        Task { [weak self, pluginRequestId] in
+    /// Forward response chunks from a peer request handle back to the plugin.
+    /// Uses the full stream protocol: STREAM_START + CHUNK(s) + STREAM_END + END
+    private func forwardPeerResponses(requestId: CborMessageId, handle: any CborPeerRequestHandle) {
+        let maxChunk = limits.maxChunk
+        Task { [weak self] in
             guard let self = self else { return }
 
-            var seq: UInt64 = 0
-            for await result in responseStream {
+            let streamId = "peer-resp-\(UUID().uuidString.prefix(8))"
+            var streamStarted = false
+
+            for await result in handle.responseStream() {
                 switch result {
-                case .success(let data):
-                    // Send CHUNK frame with the response data back to the plugin
-                    let chunk = CborFrame.chunk(reqId: pluginRequestId, streamId: "peer-response", seq: seq, payload: data)
-                    self.writeFrameLocked(chunk)
-                    seq += 1
+                case .success(let chunk):
+                    // Send STREAM_START before the first chunk
+                    if !streamStarted {
+                        let startFrame = CborFrame.streamStart(
+                            reqId: requestId,
+                            streamId: streamId,
+                            mediaUrn: "media:bytes"
+                        )
+                        self.writeFrameLocked(startFrame)
+                        streamStarted = true
+                    }
+
+                    // Send chunk data (auto-chunk if needed)
+                    var offset = 0
+                    var seq: UInt64 = chunk.seq
+                    let data = chunk.payload
+                    if data.isEmpty {
+                        let chunkFrame = CborFrame.chunk(
+                            reqId: requestId,
+                            streamId: streamId,
+                            seq: seq,
+                            payload: Data()
+                        )
+                        self.writeFrameLocked(chunkFrame)
+                    } else {
+                        while offset < data.count {
+                            let chunkSize = min(data.count - offset, maxChunk)
+                            let chunkData = data.subdata(in: offset..<offset+chunkSize)
+                            let chunkFrame = CborFrame.chunk(
+                                reqId: requestId,
+                                streamId: streamId,
+                                seq: seq,
+                                payload: chunkData
+                            )
+                            self.writeFrameLocked(chunkFrame)
+                            offset += chunkSize
+                            seq += 1
+                        }
+                    }
+
+                    if chunk.isEof {
+                        // STREAM_END + END
+                        let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
+                        self.writeFrameLocked(streamEndFrame)
+                        let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
+                        self.writeFrameLocked(endFrame)
+                        return
+                    }
 
                 case .failure(let error):
-                    // Send ERR frame to the plugin and stop
                     let errFrame = CborFrame.err(
-                        id: pluginRequestId,
-                        code: "CAP_INVOCATION_ERROR",
-                        message: error.localizedDescription
+                        id: requestId,
+                        code: "PEER_ERROR",
+                        message: "\(error)"
                     )
                     self.writeFrameLocked(errFrame)
                     return
                 }
             }
 
-            // Stream completed - send END frame to the plugin
-            let endFrame = CborFrame.end(id: pluginRequestId, finalPayload: nil)
+            // Stream ended without isEof — send STREAM_END + END
+            if streamStarted {
+                let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
+                self.writeFrameLocked(streamEndFrame)
+            }
+            let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
             self.writeFrameLocked(endFrame)
         }
-    }
-
-    /// Handle a cap response message from the host.
-    /// Called when macina responds to a plugin-initiated cap request.
-    /// Routes the response to the pending plugin request's continuation,
-    /// which then sends CHUNK/END/ERR frames back to the plugin.
-    public func handleCapResponse(requestIdString: String, payload: Data?, error: Error?) {
-        // Find the matching plugin request by iterating over pending requests
-        // and matching the string representation of the request ID
-        pendingPluginCapRequestsLock.lock()
-        var matchingKey: CborMessageId? = nil
-        for (key, _) in pendingPluginCapRequests {
-            let keyString: String
-            if let uuidString = key.uuidString {
-                keyString = uuidString
-            } else if case .uint(let n) = key {
-                keyString = String(n)
-            } else {
-                continue
-            }
-            if keyString == requestIdString {
-                matchingKey = key
-                break
-            }
-        }
-
-        guard let key = matchingKey,
-              let continuation = pendingPluginCapRequests.removeValue(forKey: key) else {
-            pendingPluginCapRequestsLock.unlock()
-            fputs("[CborPluginHost] Received cap_response for unknown request: \(requestIdString)\n", stderr)
-            return
-        }
-        pendingPluginCapRequestsLock.unlock()
-
-        if let error = error {
-            continuation.yield(.failure(error))
-        } else if let payload = payload {
-            continuation.yield(.success(payload))
-        }
-        continuation.finish()
     }
 
     // MARK: - Public API
@@ -718,111 +764,37 @@ public final class CborPluginHost: @unchecked Sendable {
             }
         }
 
-        // Automatic chunking for large request payloads (or empty payloads to avoid ambiguity)
-        if !payload.isEmpty && payload.count <= maxChunk {
-            // Small non-empty payload: send single REQ frame with full payload
-            let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: payload, contentType: contentType)
-            writerLock.lock()
-            do {
-                try frameWriter.write(frame)
-            } catch {
-                writerLock.unlock()
-                // Remove pending request on send failure - extract continuation while holding lock,
-                // then finish OUTSIDE the lock to avoid deadlock with onTermination handler
-                var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-                pendingLock.lock()
-                if let removed = pending.removeValue(forKey: requestId) {
-                    continuationToFinish = removed.continuation
-                }
-                pendingLock.unlock()
-                continuationToFinish?.finish()
-                throw CborPluginHostError.sendFailed("\(error)")
-            }
-            writerLock.unlock()
-        } else {
-            // Large payload: send REQ + CHUNK frames + END
-            fputs("[CborPluginHost] request: large payload (\(payload.count) bytes), chunking with max_chunk=\(maxChunk)\n", stderr)
+        // Stream protocol: REQ(empty) + STREAM_START + CHUNK(s) + STREAM_END + END
+        // This matches the Rust AsyncPluginHost.request() wire format exactly.
 
-            // Send initial REQ frame with cap_urn and content_type, but empty payload
-            let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: contentType)
-            writerLock.lock()
-            do {
-                try frameWriter.write(frame)
-            } catch {
-                writerLock.unlock()
-                // Remove pending request on send failure
-                var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-                pendingLock.lock()
-                if let removed = pending.removeValue(forKey: requestId) {
-                    continuationToFinish = removed.continuation
-                }
-                pendingLock.unlock()
-                continuationToFinish?.finish()
-                throw CborPluginHostError.sendFailed("\(error)")
-            }
-            writerLock.unlock()
+        // 1. REQ with empty payload
+        let reqFrame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: contentType)
+        try writeFrameOrCleanup(reqFrame, requestId: requestId)
 
-            // Send payload in CHUNK frames
-            var offset = 0
-            var seq: UInt64 = 0
+        // 2. STREAM_START
+        let streamId = UUID().uuidString
+        let streamStartFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: contentType)
+        try writeFrameOrCleanup(streamStartFrame, requestId: requestId)
 
-            if payload.isEmpty {
-                // Empty payload: send END frame immediately with no chunks
-                writerLock.lock()
-                do {
-                    let endFrame = CborFrame.end(id: requestId, finalPayload: Data())
-                    try frameWriter.write(endFrame)
-                } catch {
-                    writerLock.unlock()
-                    // Remove pending request on send failure
-                    var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-                    pendingLock.lock()
-                    if let removed = pending.removeValue(forKey: requestId) {
-                        continuationToFinish = removed.continuation
-                    }
-                    pendingLock.unlock()
-                    continuationToFinish?.finish()
-                    throw CborPluginHostError.sendFailed("\(error)")
-                }
-                writerLock.unlock()
-            } else {
-                // Non-empty payload: send CHUNK frames + END
-                while offset < payload.count {
-                    let remaining = payload.count - offset
-                    let chunkSize = min(remaining, maxChunk)
-                    let chunkData = payload.subdata(in: offset..<(offset + chunkSize))
-                    offset += chunkSize
-
-                    writerLock.lock()
-                    do {
-                        if offset < payload.count {
-                            // Not the last chunk - send CHUNK frame
-                            let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: "request-main", seq: seq, payload: chunkData)
-                            try frameWriter.write(chunkFrame)
-                            seq += 1
-                        } else {
-                            // Last chunk - send END frame
-                            let endFrame = CborFrame.end(id: requestId, finalPayload: chunkData)
-                            try frameWriter.write(endFrame)
-                        }
-                    } catch {
-                        writerLock.unlock()
-                        // Remove pending request on send failure
-                        var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-                        pendingLock.lock()
-                        if let removed = pending.removeValue(forKey: requestId) {
-                            continuationToFinish = removed.continuation
-                        }
-                        pendingLock.unlock()
-                        continuationToFinish?.finish()
-                        throw CborPluginHostError.sendFailed("\(error)")
-                    }
-                    writerLock.unlock()
-                }
-            }
-
-            fputs("[CborPluginHost] request: sent \(seq) chunk frames + END for request_id=\(requestId)\n", stderr)
+        // 3. CHUNK(s)
+        var offset = 0
+        var seq: UInt64 = 0
+        while offset < payload.count {
+            let chunkSize = min(payload.count - offset, maxChunk)
+            let chunkData = payload.subdata(in: offset..<(offset + chunkSize))
+            let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunkData)
+            try writeFrameOrCleanup(chunkFrame, requestId: requestId)
+            offset += chunkSize
+            seq += 1
         }
+
+        // 4. STREAM_END
+        let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
+        try writeFrameOrCleanup(streamEndFrame, requestId: requestId)
+
+        // 5. END
+        let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
+        try writeFrameOrCleanup(endFrame, requestId: requestId)
 
         return stream
     }

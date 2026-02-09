@@ -17,29 +17,30 @@ import CapNs
 /// each other's capabilities. The router matches incoming cap URNs against registered
 /// plugins and forwards requests to compatible handlers.
 @available(macOS 10.15.4, iOS 13.4, *)
-public actor LocalCborPluginRouter: CborCapRouter {
-    private var routes: [String: CborPluginHost] = [:]
+public final class LocalCborPluginRouter: CborCapRouter, @unchecked Sendable {
+    private var routes: [(String, CborPluginHost)] = []  // ordered
+    private let lock = NSLock()
 
     public init() {}
 
     /// Register a plugin for a specific cap URN.
-    ///
-    /// When a peer invoke request arrives for a compatible cap, it will be routed to this plugin.
     public func registerPlugin(capUrn: String, host: CborPluginHost) {
-        routes[capUrn] = host
+        lock.lock()
+        routes.append((capUrn, host))
+        lock.unlock()
     }
 
     /// Find a plugin that can handle the given cap URN.
-    ///
-    /// Returns nil if no registered plugin is compatible with the request.
-    public func findPlugin(_ capUrn: String) async -> CborPluginHost? {
+    public func findPlugin(_ capUrn: String) -> CborPluginHost? {
         guard let requestUrn = try? CSCapUrn.fromString(capUrn) else {
             return nil
         }
 
+        lock.lock()
+        defer { lock.unlock() }
+
         for (registeredCap, host) in routes {
             if let registeredUrn = try? CSCapUrn.fromString(registeredCap) {
-                // Check if registered cap accepts the request
                 if registeredUrn.accepts(requestUrn) {
                     return host
                 }
@@ -49,8 +50,8 @@ public actor LocalCborPluginRouter: CborCapRouter {
         return nil
     }
 
-    public func beginRequest(capUrn: String, reqId: Data) async throws -> CborPeerRequestHandle {
-        guard let plugin = await findPlugin(capUrn) else {
+    public func beginRequest(capUrn: String, reqId: Data) throws -> CborPeerRequestHandle {
+        guard let plugin = findPlugin(capUrn) else {
             throw CborPluginHostError.peerInvokeNotSupported(capUrn)
         }
 
@@ -64,16 +65,15 @@ public actor LocalCborPluginRouter: CborCapRouter {
 
 /// Handle for an active peer request being routed to a local plugin.
 ///
-/// This accumulates argument streams, then executes the cap on the target plugin
-/// and streams responses back.
-///
-/// Uses actor isolation for thread-safe stream accumulation.
+/// Accumulates argument streams synchronously (called from reader thread),
+/// then executes the cap on the target plugin asynchronously on END.
 @available(macOS 10.15.4, iOS 13.4, *)
-actor LocalPluginRequestHandle: CborPeerRequestHandle {
+final class LocalPluginRequestHandle: CborPeerRequestHandle, @unchecked Sendable {
     private let capUrn: String
     private let plugin: CborPluginHost
     private let reqId: Data
     private var streams: [(String, String, Data)] = []  // (stream_id, media_urn, data) - ordered
+    private let lock = NSLock()
     private let responseContinuation: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation
     private let _responseStream: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>
 
@@ -82,7 +82,6 @@ actor LocalPluginRequestHandle: CborPeerRequestHandle {
         self.plugin = plugin
         self.reqId = reqId
 
-        // Create response stream
         var continuation: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation!
         self._responseStream = AsyncStream { cont in
             continuation = cont
@@ -90,60 +89,53 @@ actor LocalPluginRequestHandle: CborPeerRequestHandle {
         self.responseContinuation = continuation
     }
 
-    func forwardFrame(_ frame: CborFrame) async {
+    /// Called synchronously from the reader thread.
+    func forwardFrame(_ frame: CborFrame) {
         switch frame.frameType {
         case .streamStart:
             let streamId = frame.streamId ?? ""
             let mediaUrn = frame.mediaUrn ?? ""
-            fputs("[LocalPluginRequestHandle] STREAM_START: stream_id=\(streamId) media_urn=\(mediaUrn)\n", stderr)
-
+            lock.lock()
             streams.append((streamId, mediaUrn, Data()))
+            lock.unlock()
 
         case .chunk:
             let streamId = frame.streamId ?? ""
             if let payload = frame.payload {
+                lock.lock()
                 if let index = streams.firstIndex(where: { $0.0 == streamId }) {
                     streams[index].2.append(payload)
-                    fputs("[LocalPluginRequestHandle] CHUNK: stream_id=\(streamId) total_size=\(streams[index].2.count)\n", stderr)
                 }
+                lock.unlock()
             }
 
         case .streamEnd:
-            let streamId = frame.streamId ?? ""
-            fputs("[LocalPluginRequestHandle] STREAM_END: stream_id=\(streamId)\n", stderr)
+            // Stream tracking only
+            break
 
         case .end:
-            fputs("[LocalPluginRequestHandle] END: executing cap with accumulated arguments\n", stderr)
-
-            // Build CborCapArgumentValue array from accumulated streams
+            // Collect accumulated arguments
+            lock.lock()
             let currentStreams = streams
+            lock.unlock()
 
-            let arguments: [CborCapArgumentValue] = currentStreams.map { (_streamId, mediaUrn, data) in
-                CborCapArgumentValue(mediaUrn: mediaUrn, value: data)
-            }
+            let tupleArgs = currentStreams.map { (mediaUrn: $0.1, value: $0.2) }
 
-            fputs("[LocalPluginRequestHandle] Executing cap with \(arguments.count) arguments\n", stderr)
-
-            // Execute cap on plugin in background task
+            // Execute cap on target plugin asynchronously
             let continuation = responseContinuation
             let plugin = self.plugin
             let capUrn = self.capUrn
             Task {
                 do {
-                    // Convert CborCapArgumentValue to tuple format
-                    let tupleArgs = arguments.map { ($0.mediaUrn, $0.value) }
-
                     let responseStream = try plugin.requestWithArguments(
                         capUrn: capUrn,
                         arguments: tupleArgs
                     )
 
-                    // Forward all response chunks
                     for await chunkResult in responseStream {
                         continuation.yield(chunkResult)
                     }
 
-                    // End the response stream
                     continuation.finish()
                 } catch {
                     continuation.yield(.failure(.sendFailed(error.localizedDescription)))
@@ -156,7 +148,7 @@ actor LocalPluginRequestHandle: CborPeerRequestHandle {
         }
     }
 
-    nonisolated func responseStream() -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
+    func responseStream() -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
         return _responseStream
     }
 }
