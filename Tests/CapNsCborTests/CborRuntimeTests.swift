@@ -281,7 +281,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: "request".data(using: .utf8)!)
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: "request".data(using: .utf8)!)])
         XCTAssertEqual(response.concatenated(), expectedResponse)
 
         try await pluginTask.value
@@ -314,7 +314,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=stream", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=stream", arguments: [(mediaUrn: "media:bytes", value: Data())])
         let expectedResponse = chunks.joined()
         XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), expectedResponse)
 
@@ -344,7 +344,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         XCTAssertEqual(response.concatenated(), finalPayload)
 
         try await pluginTask.value
@@ -377,7 +377,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "AB")
 
         try await pluginTask.value
@@ -408,7 +408,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         )
 
         do {
-            _ = try await host.call(capUrn: "cap:op=missing", payload: Data())
+            _ = try await host.callWithArguments(capUrn: "cap:op=missing", arguments: [(mediaUrn: "media:bytes", value: Data())])
             XCTFail("Should have thrown error")
         } catch let error as CborPluginHostError {
             if case .pluginError(let code, let message) = error {
@@ -442,7 +442,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         host.close()
 
         do {
-            _ = try host.request(capUrn: "cap:op=test", payload: Data())
+            _ = try host.requestWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
             XCTFail("Should have thrown error")
         } catch let error as CborPluginHostError {
             if case .closed = error {
@@ -525,7 +525,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "done")
 
         try await pluginTask.value
@@ -591,7 +591,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         )
 
         // Start request
-        let stream = try host.request(capUrn: "cap:op=test", payload: Data())
+        let stream = try host.requestWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
 
         // Send heartbeat while request is in flight
         try host.sendHeartbeat()
@@ -764,7 +764,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         )
 
         do {
-            _ = try await host.call(capUrn: "cap:op=test", payload: Data())
+            _ = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
             XCTFail("Should have thrown error due to sudden disconnect")
         } catch {
             // Any error is expected - plugin disconnected without responding
@@ -802,7 +802,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=binary", payload: binaryData)
+        let response = try await host.callWithArguments(capUrn: "cap:op=binary", arguments: [(mediaUrn: "media:bytes", value: binaryData)])
         XCTAssertEqual(response.concatenated(), binaryData)
 
         try await pluginTask.value
@@ -838,9 +838,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        _ = try await host.call(capUrn: "cap:op=test1", payload: Data())
-        _ = try await host.call(capUrn: "cap:op=test2", payload: Data())
-        _ = try await host.call(capUrn: "cap:op=test3", payload: Data())
+        _ = try await host.callWithArguments(capUrn: "cap:op=test1", arguments: [(mediaUrn: "media:bytes", value: Data())])
+        _ = try await host.callWithArguments(capUrn: "cap:op=test2", arguments: [(mediaUrn: "media:bytes", value: Data())])
+        _ = try await host.callWithArguments(capUrn: "cap:op=test3", arguments: [(mediaUrn: "media:bytes", value: Data())])
 
         try await pluginTask.value
 
@@ -873,7 +873,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=empty", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=empty", arguments: [(mediaUrn: "media:bytes", value: Data())])
         XCTAssertEqual(response.concatenated(), Data())
 
         try await pluginTask.value
@@ -901,7 +901,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         XCTAssertEqual(response.concatenated(), Data())
 
         try await pluginTask.value
@@ -932,7 +932,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let stream = try host.request(capUrn: "cap:op=test", payload: Data())
+        let stream = try host.requestWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         var seqs: [UInt64] = []
         for await result in stream {
             switch result {
@@ -1004,11 +1004,11 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
         )
 
         let testData1 = "Hello, Plugin!".data(using: .utf8)!
-        let response1 = try await host.call(capUrn: "cap:op=echo", payload: testData1)
+        let response1 = try await host.callWithArguments(capUrn: "cap:op=echo", arguments: [(mediaUrn: "media:bytes", value: testData1)])
         XCTAssertEqual(response1.concatenated(), testData1)
 
         let testData2 = "Second request".data(using: .utf8)!
-        let response2 = try await host.call(capUrn: "cap:op=echo", payload: testData2)
+        let response2 = try await host.callWithArguments(capUrn: "cap:op=echo", arguments: [(mediaUrn: "media:bytes", value: testData2)])
         XCTAssertEqual(response2.concatenated(), testData2)
 
         try host.sendHeartbeat()
@@ -1044,7 +1044,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=binary", payload: binaryData)
+        let response = try await host.callWithArguments(capUrn: "cap:op=binary", arguments: [(mediaUrn: "media:bytes", value: binaryData)])
         XCTAssertEqual(response.concatenated(), binaryData)
 
         try await pluginTask.value
@@ -1079,7 +1079,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=large", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=large", arguments: [(mediaUrn: "media:bytes", value: Data())])
         XCTAssertEqual(response.concatenated().count, largePayload.count)
         XCTAssertEqual(response.concatenated(), largePayload)
 
@@ -1114,9 +1114,9 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        async let r1 = host.call(capUrn: "cap:op=test1", payload: Data())
-        async let r2 = host.call(capUrn: "cap:op=test2", payload: Data())
-        async let r3 = host.call(capUrn: "cap:op=test3", payload: Data())
+        async let r1 = host.callWithArguments(capUrn: "cap:op=test1", arguments: [(mediaUrn: "media:bytes", value: Data())])
+        async let r2 = host.callWithArguments(capUrn: "cap:op=test2", arguments: [(mediaUrn: "media:bytes", value: Data())])
+        async let r3 = host.callWithArguments(capUrn: "cap:op=test3", arguments: [(mediaUrn: "media:bytes", value: Data())])
 
         let responses = try await [r1, r2, r3]
 
@@ -1283,7 +1283,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         let reassembled = response.concatenated()
         XCTAssertEqual(reassembled.count, 250)
         XCTAssertEqual(reassembled, data, "concatenated must reconstruct the original payload exactly")
@@ -1316,7 +1316,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         let result = response.concatenated()
         XCTAssertEqual(result.count, 100)
         XCTAssertEqual(result, data)
@@ -1356,7 +1356,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         let reassembled = response.concatenated()
         XCTAssertEqual(reassembled.count, 101)
         XCTAssertEqual(reassembled, data, "101-byte payload must reassemble correctly from CHUNK+END")
@@ -1420,7 +1420,7 @@ final class CborProtocolIntegrationTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pluginToHost.fileHandleForReading
         )
 
-        let response = try await host.call(capUrn: "cap:op=test", payload: Data())
+        let response = try await host.callWithArguments(capUrn: "cap:op=test", arguments: [(mediaUrn: "media:bytes", value: Data())])
         let reassembled = response.concatenated()
         XCTAssertEqual(reassembled.count, 300)
         XCTAssertEqual(reassembled, data, "pattern must be preserved across chunk boundaries")

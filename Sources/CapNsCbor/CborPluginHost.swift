@@ -30,7 +30,8 @@
 //  )
 //
 //  // Send request - returns AsyncStream for responses
-//  let stream = try host.request(capUrn: "cap:op=test", payload: requestData)
+//  let args = [(mediaUrn: "media:bytes", value: requestData)]
+//  let stream = try host.requestWithArguments(capUrn: "cap:op=test", arguments: args)
 //
 //  // Iterate over response chunks
 //  for await result in stream {
@@ -734,10 +735,19 @@ public final class CborPluginHost: @unchecked Sendable {
     ///   - contentType: Content type of payload (default: "application/json")
     /// - Returns: AsyncStream of response chunks
     /// - Throws: CborPluginHostError if host is closed or send fails
-    public func request(
+    /// Send a cap request with typed arguments and receive a stream of response chunks.
+    ///
+    /// Each argument becomes an independent stream (STREAM_START + CHUNK(s) + STREAM_END).
+    /// This matches the Rust AsyncPluginHost.request_with_arguments() wire format exactly.
+    ///
+    /// - Parameters:
+    ///   - capUrn: The cap URN to invoke
+    ///   - arguments: Arguments as array of (mediaUrn, value) pairs
+    /// - Returns: AsyncStream of response chunks
+    /// - Throws: CborPluginHostError if host is closed or send fails
+    public func requestWithArguments(
         capUrn: String,
-        payload: Data,
-        contentType: String = "application/json"
+        arguments: [(mediaUrn: String, value: Data)]
     ) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
         pendingLock.lock()
         if closed {
@@ -749,108 +759,66 @@ public final class CborPluginHost: @unchecked Sendable {
 
         let requestId = CborMessageId.newUUID()
 
-        // Create stream before sending request
         let stream = AsyncStream<Result<CborResponseChunk, CborPluginHostError>> { continuation in
-            // Register pending request
             pendingLock.lock()
             pending[requestId] = PendingRequest(continuation: continuation, streams: [], ended: false)
             pendingLock.unlock()
 
             continuation.onTermination = { [weak self] _ in
-                // Clean up if stream is cancelled
                 self?.pendingLock.lock()
                 self?.pending.removeValue(forKey: requestId)
                 self?.pendingLock.unlock()
             }
         }
 
-        // Stream protocol: REQ(empty) + STREAM_START + CHUNK(s) + STREAM_END + END
-        // This matches the Rust AsyncPluginHost.request() wire format exactly.
-
-        // 1. REQ with empty payload
-        let reqFrame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: contentType)
+        // REQ with empty payload — arguments come as streams
+        let reqFrame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
         try writeFrameOrCleanup(reqFrame, requestId: requestId)
 
-        // 2. STREAM_START
-        let streamId = UUID().uuidString
-        let streamStartFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: contentType)
-        try writeFrameOrCleanup(streamStartFrame, requestId: requestId)
+        // Each argument becomes an independent stream
+        for (i, arg) in arguments.enumerated() {
+            let streamId = "arg-\(i)"
 
-        // 3. CHUNK(s)
-        var offset = 0
-        var seq: UInt64 = 0
-        while offset < payload.count {
-            let chunkSize = min(payload.count - offset, maxChunk)
-            let chunkData = payload.subdata(in: offset..<(offset + chunkSize))
-            let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunkData)
-            try writeFrameOrCleanup(chunkFrame, requestId: requestId)
-            offset += chunkSize
-            seq += 1
+            // STREAM_START with the argument's media_urn
+            let startFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: arg.mediaUrn)
+            try writeFrameOrCleanup(startFrame, requestId: requestId)
+
+            // CHUNK(s)
+            var offset = 0
+            var seq: UInt64 = 0
+            while offset < arg.value.count {
+                let chunkSize = min(arg.value.count - offset, maxChunk)
+                let chunkData = arg.value.subdata(in: offset..<(offset + chunkSize))
+                let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunkData)
+                try writeFrameOrCleanup(chunkFrame, requestId: requestId)
+                offset += chunkSize
+                seq += 1
+            }
+
+            // STREAM_END
+            let endStreamFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
+            try writeFrameOrCleanup(endStreamFrame, requestId: requestId)
         }
 
-        // 4. STREAM_END
-        let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
-        try writeFrameOrCleanup(streamEndFrame, requestId: requestId)
-
-        // 5. END
+        // END closes the entire request
         let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
         try writeFrameOrCleanup(endFrame, requestId: requestId)
 
         return stream
     }
 
-    /// Send a cap request with arguments.
-    ///
-    /// This is the primary method for invoking caps on plugins. Arguments are
-    /// identified by media_urn and the plugin runtime extracts the appropriate
-    /// data based on the cap's input type.
-    ///
-    /// The arguments are serialized as CBOR: `[{media_urn: string, value: bytes}, ...]`
-    /// with content_type "application/cbor".
+    /// Send a cap request with typed arguments and wait for the complete response.
     ///
     /// - Parameters:
     ///   - capUrn: The cap URN to invoke
     ///   - arguments: Arguments as array of (mediaUrn, value) pairs
-    /// - Returns: AsyncStream of response chunks
-    /// - Throws: CborPluginHostError if host is closed, serialization fails, or send fails
-    public func requestWithArguments(
+    /// - Returns: Complete CborPluginResponse
+    /// - Throws: CborPluginHostError if call fails
+    public func callWithArguments(
         capUrn: String,
         arguments: [(mediaUrn: String, value: Data)]
-    ) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
-        // Serialize arguments as CBOR array of maps
-        // Format: [{media_urn: string, value: bytes}, ...]
-        var cborArray: [CBOR] = []
-        for arg in arguments {
-            let argMap: CBOR = .map([
-                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
-                .utf8String("value"): .byteString([UInt8](arg.value))
-            ])
-            cborArray.append(argMap)
-        }
-
-        let cborPayload = CBOR.array(cborArray)
-        let payloadData = Data(cborPayload.encode())
-
-        return try request(capUrn: capUrn, payload: payloadData, contentType: "application/cbor")
-    }
-
-    /// Send a cap request and wait for the complete response.
-    ///
-    /// This is a convenience method that collects all chunks.
-    /// For streaming responses, use `request()` directly.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke
-    ///   - payload: Request payload
-    ///   - contentType: Content type of payload (default: "application/json")
-    /// - Returns: The complete response
-    /// - Throws: CborPluginHostError on failure
-    public func call(
-        capUrn: String,
-        payload: Data,
-        contentType: String = "application/json"
     ) async throws -> CborPluginResponse {
-        let stream = try request(capUrn: capUrn, payload: payload, contentType: contentType)
+        let stream = try requestWithArguments(capUrn: capUrn, arguments: arguments)
 
         var chunks: [CborResponseChunk] = []
         for await result in stream {
@@ -866,7 +834,9 @@ public final class CborPluginHost: @unchecked Sendable {
             }
         }
 
-        if chunks.count == 1 && chunks[0].seq == 0 {
+        if chunks.isEmpty {
+            return .single(Data())
+        } else if chunks.count == 1 {
             return .single(chunks[0].payload)
         } else {
             return .streaming(chunks)
@@ -955,15 +925,17 @@ public final class CborPluginHost: @unchecked Sendable {
 @available(macOS 10.15.4, iOS 13.4, *)
 public extension CborPluginHost {
     /// Send a JSON-encodable request and receive raw response
-    func request<T: Encodable>(capUrn: String, request: T) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
+    func requestWithJSON<T: Encodable>(capUrn: String, request: T) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
         let data = try JSONEncoder().encode(request)
-        return try self.request(capUrn: capUrn, payload: data)
+        let args: [(mediaUrn: String, value: Data)] = [(mediaUrn: "media:json", value: data)]
+        return try self.requestWithArguments(capUrn: capUrn, arguments: args)
     }
 
     /// Call with JSON-encodable request and JSON-decodable response
-    func call<Req: Encodable, Res: Decodable>(capUrn: String, request: Req) async throws -> Res {
+    func callWithJSON<Req: Encodable, Res: Decodable>(capUrn: String, request: Req) async throws -> Res {
         let requestData = try JSONEncoder().encode(request)
-        let response = try await call(capUrn: capUrn, payload: requestData)
+        let args: [(mediaUrn: String, value: Data)] = [(mediaUrn: "media:json", value: requestData)]
+        let response = try await callWithArguments(capUrn: capUrn, arguments: args)
         return try JSONDecoder().decode(Res.self, from: response.concatenated())
     }
 }
