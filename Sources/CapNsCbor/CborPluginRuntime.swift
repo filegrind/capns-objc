@@ -529,12 +529,14 @@ final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
     private let writerLock: NSLock
     private let pendingRequests: NSMutableDictionary // [CborMessageId: PendingPeerRequest]
     private let pendingRequestsLock: NSLock
+    private let maxChunk: Int
 
-    init(writer: CborFrameWriter, writerLock: NSLock, pendingRequests: NSMutableDictionary, pendingRequestsLock: NSLock) {
+    init(writer: CborFrameWriter, writerLock: NSLock, pendingRequests: NSMutableDictionary, pendingRequestsLock: NSLock, maxChunk: Int) {
         self.writer = writer
         self.writerLock = writerLock
         self.pendingRequests = pendingRequests
         self.pendingRequestsLock = pendingRequestsLock
+        self.maxChunk = maxChunk
     }
 
     func invoke(capUrn: String, arguments: [CborCapArgumentValue]) throws -> AnyIterator<Result<Data, CborPluginRuntimeError>> {
@@ -554,31 +556,47 @@ final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
         pendingRequests[requestId] = pending
         pendingRequestsLock.unlock()
 
-        // Serialize arguments as CBOR: [{media_urn: string, value: bytes}, ...]
-        var cborArray: [CBOR] = []
-        for arg in arguments {
-            let argMap: CBOR = .map([
-                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
-                .utf8String("value"): .byteString([UInt8](arg.value))
-            ])
-            cborArray.append(argMap)
-        }
-        let payloadCbor = CBOR.array(cborArray)
-        let payloadData = Data(payloadCbor.encode())
-
-        // Create and send the REQ frame
-        let frame = CborFrame.req(id: requestId, capUrn: capUrn, payload: payloadData, contentType: "application/cbor")
-
+        // Protocol v2: REQ(empty) + STREAM_START + CHUNK(s) + STREAM_END + END per argument
         writerLock.lock()
         do {
-            try writer.write(frame)
+            // 1. REQ with empty payload
+            let reqFrame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
+            try writer.write(reqFrame)
+
+            // 2. Each argument as an independent stream
+            for arg in arguments {
+                let streamId = UUID().uuidString
+
+                // STREAM_START
+                let startFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: arg.mediaUrn)
+                try writer.write(startFrame)
+
+                // CHUNK(s)
+                var offset = 0
+                var seq: UInt64 = 0
+                while offset < arg.value.count {
+                    let chunkSize = min(arg.value.count - offset, maxChunk)
+                    let chunkData = arg.value.subdata(in: offset..<(offset + chunkSize))
+                    let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunkData)
+                    try writer.write(chunkFrame)
+                    offset += chunkSize
+                    seq += 1
+                }
+
+                // STREAM_END
+                let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
+                try writer.write(streamEndFrame)
+            }
+
+            // 3. END
+            let endFrame = CborFrame.end(id: requestId)
+            try writer.write(endFrame)
         } catch {
             writerLock.unlock()
-            // Remove pending request on failure
             pendingRequestsLock.lock()
             pendingRequests.removeObject(forKey: requestId)
             pendingRequestsLock.unlock()
-            throw CborPluginRuntimeError.peerRequestError("Failed to send REQ frame: \(error)")
+            throw CborPluginRuntimeError.peerRequestError("Failed to send peer request frames: \(error)")
         }
         writerLock.unlock()
 
@@ -1703,7 +1721,8 @@ public final class CborPluginRuntime: @unchecked Sendable {
                                 writer: frameWriter,
                                 writerLock: writerLock,
                                 pendingRequests: pendingPeerRequests,
-                                pendingRequestsLock: pendingPeerRequestsLock
+                                pendingRequestsLock: pendingPeerRequestsLock,
+                                maxChunk: self.limits.maxChunk
                             )
 
                             do {
@@ -1797,7 +1816,14 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     pendingIncomingLock.unlock()
                 } else {
                     pendingIncomingLock.unlock()
-                    throw CborPluginRuntimeError.protocolError("STREAM_START for unknown request ID")
+                    // Not an incoming request — check if this is a peer response stream
+                    pendingPeerRequestsLock.lock()
+                    let isPeerResponse = pendingPeerRequests[frame.id] != nil
+                    pendingPeerRequestsLock.unlock()
+                    if !isPeerResponse {
+                        throw CborPluginRuntimeError.protocolError("STREAM_START for unknown request ID")
+                    }
+                    // Peer response streams: no tracking needed (chunks accumulated flat)
                 }
 
             case .streamEnd:
@@ -1818,7 +1844,14 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     }
                 } else {
                     pendingIncomingLock.unlock()
-                    throw CborPluginRuntimeError.protocolError("STREAM_END for unknown request ID")
+                    // Not an incoming request — check if this is a peer response stream
+                    pendingPeerRequestsLock.lock()
+                    let isPeerResponse = pendingPeerRequests[frame.id] != nil
+                    pendingPeerRequestsLock.unlock()
+                    if !isPeerResponse {
+                        throw CborPluginRuntimeError.protocolError("STREAM_END for unknown request ID")
+                    }
+                    // Peer response streams: no-op (chunks already accumulated)
                 }
             }
         }
