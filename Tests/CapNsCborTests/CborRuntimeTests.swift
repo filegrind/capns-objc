@@ -38,9 +38,26 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     /// Read a complete request from the stream protocol:
     /// REQ(empty) + STREAM_START + CHUNK(s) + STREAM_END + END
     /// Returns the REQ frame's metadata plus the accumulated payload from CHUNK frames.
+    /// Read a complete request: REQ + per-argument streams + END.
+    /// Returns the request ID, cap URN, content type, and concatenated payload from all streams.
+    /// For single-argument calls, the payload is the raw argument value bytes.
     nonisolated static func readCompleteRequest(
         reader: CborFrameReader
     ) throws -> (reqId: CborMessageId, cap: String, contentType: String, payload: Data) {
+        let (reqId, cap, contentType, streams) = try readCompleteRequestStreams(reader: reader)
+        // Concatenate all stream data (backward-compatible for single-argument tests)
+        var payload = Data()
+        for (_, _, data) in streams {
+            payload.append(data)
+        }
+        return (reqId, cap, contentType, payload)
+    }
+
+    /// Read a complete request returning per-stream argument data.
+    /// Each stream is a (streamId, mediaUrn, data) tuple.
+    nonisolated static func readCompleteRequestStreams(
+        reader: CborFrameReader
+    ) throws -> (reqId: CborMessageId, cap: String, contentType: String, streams: [(streamId: String, mediaUrn: String, data: Data)]) {
         guard let req = try reader.read() else {
             throw CborPluginHostError.receiveFailed("No REQ frame")
         }
@@ -52,21 +69,32 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let cap = req.cap ?? ""
         let contentType = req.contentType ?? ""
 
-        // Read stream frames until END
-        var payload = Data()
+        // Read per-argument streams until END
+        var streams: [(streamId: String, mediaUrn: String, data: Data)] = []
+        var currentStreamId: String?
+        var currentMediaUrn: String?
+        var currentData = Data()
+
         while true {
             guard let frame = try reader.read() else {
                 throw CborPluginHostError.receiveFailed("Unexpected EOF reading request stream")
             }
             switch frame.frameType {
             case .streamStart:
-                continue
+                currentStreamId = frame.streamId
+                currentMediaUrn = frame.mediaUrn
+                currentData = Data()
             case .chunk:
-                payload.append(frame.payload ?? Data())
+                currentData.append(frame.payload ?? Data())
             case .streamEnd:
-                continue
+                if let sid = currentStreamId, let murn = currentMediaUrn {
+                    streams.append((streamId: sid, mediaUrn: murn, data: currentData))
+                }
+                currentStreamId = nil
+                currentMediaUrn = nil
+                currentData = Data()
             case .end:
-                return (reqId, cap, contentType, payload)
+                return (reqId, cap, contentType, streams)
             default:
                 throw CborPluginHostError.handshakeFailed("Unexpected frame type in request stream: \(frame.frameType)")
             }
@@ -617,7 +645,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     // MARK: - Arguments (TEST297, TEST303)
 
-    // TEST297: Host call with unified CBOR arguments sends correct content_type and payload
+    // TEST297: Host sends single argument as independent stream with correct media_urn
     func testArgumentsRoundtrip() async throws {
         let pipes = createPipePair()
 
@@ -628,40 +656,20 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
-            let (reqId, _, contentType, payload) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
+            let (reqId, _, _, streams) = try CborRuntimeTests.readCompleteRequestStreams(reader: pluginReader)
 
-            // Verify content type is CBOR
-            guard contentType == "application/cbor" else {
-                throw CborPluginHostError.handshakeFailed("Expected application/cbor, got \(contentType)")
-            }
-
-            // Parse CBOR payload and extract the value
-            guard let decoded = try? CBOR.decode([UInt8](payload)) else {
-                throw CborPluginHostError.handshakeFailed("Failed to decode CBOR")
-            }
-            guard case .array(let args) = decoded else {
-                throw CborPluginHostError.handshakeFailed("Expected CBOR array")
-            }
-            guard args.count == 1 else {
-                throw CborPluginHostError.handshakeFailed("Expected 1 argument, got \(args.count)")
+            // Verify exactly 1 argument stream
+            guard streams.count == 1 else {
+                throw CborPluginHostError.handshakeFailed("Expected 1 stream, got \(streams.count)")
             }
 
-            // Extract value bytes from the first argument
-            guard case .map(let argMap) = args[0] else {
-                throw CborPluginHostError.handshakeFailed("Expected map")
-            }
-            var foundValue: Data?
-            for (k, v) in argMap {
-                if case .utf8String(let key) = k, key == "value",
-                   case .byteString(let bytes) = v {
-                    foundValue = Data(bytes)
-                }
-            }
-            guard let value = foundValue else {
-                throw CborPluginHostError.handshakeFailed("No value field found")
+            // Verify the stream's media_urn
+            guard streams[0].mediaUrn == "media:model-spec;textable" else {
+                throw CborPluginHostError.handshakeFailed("Expected media:model-spec;textable, got \(streams[0].mediaUrn)")
             }
 
-            try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId, payload: value)
+            // Echo back the raw value bytes
+            try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId, payload: streams[0].data)
         }
 
         let host = try CborPluginHost(
@@ -669,7 +677,6 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        // Use requestWithArguments and collect response
         let stream = try host.requestWithArguments(
             capUrn: "cap:op=test",
             arguments: [(mediaUrn: "media:model-spec;textable", value: "gpt-4".data(using: .utf8)!)]
@@ -689,7 +696,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try await pluginTask.value
     }
 
-    // TEST303: Multiple arguments are correctly serialized in CBOR payload
+    // TEST303: Multiple arguments each become independent streams with correct media_urns
     func testArgumentsMultiple() async throws {
         let pipes = createPipePair()
 
@@ -700,15 +707,30 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
-            let (reqId, _, _, payload) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
+            let (reqId, _, _, streams) = try CborRuntimeTests.readCompleteRequestStreams(reader: pluginReader)
 
-            // Parse CBOR and verify 2 arguments
-            guard let decoded = try? CBOR.decode([UInt8](payload)),
-                  case .array(let args) = decoded else {
-                throw CborPluginHostError.handshakeFailed("Expected CBOR array payload")
+            // Verify exactly 2 argument streams
+            guard streams.count == 2 else {
+                throw CborPluginHostError.handshakeFailed("Expected 2 streams, got \(streams.count)")
             }
 
-            let responsePayload = "got \(args.count) args".data(using: .utf8)!
+            // Verify media_urns
+            guard streams[0].mediaUrn == "media:model-spec;textable" else {
+                throw CborPluginHostError.handshakeFailed("Stream 0: expected media:model-spec;textable, got \(streams[0].mediaUrn)")
+            }
+            guard streams[1].mediaUrn == "media:pdf;bytes" else {
+                throw CborPluginHostError.handshakeFailed("Stream 1: expected media:pdf;bytes, got \(streams[1].mediaUrn)")
+            }
+
+            // Verify raw data
+            guard String(data: streams[0].data, encoding: .utf8) == "gpt-4" else {
+                throw CborPluginHostError.handshakeFailed("Stream 0: expected gpt-4")
+            }
+            guard streams[1].data == Data([0x89, 0x50, 0x4E, 0x47]) else {
+                throw CborPluginHostError.handshakeFailed("Stream 1: binary data mismatch")
+            }
+
+            let responsePayload = "got \(streams.count) args".data(using: .utf8)!
             try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId, payload: responsePayload)
         }
 
@@ -717,24 +739,14 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             stdoutHandle: pipes.pluginToHost.fileHandleForReading
         )
 
-        let stream = try host.requestWithArguments(
+        let response = try await host.callWithArguments(
             capUrn: "cap:op=test",
             arguments: [
                 (mediaUrn: "media:model-spec;textable", value: "gpt-4".data(using: .utf8)!),
                 (mediaUrn: "media:pdf;bytes", value: Data([0x89, 0x50, 0x4E, 0x47]))
             ]
         )
-        var responsePayload = Data()
-        for await result in stream {
-            switch result {
-            case .success(let chunk):
-                responsePayload.append(chunk.payload)
-                if chunk.isEof { break }
-            case .failure(let error):
-                XCTFail("Unexpected error: \(error)")
-            }
-        }
-        XCTAssertEqual(String(data: responsePayload, encoding: .utf8), "got 2 args")
+        XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "got 2 args")
 
         try await pluginTask.value
     }
