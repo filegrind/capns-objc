@@ -854,6 +854,36 @@ public final class CborPluginRuntime: @unchecked Sendable {
         handlersLock.unlock()
     }
 
+    /// Register a raw Data handler (no JSON serialization).
+    /// Accumulates stream chunks into Data, passes raw bytes to handler,
+    /// and CBOR-encodes the returned Data.
+    ///
+    /// - Parameters:
+    ///   - capUrn: The cap URN pattern to handle
+    ///   - handler: Handler that receives raw Data and returns raw Data
+    public func register(
+        capUrn: String,
+        handler: @escaping @Sendable (Data, CborStreamEmitter, CborPeerInvoker) async throws -> Data
+    ) {
+        let streamHandler: CborCapHandler = { streamChunks, emitter, peer in
+            // Accumulate all chunks
+            var accumulated = Data()
+            for await chunk in streamChunks {
+                accumulated.append(chunk.data)
+            }
+
+            // Invoke handler with raw bytes
+            let response = try await handler(accumulated, emitter, peer)
+
+            // Emit response as CBOR byteString (matches Rust emit_cbor)
+            emitter.emitCbor(.byteString([UInt8](response)))
+        }
+
+        handlersLock.lock()
+        handlers[capUrn] = streamHandler
+        handlersLock.unlock()
+    }
+
     /// Register a handler with typed request/response.
     /// Automatically accumulates stream chunks and handles serialization.
     ///
