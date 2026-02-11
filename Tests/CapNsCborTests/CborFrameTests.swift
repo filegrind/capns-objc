@@ -1069,4 +1069,98 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(decoded.streamId, "stream-xyz-789")
         XCTAssertNil(decoded.mediaUrn, "StreamEnd should not have media_urn")
     }
+
+    // MARK: - Relay Frame Tests (TEST399-403, TEST399a-400a)
+
+    // TEST399: RelayNotify discriminant roundtrips through rawValue conversion (value 10)
+    func testRelayNotifyDiscriminantRoundtrip() {
+        let ft = CborFrameType.relayNotify
+        XCTAssertEqual(ft.rawValue, 10, "RELAY_NOTIFY must be 10")
+        let restored = CborFrameType(rawValue: 10)
+        XCTAssertEqual(restored, .relayNotify, "rawValue 10 must restore to relayNotify")
+    }
+
+    // TEST400: RelayState discriminant roundtrips through rawValue conversion (value 11)
+    func testRelayStateDiscriminantRoundtrip() {
+        let ft = CborFrameType.relayState
+        XCTAssertEqual(ft.rawValue, 11, "RELAY_STATE must be 11")
+        let restored = CborFrameType(rawValue: 11)
+        XCTAssertEqual(restored, .relayState, "rawValue 11 must restore to relayState")
+    }
+
+    // TEST401: relay_notify factory stores manifest and limits, accessors extract them correctly
+    func testRelayNotifyFactoryAndAccessors() {
+        let manifest = "{\"caps\":[\"cap:op=test\"]}".data(using: .utf8)!
+        let maxFrame = 2_000_000
+        let maxChunk = 128_000
+
+        let frame = CborFrame.relayNotify(manifest: manifest, maxFrame: maxFrame, maxChunk: maxChunk)
+
+        XCTAssertEqual(frame.frameType, .relayNotify)
+
+        // Test manifest accessor
+        let extractedManifest = frame.relayNotifyManifest
+        XCTAssertNotNil(extractedManifest, "relayNotifyManifest must not be nil")
+        XCTAssertEqual(extractedManifest, manifest)
+
+        // Test limits accessor
+        let extractedLimits = frame.relayNotifyLimits
+        XCTAssertNotNil(extractedLimits, "relayNotifyLimits must not be nil")
+        XCTAssertEqual(extractedLimits?.maxFrame, maxFrame)
+        XCTAssertEqual(extractedLimits?.maxChunk, maxChunk)
+
+        // Test accessors on wrong frame type return nil
+        let req = CborFrame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
+        XCTAssertNil(req.relayNotifyManifest, "relayNotifyManifest on REQ must be nil")
+        XCTAssertNil(req.relayNotifyLimits, "relayNotifyLimits on REQ must be nil")
+    }
+
+    // TEST402: relay_state factory stores resource payload in payload field
+    func testRelayStateFactoryAndPayload() {
+        let resources = "{\"gpu_memory\":8192}".data(using: .utf8)!
+
+        let frame = CborFrame.relayState(resources: resources)
+
+        XCTAssertEqual(frame.frameType, .relayState)
+        XCTAssertEqual(frame.payload, resources)
+    }
+
+    // TEST403: FrameType from value 12 is nil (one past RelayState)
+    func testFrameTypeOnePastRelayState() {
+        XCTAssertNil(CborFrameType(rawValue: 12), "rawValue 12 must be nil (one past RelayState)")
+    }
+
+    // TEST399a: RelayNotify encode/decode roundtrip preserves manifest and limits
+    func testRelayNotifyRoundtrip() throws {
+        let manifest = "{\"caps\":[\"cap:op=relay-test\"]}".data(using: .utf8)!
+        let maxFrame = 2_000_000
+        let maxChunk = 128_000
+
+        let original = CborFrame.relayNotify(manifest: manifest, maxFrame: maxFrame, maxChunk: maxChunk)
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .relayNotify)
+
+        let extractedManifest = decoded.relayNotifyManifest
+        XCTAssertNotNil(extractedManifest, "manifest must survive roundtrip")
+        XCTAssertEqual(extractedManifest, manifest)
+
+        let extractedLimits = decoded.relayNotifyLimits
+        XCTAssertNotNil(extractedLimits, "limits must survive roundtrip")
+        XCTAssertEqual(extractedLimits?.maxFrame, maxFrame)
+        XCTAssertEqual(extractedLimits?.maxChunk, maxChunk)
+    }
+
+    // TEST400a: RelayState encode/decode roundtrip preserves resource payload
+    func testRelayStateRoundtrip() throws {
+        let resources = "{\"gpu_memory\":8192,\"cpu_cores\":16}".data(using: .utf8)!
+
+        let original = CborFrame.relayState(resources: resources)
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .relayState)
+        XCTAssertEqual(decoded.payload, resources)
+    }
 }
