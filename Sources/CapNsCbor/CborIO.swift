@@ -290,7 +290,7 @@ public class CborFrameReader: @unchecked Sendable {
 /// CBOR frame writer
 @available(macOS 10.15.4, iOS 13.4, *)
 public class CborFrameWriter: @unchecked Sendable {
-    private let handle: FileHandle
+    public let handle: FileHandle
     private var limits: CborLimits
     private let lock = NSLock()
 

@@ -35,6 +35,10 @@ public enum CborFrameType: UInt8, Sendable {
     case streamStart = 8
     /// End a specific stream (multiplexed streaming)
     case streamEnd = 9
+    /// Relay capability advertisement (slave → master). Carries aggregate manifest + limits.
+    case relayNotify = 10
+    /// Relay host system resources + cap demands (master → slave). Carries opaque resource payload.
+    case relayState = 11
 }
 
 /// Message ID - either a 16-byte UUID or a simple integer
@@ -269,6 +273,26 @@ public struct CborFrame: @unchecked Sendable {
         return frame
     }
 
+    /// Create a RELAY_NOTIFY frame for capability advertisement (slave → master).
+    /// Carries the aggregate manifest and negotiated limits.
+    public static func relayNotify(manifest: Data, maxFrame: Int, maxChunk: Int) -> CborFrame {
+        var frame = CborFrame(frameType: .relayNotify, id: .uint(0))
+        frame.meta = [
+            "manifest": CBOR.byteString([UInt8](manifest)),
+            "max_frame": CBOR.unsignedInt(UInt64(maxFrame)),
+            "max_chunk": CBOR.unsignedInt(UInt64(maxChunk)),
+        ]
+        return frame
+    }
+
+    /// Create a RELAY_STATE frame for host system resources + cap demands (master → slave).
+    /// Carries an opaque resource payload.
+    public static func relayState(resources: Data) -> CborFrame {
+        var frame = CborFrame(frameType: .relayState, id: .uint(0))
+        frame.payload = resources
+        return frame
+    }
+
     // MARK: - Accessors
 
     /// Check if this is the final frame in a stream
@@ -306,6 +330,24 @@ public struct CborFrame: @unchecked Sendable {
             return nil
         }
         return s
+    }
+
+    /// Extract manifest from RELAY_NOTIFY metadata
+    public var relayNotifyManifest: Data? {
+        guard frameType == .relayNotify, let meta = meta, case .byteString(let bytes) = meta["manifest"] else {
+            return nil
+        }
+        return Data(bytes)
+    }
+
+    /// Extract limits from RELAY_NOTIFY metadata
+    public var relayNotifyLimits: CborLimits? {
+        guard frameType == .relayNotify, let meta = meta,
+              case .unsignedInt(let maxFrame) = meta["max_frame"],
+              case .unsignedInt(let maxChunk) = meta["max_chunk"] else {
+            return nil
+        }
+        return CborLimits(maxFrame: Int(maxFrame), maxChunk: Int(maxChunk))
     }
 
     /// Extract max_frame from HELLO metadata

@@ -31,7 +31,9 @@ final class CborFrameTests: XCTestCase {
     // TEST172: FrameType init returns nil for values outside the valid discriminant range (updated for new max)
     func testInvalidFrameType() {
         XCTAssertNil(CborFrameType(rawValue: 2), "rawValue 2 (res) removed - must be invalid")
-        XCTAssertNil(CborFrameType(rawValue: 10), "rawValue 10 must be invalid")
+        XCTAssertEqual(CborFrameType(rawValue: 10), .relayNotify)
+        XCTAssertEqual(CborFrameType(rawValue: 11), .relayState)
+        XCTAssertNil(CborFrameType(rawValue: 12), "rawValue 12 must be invalid")
         XCTAssertNil(CborFrameType(rawValue: 99), "rawValue 99 must be invalid")
         XCTAssertNil(CborFrameType(rawValue: 255), "rawValue 255 must be invalid")
     }
@@ -48,6 +50,8 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(CborFrameType.heartbeat.rawValue, 7)
         XCTAssertEqual(CborFrameType.streamStart.rawValue, 8)
         XCTAssertEqual(CborFrameType.streamEnd.rawValue, 9)
+        XCTAssertEqual(CborFrameType.relayNotify.rawValue, 10)
+        XCTAssertEqual(CborFrameType.relayState.rawValue, 11)
     }
 
     // MARK: - Message ID Tests (TEST174-177, TEST202-203)

@@ -1853,6 +1853,12 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     }
                     // Peer response streams: no-op (chunks already accumulated)
                 }
+
+            case .relayNotify, .relayState:
+                // Relay frame types should NEVER reach the plugin runtime — they are
+                // intercepted by the relay layer. If one arrives here, it's a
+                // protocol violation.
+                throw CborPluginRuntimeError.protocolError("Relay frame type \(frame.frameType) must not reach plugin runtime")
             }
         }
 

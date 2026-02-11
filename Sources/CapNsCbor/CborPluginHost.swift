@@ -2,50 +2,39 @@
 //  CborPluginHost.swift
 //  CapNsCbor
 //
-//  Host-side runtime for communicating with plugin processes.
+//  Multi-plugin host runtime — manages N plugin binaries with frame routing.
 //
-//  The CborPluginHost is the host-side runtime that manages all communication with
-//  a running plugin process. It handles:
+//  The CborPluginHost sits between the relay connection (to the engine) and
+//  individual plugin processes. It handles:
 //
-//  - HELLO handshake and limit negotiation
-//  - Sending cap requests
-//  - Receiving and routing responses
-//  - Heartbeat handling (transparent)
-//  - Multiplexed concurrent requests (transparent)
+//  - HELLO handshake and limit negotiation per plugin
+//  - Cap-based routing (REQ by cap_urn, continuation frames by req_id)
+//  - Heartbeat health monitoring per plugin
+//  - Plugin death detection and ERR propagation
+//  - Aggregate capability advertisement
 //
-//  **This is the ONLY way for the host to communicate with plugins.**
-//  No fallbacks, no alternative protocols.
+//  Architecture:
 //
-//  Usage:
+//    Relay (engine) <-> CborPluginHost <-> Plugin A (stdin/stdout)
+//                                      <-> Plugin B (stdin/stdout)
+//                                      <-> Plugin C (stdin/stdout)
 //
-//  The host creates a CborPluginHost, then calls `request()` to invoke caps.
-//  Responses arrive via an AsyncStream - the caller just iterates over chunks.
-//  Multiple requests can be in flight simultaneously; the runtime handles
-//  all correlation and routing.
+//  Frame Routing:
 //
-//  ```swift
-//  let host = try CborPluginHost(
-//      stdinHandle: pluginStdin,
-//      stdoutHandle: pluginStdout
-//  )
+//  Engine -> Plugin:
+//  - REQ: route by cap_urn to the plugin that handles it
+//  - STREAM_START/CHUNK/STREAM_END/END/ERR: route by req_id to the mapped plugin
 //
-//  // Send request - returns AsyncStream for responses
-//  let args = [(mediaUrn: "media:bytes", value: requestData)]
-//  let stream = try host.requestWithArguments(capUrn: "cap:op=test", arguments: args)
-//
-//  // Iterate over response chunks
-//  for await result in stream {
-//      switch result {
-//      case .success(let chunk):
-//          print("Got chunk: \(chunk.payload.count) bytes")
-//      case .failure(let error):
-//          print("Error: \(error)")
-//      }
-//  }
-//  ```
+//  Plugin -> Engine:
+//  - HEARTBEAT: handled locally, never forwarded
+//  - REQ (peer invoke): registered in routing table, forwarded to relay
+//  - Everything else: forwarded to relay (pass-through)
 
 import Foundation
 @preconcurrency import SwiftCBOR
+import CapNs
+
+// MARK: - Error Types
 
 /// Errors that can occur in the plugin host
 public enum CborPluginHostError: Error, LocalizedError, Sendable {
@@ -55,9 +44,10 @@ public enum CborPluginHostError: Error, LocalizedError, Sendable {
     case pluginError(code: String, message: String)
     case unexpectedFrameType(CborFrameType)
     case protocolError(String)
-    case peerInvokeNotSupported(String)
     case processExited
     case closed
+    case noHandler(String)
+    case pluginDied(String)
     // Protocol violation errors (per-request)
     case duplicateStreamId(String)
     case chunkAfterStreamEnd(String)
@@ -73,9 +63,10 @@ public enum CborPluginHostError: Error, LocalizedError, Sendable {
         case .pluginError(let code, let message): return "Plugin error [\(code)]: \(message)"
         case .unexpectedFrameType(let t): return "Unexpected frame type: \(t)"
         case .protocolError(let msg): return "Protocol error: \(msg)"
-        case .peerInvokeNotSupported(let capUrn): return "Peer invoke not supported for: \(capUrn)"
         case .processExited: return "Plugin process exited unexpectedly"
         case .closed: return "Host is closed"
+        case .noHandler(let cap): return "No handler found for cap: \(cap)"
+        case .pluginDied(let msg): return "Plugin died: \(msg)"
         case .duplicateStreamId(let streamId): return "Duplicate stream ID: \(streamId)"
         case .chunkAfterStreamEnd(let streamId): return "Chunk after stream end: \(streamId)"
         case .unknownStreamId(let streamId): return "Unknown stream ID: \(streamId)"
@@ -87,15 +78,10 @@ public enum CborPluginHostError: Error, LocalizedError, Sendable {
 
 /// A response chunk from a plugin
 public struct CborResponseChunk: Sendable {
-    /// The chunk payload data
     public let payload: Data
-    /// Sequence number within the stream
     public let seq: UInt64
-    /// Byte offset (for binary transfers)
     public let offset: UInt64?
-    /// Total length (set on first chunk for binary transfers)
     public let len: UInt64?
-    /// Whether this is the final chunk
     public let isEof: Bool
 
     public init(payload: Data, seq: UInt64, offset: UInt64?, len: UInt64?, isEof: Bool) {
@@ -109,12 +95,9 @@ public struct CborResponseChunk: Sendable {
 
 /// Response from a plugin request (for convenience call() method)
 public enum CborPluginResponse: Sendable {
-    /// Single complete response
     case single(Data)
-    /// Streaming response with collected chunks
     case streaming([CborResponseChunk])
 
-    /// Get final payload (last chunk's payload for streaming)
     public var finalPayload: Data? {
         switch self {
         case .single(let data): return data
@@ -122,7 +105,6 @@ public enum CborPluginResponse: Sendable {
         }
     }
 
-    /// Concatenate all payloads
     public func concatenated() -> Data {
         switch self {
         case .single(let data): return data
@@ -136,806 +118,778 @@ public enum CborPluginResponse: Sendable {
     }
 }
 
-/// Stream state for multiplexed responses
-private struct StreamState {
-    let mediaUrn: String
-    var active: Bool  // false after StreamEnd
+// MARK: - Internal Types
+
+/// Events from reader threads, delivered to the main run() loop.
+private enum PluginEvent {
+    case frame(pluginIdx: Int, frame: CborFrame)
+    case death(pluginIdx: Int)
+    case relayFrame(CborFrame)
+    case relayClosed
 }
 
-/// Internal state for pending requests
-private struct PendingRequest: @unchecked Sendable {
-    let continuation: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation
-    var streams: [(String, StreamState)]  // (stream_id, state) - ordered
-    var ended: Bool  // true after END frame - any stream activity after is FATAL
+/// Interval between heartbeat probes (seconds).
+private let HEARTBEAT_INTERVAL: TimeInterval = 30.0
+
+/// Maximum time to wait for a heartbeat response (seconds).
+private let HEARTBEAT_TIMEOUT: TimeInterval = 10.0
+
+/// A managed plugin binary.
+@available(macOS 10.15.4, iOS 13.4, *)
+private class ManagedPlugin {
+    let path: String
+    var pid: pid_t?
+    var stdinHandle: FileHandle?
+    var stdoutHandle: FileHandle?
+    var stderrHandle: FileHandle?
+    var writer: CborFrameWriter?
+    let writerLock = NSLock()
+    var manifest: Data
+    var limits: CborLimits
+    var caps: [String]
+    var knownCaps: [String]
+    var running: Bool
+    var helloFailed: Bool
+    var readerThread: Thread?
+    var pendingHeartbeats: [CborMessageId: Date]
+
+    init(path: String, knownCaps: [String]) {
+        self.path = path
+        self.manifest = Data()
+        self.limits = CborLimits()
+        self.caps = []
+        self.knownCaps = knownCaps
+        self.running = false
+        self.helloFailed = false
+        self.pendingHeartbeats = [:]
+    }
+
+    static func attached(manifest: Data, limits: CborLimits, caps: [String]) -> ManagedPlugin {
+        let plugin = ManagedPlugin(path: "", knownCaps: caps)
+        plugin.manifest = manifest
+        plugin.limits = limits
+        plugin.caps = caps
+        plugin.running = true
+        return plugin
+    }
+
+    /// Kill the plugin process if running. Waits for exit.
+    func killProcess() {
+        guard let p = pid else { return }
+        kill(p, SIGTERM)
+        var status: Int32 = 0
+        let result = waitpid(p, &status, WNOHANG)
+        if result == 0 {
+            // Still running after SIGTERM
+            Thread.sleep(forTimeInterval: 0.5)
+            let result2 = waitpid(p, &status, WNOHANG)
+            if result2 == 0 {
+                kill(p, SIGKILL)
+                _ = waitpid(p, &status, 0)
+            }
+        }
+        pid = nil
+    }
+
+    /// Write a frame to this plugin's stdin (thread-safe).
+    /// Returns false if the plugin is dead or write fails.
+    @discardableResult
+    func writeFrame(_ frame: CborFrame) -> Bool {
+        writerLock.lock()
+        defer { writerLock.unlock() }
+        guard let w = writer else { return false }
+        do {
+            try w.write(frame)
+            return true
+        } catch {
+            return false
+        }
+    }
 }
 
+// MARK: - CborPluginHost
 
-/// Host-side runtime for communicating with a plugin process.
+/// Multi-plugin host runtime managing N plugin processes.
 ///
-/// **This is the ONLY way for the host to communicate with plugins.**
+/// Routes CBOR protocol frames between a relay connection (engine) and
+/// individual plugin processes. Handles HELLO handshake, heartbeat health
+/// monitoring, and capability advertisement.
 ///
-/// The runtime handles:
-/// - Multiplexed concurrent requests (transparent)
-/// - Heartbeat handling (transparent)
-/// - Request/response correlation (transparent)
-///
-/// Callers simply send requests and receive responses via AsyncStreams.
+/// Usage:
+/// ```swift
+/// let host = CborPluginHost()
+/// try host.attachPlugin(stdinHandle: pluginStdin, stdoutHandle: pluginStdout)
+/// try host.run(relayRead: relayReadHandle, relayWrite: relayWriteHandle) { Data() }
+/// ```
 @available(macOS 10.15.4, iOS 13.4, *)
 public final class CborPluginHost: @unchecked Sendable {
 
     // MARK: - Properties
 
-    private let stdinHandle: FileHandle
-    private let stdoutHandle: FileHandle
+    /// Managed plugin binaries.
+    private var plugins: [ManagedPlugin] = []
 
-    private var frameWriter: CborFrameWriter
-    private let writerLock = NSLock()
+    /// Routing: cap_urn -> plugin index.
+    private var capTable: [(String, Int)] = []
 
-    private var limits: CborLimits
+    /// Routing: req_id -> plugin index (for in-flight request frame correlation).
+    private var requestRouting: [CborMessageId: Int] = [:]
+
+    /// Request IDs initiated by plugins (peer invokes).
+    /// Plugin's END is the end of the outgoing request body, NOT the final response.
+    /// Routing survives until the relay sends back the response (END/ERR).
+    private var peerRequests: Set<CborMessageId> = []
+
+    /// Aggregate capabilities (serialized JSON manifest of all plugin caps).
+    private var _capabilities: Data = Data()
+
+    /// State lock — protects plugins, capTable, requestRouting, peerRequests, capabilities, closed.
+    private let stateLock = NSLock()
+
+    /// Outbound writer — writes frames to the relay (toward engine).
+    private var outboundWriter: CborFrameWriter?
+    private let outboundLock = NSLock()
+
+    /// Plugin events from reader threads.
+    private var eventQueue: [PluginEvent] = []
+    private let eventLock = NSLock()
+    private let eventSemaphore = DispatchSemaphore(value: 0)
+
+    /// Whether the host is closed.
     private var closed = false
-
-    /// Plugin manifest extracted from HELLO response.
-    /// This is JSON-encoded plugin metadata including name, version, and caps.
-    /// Will be nil only if the plugin doesn't send a manifest (protocol violation).
-    private var _pluginManifest: Data?
-
-    /// Pending requests waiting for responses
-    private var pending: [CborMessageId: PendingRequest] = [:]
-    private let pendingLock = NSLock()
-
-    /// Pending heartbeat IDs we've sent (to avoid responding to our own heartbeat responses)
-    private var pendingHeartbeats: Set<CborMessageId> = []
-    private let heartbeatLock = NSLock()
-
-    /// Background reader thread
-    private var readerThread: Thread?
-
-    /// Router for dispatching peer invoke requests from plugins.
-    private let router: any CborCapRouter
-
-    /// Active peer invoke requests (plugin → host), keyed by request ID.
-    /// These are separate from `pending` which tracks host → plugin requests.
-    private var activePeerRequests: [CborMessageId: any CborPeerRequestHandle] = [:]
-    private let peerRequestsLock = NSLock()
-
-    /// Thread-safe register of a peer request handle (callable from async contexts)
-    private nonisolated func registerPeerRequest(id: CborMessageId, handle: any CborPeerRequestHandle) {
-        peerRequestsLock.lock()
-        activePeerRequests[id] = handle
-        peerRequestsLock.unlock()
-    }
-
-    /// Thread-safe removal of a peer request handle
-    private nonisolated func removePeerRequest(id: CborMessageId) {
-        peerRequestsLock.lock()
-        activePeerRequests.removeValue(forKey: id)
-        peerRequestsLock.unlock()
-    }
-
-    /// Thread-safe lookup of a peer request handle
-    private nonisolated func getPeerRequest(id: CborMessageId) -> (any CborPeerRequestHandle)? {
-        peerRequestsLock.lock()
-        defer { peerRequestsLock.unlock() }
-        return activePeerRequests[id]
-    }
 
     // MARK: - Initialization
 
-    /// Create a new plugin host and perform handshake.
+    /// Create a new plugin host runtime.
+    ///
+    /// After creation, register plugins with `registerPlugin()` or
+    /// attach pre-connected plugins with `attachPlugin()`, then call `run()`.
+    public init() {}
+
+    // MARK: - Plugin Management
+
+    /// Register a plugin binary for on-demand spawning.
+    ///
+    /// The plugin is NOT spawned immediately. It will be spawned on demand when
+    /// a REQ arrives for one of its known caps.
+    ///
+    /// - Parameters:
+    ///   - path: Path to plugin binary
+    ///   - knownCaps: Cap URNs this plugin is expected to handle
+    public func registerPlugin(path: String, knownCaps: [String]) {
+        stateLock.lock()
+        let plugin = ManagedPlugin(path: path, knownCaps: knownCaps)
+        let idx = plugins.count
+        plugins.append(plugin)
+        for cap in knownCaps {
+            capTable.append((cap, idx))
+        }
+        stateLock.unlock()
+    }
+
+    /// Attach a pre-connected plugin (already running, ready for handshake).
+    ///
+    /// Performs HELLO handshake synchronously. Extracts manifest and caps.
+    /// Starts a reader thread for this plugin.
     ///
     /// - Parameters:
     ///   - stdinHandle: FileHandle to write to the plugin's stdin
     ///   - stdoutHandle: FileHandle to read from the plugin's stdout
-    ///   - router: Router for dispatching peer invoke requests. Defaults to NoCborPeerRouter.
+    /// - Returns: Plugin index
     /// - Throws: CborPluginHostError if handshake fails
-    public init(stdinHandle: FileHandle, stdoutHandle: FileHandle, router: any CborCapRouter = NoCborPeerRouter()) throws {
-        self.stdinHandle = stdinHandle
-        self.stdoutHandle = stdoutHandle
-        self.router = router
-        self.limits = CborLimits()
-        self.frameWriter = CborFrameWriter(handle: stdinHandle, limits: limits)
+    @discardableResult
+    public func attachPlugin(stdinHandle: FileHandle, stdoutHandle: FileHandle) throws -> Int {
+        let reader = CborFrameReader(handle: stdoutHandle)
+        let writer = CborFrameWriter(handle: stdinHandle)
 
-        // Perform handshake synchronously before starting reader
-        try performHandshake()
-
-        // Start background reader thread
-        startReaderLoop()
-    }
-
-    deinit {
-        close()
-    }
-
-    // MARK: - Handshake
-
-    private func performHandshake() throws {
-        let frameReader = CborFrameReader(handle: stdoutHandle, limits: limits)
-
-        // Send our HELLO
+        // Perform HELLO handshake
         let ourHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
-        do {
-            try frameWriter.write(ourHello)
-        } catch {
-            throw CborPluginHostError.handshakeFailed("Failed to send HELLO: \(error)")
-        }
+        try writer.write(ourHello)
 
-        // Read plugin's HELLO
-        let theirFrame: CborFrame
-        do {
-            guard let frame = try frameReader.read() else {
-                throw CborPluginHostError.handshakeFailed("Plugin closed connection before HELLO")
-            }
-            theirFrame = frame
-        } catch {
-            throw CborPluginHostError.handshakeFailed("Failed to receive HELLO: \(error)")
+        guard let theirHello = try reader.read() else {
+            throw CborPluginHostError.handshakeFailed("Plugin closed connection before HELLO")
         }
-
-        guard theirFrame.frameType == .hello else {
-            throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(theirFrame.frameType)")
+        guard theirHello.frameType == .hello else {
+            throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(theirHello.frameType)")
         }
-
-        // Extract manifest from plugin's HELLO response
-        // This is REQUIRED - plugins MUST include their manifest in HELLO
-        guard let manifest = theirFrame.helloManifest else {
+        guard let manifest = theirHello.helloManifest else {
             throw CborPluginHostError.handshakeFailed("Plugin HELLO missing required manifest")
         }
-        self._pluginManifest = manifest
 
-        // Negotiate limits (use minimum of both)
-        let theirMaxFrame = theirFrame.helloMaxFrame ?? DEFAULT_MAX_FRAME
-        let theirMaxChunk = theirFrame.helloMaxChunk ?? DEFAULT_MAX_CHUNK
-
+        let theirMaxFrame = theirHello.helloMaxFrame ?? DEFAULT_MAX_FRAME
+        let theirMaxChunk = theirHello.helloMaxChunk ?? DEFAULT_MAX_CHUNK
         let negotiatedLimits = CborLimits(
             maxFrame: min(DEFAULT_MAX_FRAME, theirMaxFrame),
             maxChunk: min(DEFAULT_MAX_CHUNK, theirMaxChunk)
         )
+        writer.setLimits(negotiatedLimits)
+        reader.setLimits(negotiatedLimits)
 
-        self.limits = negotiatedLimits
-        self.frameWriter.setLimits(negotiatedLimits)
-    }
+        // Parse caps from manifest
+        let caps = Self.extractCaps(from: manifest)
 
-    // MARK: - Background Reader
+        // Create managed plugin
+        let plugin = ManagedPlugin.attached(manifest: manifest, limits: negotiatedLimits, caps: caps)
+        plugin.stdinHandle = stdinHandle
+        plugin.stdoutHandle = stdoutHandle
+        plugin.writer = writer
 
-    private func startReaderLoop() {
-        let thread = Thread { [weak self] in
-            self?.readerLoop()
+        stateLock.lock()
+        let idx = plugins.count
+        plugins.append(plugin)
+        for cap in caps {
+            capTable.append((cap, idx))
         }
-        thread.name = "CborPluginHost.readerLoop"
-        self.readerThread = thread
-        thread.start()
+        rebuildCapabilities()
+        stateLock.unlock()
+
+        // Start reader thread for this plugin
+        startPluginReaderThread(pluginIdx: idx, reader: reader)
+
+        return idx
     }
 
-    private func readerLoop() {
-        let frameReader = CborFrameReader(handle: stdoutHandle, limits: limits)
-
-        while true {
-            let frame: CborFrame
-            do {
-                guard let f = try frameReader.read() else {
-                    // EOF - plugin closed
-                    notifyAllPending(error: .processExited)
-                    break
-                }
-                frame = f
-            } catch {
-                // Read error - notify all pending requests
-                notifyAllPending(error: .receiveFailed("\(error)"))
-                break
-            }
-
-            // Handle heartbeats transparently - before ID check
-            if frame.frameType == .heartbeat {
-                // Check if this is a response to a heartbeat we sent
-                heartbeatLock.lock()
-                let isOurHeartbeat = pendingHeartbeats.remove(frame.id) != nil
-                heartbeatLock.unlock()
-
-                if isOurHeartbeat {
-                    // This is a response to our heartbeat - don't respond
-                    continue
-                }
-
-                // This is a heartbeat request from the plugin - respond
-                let response = CborFrame.heartbeat(id: frame.id)
-                writerLock.lock()
-                do {
-                    try frameWriter.write(response)
-                } catch {
-                    // Log but continue - heartbeat response failure is not fatal
-                    fputs("[CborPluginHost] Failed to respond to heartbeat: \(error)\n", stderr)
-                }
-                writerLock.unlock()
-                continue
-            }
-
-            // Handle plugin-initiated REQ frames (plugin invoking host caps)
-            if frame.frameType == .req {
-                // Only if this is NOT a response to one of our pending requests
-                pendingLock.lock()
-                let isHostRequest = pending[frame.id] != nil
-                pendingLock.unlock()
-                if !isHostRequest {
-                    self.handlePluginRequest(frame)
-                    continue
-                }
-            }
-
-            // Check if this frame belongs to an active peer request (plugin → host)
-            if let peerHandle = getPeerRequest(id: frame.id) {
-                // Forward frame synchronously from reader thread (matching Rust)
-                peerHandle.forwardFrame(frame)
-
-                // If this is an END frame, remove the peer request
-                if frame.frameType == .end {
-                    removePeerRequest(id: frame.id)
-                }
-                continue
-            }
-
-            // Route frame to the appropriate pending host request
-            let requestId = frame.id
-            pendingLock.lock()
-            let pendingRequest = pending[requestId]
-            pendingLock.unlock()
-
-            guard let request = pendingRequest else {
-                // Frame for unknown request ID - drop it
-                continue
-            }
-
-            // Per-request error handling: errors remove the request but don't crash the host
-            var shouldRemove = false
-
-            switch frame.frameType {
-            case .chunk:
-                // STRICT: Validate chunk has stream_id and stream is active
-                guard let streamId = frame.streamId else {
-                    request.continuation.yield(.failure(.chunkMissingStreamId))
-                    shouldRemove = true
-                    break
-                }
-
-                // Get mutable copy of request state
-                pendingLock.lock()
-                var requestState = pending[requestId]
-                pendingLock.unlock()
-
-                guard requestState != nil else {
-                    // Request was removed, drop frame
-                    break
-                }
-
-                // FAIL HARD: Request already ended
-                if requestState!.ended {
-                    requestState!.continuation.yield(.failure(.streamAfterRequestEnd))
-                    shouldRemove = true
-                    break
-                }
-
-                // FAIL HARD: Unknown or inactive stream
-                if let index = requestState!.streams.firstIndex(where: { $0.0 == streamId }) {
-                    let streamState = requestState!.streams[index].1
-                    if streamState.active {
-                        // ✅ Valid chunk for active stream
-                        let isEof = frame.isEof
-                        let chunk = CborResponseChunk(
-                            payload: frame.payload ?? Data(),
-                            seq: frame.seq,
-                            offset: frame.offset,
-                            len: frame.len,
-                            isEof: isEof
-                        )
-                        requestState!.continuation.yield(.success(chunk))
-                        shouldRemove = false
-                    } else {
-                        // FAIL HARD: Chunk for ended stream
-                        requestState!.continuation.yield(.failure(.chunkAfterStreamEnd(streamId)))
-                        shouldRemove = true
-                    }
-                } else {
-                    // FAIL HARD: Unknown stream
-                    requestState!.continuation.yield(.failure(.unknownStreamId(streamId)))
-                    shouldRemove = true
-                }
-
-            // case .res: REMOVED - old single-response protocol no longer supported
-
-            case .end:
-                // Mark request as ended
-                pendingLock.lock()
-                if var requestState = pending[requestId] {
-                    requestState.ended = true
-                    pending[requestId] = requestState
-                }
-                pendingLock.unlock()
-                shouldRemove = true
-
-            case .log:
-                // Log frames don't produce response chunks, skip
-                break
-
-            case .err:
-                let code = frame.errorCode ?? "UNKNOWN"
-                let message = frame.errorMessage ?? "Unknown error"
-                request.continuation.yield(.failure(.pluginError(code: code, message: message)))
-                shouldRemove = true
-
-            case .hello, .heartbeat:
-                // Protocol errors - Heartbeat is handled above, these should not happen
-                request.continuation.yield(.failure(.unexpectedFrameType(frame.frameType)))
-                shouldRemove = true
-
-            case .req:
-                // Plugin is invoking a cap on the host - this should be handled at top level,
-                // not routed to a pending request. If we get here, it's a bug.
-                fputs("[CborPluginHost] BUG: REQ frame routed to pending request handler\n", stderr)
-                shouldRemove = false
-
-            case .streamStart:
-                // STRICT: Track new stream, FAIL HARD on violations
-                guard let streamId = frame.streamId else {
-                    request.continuation.yield(.failure(.protocolError("STREAM_START missing stream ID")))
-                    shouldRemove = true
-                    break
-                }
-                guard let mediaUrn = frame.mediaUrn else {
-                    request.continuation.yield(.failure(.protocolError("STREAM_START missing media URN")))
-                    shouldRemove = true
-                    break
-                }
-
-                // Get mutable copy of request state
-                pendingLock.lock()
-                var requestState = pending[requestId]
-                pendingLock.unlock()
-
-                guard requestState != nil else {
-                    // Request was removed, drop frame
-                    break
-                }
-
-                // FAIL HARD: Request already ended
-                if requestState!.ended {
-                    requestState!.continuation.yield(.failure(.streamAfterRequestEnd))
-                    shouldRemove = true
-                    break
-                }
-
-                // FAIL HARD: Duplicate stream ID
-                if requestState!.streams.contains(where: { $0.0 == streamId }) {
-                    requestState!.continuation.yield(.failure(.duplicateStreamId(streamId)))
-                    shouldRemove = true
-                    break
-                }
-
-                // Register new stream
-                requestState!.streams.append((streamId, StreamState(mediaUrn: mediaUrn, active: true)))
-                pendingLock.lock()
-                pending[requestId] = requestState
-                pendingLock.unlock()
-                shouldRemove = false
-
-            case .streamEnd:
-                // Mark stream as ended
-                guard let streamId = frame.streamId else {
-                    request.continuation.yield(.failure(.protocolError("STREAM_END missing stream ID")))
-                    shouldRemove = true
-                    break
-                }
-
-                // Update stream state
-                pendingLock.lock()
-                if var requestState = pending[requestId] {
-                    if let index = requestState.streams.firstIndex(where: { $0.0 == streamId }) {
-                        requestState.streams[index].1.active = false
-                        pending[requestId] = requestState
-                    }
-                }
-                pendingLock.unlock()
-                shouldRemove = false
-            }
-
-            // Remove completed request - extract continuation while holding lock,
-            // then finish OUTSIDE the lock to avoid deadlock with onTermination handler
-            if shouldRemove {
-                var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-                pendingLock.lock()
-                if let removed = pending.removeValue(forKey: requestId) {
-                    continuationToFinish = removed.continuation
-                }
-                pendingLock.unlock()
-
-                continuationToFinish?.finish()
-            }
-        }
-
-        // Mark as closed
-        pendingLock.lock()
-        closed = true
-        pendingLock.unlock()
+    /// Get the aggregate capabilities manifest (JSON-encoded list of all plugin caps).
+    public var capabilities: Data {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _capabilities
     }
 
-    private func notifyAllPending(error: CborPluginHostError) {
-        pendingLock.lock()
-        closed = true
-        let allPending = pending
-        pending.removeAll()
-        pendingLock.unlock()
-
-        for (_, request) in allPending {
-            request.continuation.yield(.failure(error))
-            request.continuation.finish()
-        }
-    }
-
-    /// Write a frame or clean up the pending request on failure.
-    private func writeFrameOrCleanup(_ frame: CborFrame, requestId: CborMessageId) throws {
-        writerLock.lock()
-        do {
-            try frameWriter.write(frame)
-        } catch {
-            writerLock.unlock()
-            var continuationToFinish: AsyncStream<Result<CborResponseChunk, CborPluginHostError>>.Continuation? = nil
-            pendingLock.lock()
-            if let removed = pending.removeValue(forKey: requestId) {
-                continuationToFinish = removed.continuation
-            }
-            pendingLock.unlock()
-            continuationToFinish?.finish()
-            throw CborPluginHostError.sendFailed("\(error)")
-        }
-        writerLock.unlock()
-    }
-
-    /// Thread-safe write of a frame. This is nonisolated to allow calling from async contexts.
-    private func writeFrameLocked(_ frame: CborFrame) {
-        writerLock.lock()
-        try? frameWriter.write(frame)
-        writerLock.unlock()
-    }
-
-    /// Handle a plugin-initiated REQ frame (plugin invoking a cap on the host).
+    /// Find which plugin handles a given cap URN.
     ///
-    /// Uses the router to create a PeerRequestHandle. The REQ frame itself is
-    /// NOT forwarded to the handle (only STREAM_START/CHUNK/STREAM_END/END are).
-    /// The handle is registered in activePeerRequests so the readerLoop can
-    /// forward subsequent frames and read responses.
-    private func handlePluginRequest(_ frame: CborFrame) {
-        let pluginRequestId = frame.id
+    /// Uses exact string match first, then URN-level accepts() for semantic matching.
+    ///
+    /// - Parameter capUrn: The cap URN to look up
+    /// - Returns: Plugin index, or nil if no plugin handles this cap
+    public func findPluginForCap(_ capUrn: String) -> Int? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return findPluginForCapLocked(capUrn)
+    }
 
-        guard let capUrn = frame.cap else {
-            let errFrame = CborFrame.err(id: pluginRequestId, code: "INVALID_REQUEST", message: "Missing cap URN")
-            writeFrameLocked(errFrame)
-            return
+    /// Internal: find plugin for cap (must hold stateLock).
+    private func findPluginForCapLocked(_ capUrn: String) -> Int? {
+        // Exact string match first (fast path)
+        for (registeredCap, idx) in capTable {
+            if registeredCap == capUrn { return idx }
         }
 
-        // Extract 16-byte UUID for the router
-        let reqIdBytes: Data
-        if case .uuid(let bytes) = pluginRequestId {
-            reqIdBytes = Data(bytes)
-        } else {
-            reqIdBytes = Data(count: 16)
+        // URN-level semantic matching (slow path)
+        guard let requestUrn = try? CSCapUrn.fromString(capUrn) else { return nil }
+        for (registeredCap, idx) in capTable {
+            if let registeredUrn = try? CSCapUrn.fromString(registeredCap) {
+                if registeredUrn.accepts(requestUrn) { return idx }
+            }
         }
 
-        // Call router SYNCHRONOUSLY from the reader thread (matching Rust exactly)
-        do {
-            let handle = try router.beginRequest(capUrn: capUrn, reqId: reqIdBytes)
+        return nil
+    }
 
-            // Register the handle IMMEDIATELY so subsequent frames find it
-            registerPeerRequest(id: pluginRequestId, handle: handle)
+    // MARK: - Main Run Loop
 
-            // Start forwarding responses from the handle back to the plugin (async)
-            forwardPeerResponses(requestId: pluginRequestId, handle: handle)
-        } catch {
-            let errFrame = CborFrame.err(
-                id: pluginRequestId,
-                code: "NO_HANDLER",
-                message: error.localizedDescription
-            )
-            writeFrameLocked(errFrame)
+    /// Main run loop. Reads frames from the relay, routes to plugins.
+    /// Plugin reader threads forward plugin frames to the relay.
+    ///
+    /// Blocks until the relay closes or a fatal error occurs.
+    ///
+    /// - Parameters:
+    ///   - relayRead: FileHandle to read frames from (relay/engine side)
+    ///   - relayWrite: FileHandle to write frames to (relay/engine side)
+    ///   - resourceFn: Callback to get current system resource state
+    /// - Throws: CborPluginHostError on fatal errors
+    public func run(
+        relayRead: FileHandle,
+        relayWrite: FileHandle,
+        resourceFn: @escaping () -> Data
+    ) throws {
+        outboundLock.lock()
+        outboundWriter = CborFrameWriter(handle: relayWrite)
+        outboundLock.unlock()
+
+        // Start relay reader thread — feeds into the same event queue as plugin readers
+        let relayReader = CborFrameReader(handle: relayRead)
+        let relayThread = Thread { [weak self] in
+            while true {
+                do {
+                    guard let frame = try relayReader.read() else {
+                        self?.pushEvent(.relayClosed)
+                        break
+                    }
+                    self?.pushEvent(.relayFrame(frame))
+                } catch {
+                    self?.pushEvent(.relayClosed)
+                    break
+                }
+            }
+        }
+        relayThread.name = "CborPluginHost.relay"
+        relayThread.start()
+
+        // Main loop: wait for events from any source (relay or plugins)
+        while true {
+            eventSemaphore.wait()
+
+            eventLock.lock()
+            guard !eventQueue.isEmpty else {
+                eventLock.unlock()
+                continue
+            }
+            let event = eventQueue.removeFirst()
+            eventLock.unlock()
+
+            switch event {
+            case .relayFrame(let frame):
+                handleRelayFrame(frame)
+            case .relayClosed:
+                // Clean shutdown
+                stateLock.lock()
+                closed = true
+                stateLock.unlock()
+                return
+            case .frame(let pluginIdx, let frame):
+                handlePluginFrame(pluginIdx: pluginIdx, frame: frame)
+            case .death(let pluginIdx):
+                handlePluginDeath(pluginIdx: pluginIdx)
+            }
         }
     }
 
-    /// Forward response chunks from a peer request handle back to the plugin.
-    /// Uses the full stream protocol: STREAM_START + CHUNK(s) + STREAM_END + END
-    private func forwardPeerResponses(requestId: CborMessageId, handle: any CborPeerRequestHandle) {
-        let maxChunk = limits.maxChunk
-        Task { [weak self] in
-            guard let self = self else { return }
+    // MARK: - Relay Frame Handling (Engine -> Plugin)
 
-            let streamId = "peer-resp-\(UUID().uuidString.prefix(8))"
-            var streamStarted = false
+    /// Handle a frame received from the relay (engine side).
+    private func handleRelayFrame(_ frame: CborFrame) {
+        switch frame.frameType {
+        case .req:
+            // Route by cap_urn to the appropriate plugin
+            guard let capUrn = frame.cap else {
+                sendToRelay(CborFrame.err(id: frame.id, code: "INVALID_REQUEST", message: "REQ missing cap URN"))
+                return
+            }
 
-            for await result in handle.responseStream() {
-                switch result {
-                case .success(let chunk):
-                    // Send STREAM_START before the first chunk
-                    if !streamStarted {
-                        let startFrame = CborFrame.streamStart(
-                            reqId: requestId,
-                            streamId: streamId,
-                            mediaUrn: "media:bytes"
-                        )
-                        self.writeFrameLocked(startFrame)
-                        streamStarted = true
-                    }
+            stateLock.lock()
+            guard let pluginIdx = findPluginForCapLocked(capUrn) else {
+                stateLock.unlock()
+                sendToRelay(CborFrame.err(id: frame.id, code: "NO_HANDLER", message: "No plugin handles cap: \(capUrn)"))
+                return
+            }
+            let needsSpawn = !plugins[pluginIdx].running && !plugins[pluginIdx].helloFailed
+            stateLock.unlock()
 
-                    // Send chunk data (auto-chunk if needed)
-                    var offset = 0
-                    var seq: UInt64 = chunk.seq
-                    let data = chunk.payload
-                    if data.isEmpty {
-                        let chunkFrame = CborFrame.chunk(
-                            reqId: requestId,
-                            streamId: streamId,
-                            seq: seq,
-                            payload: Data()
-                        )
-                        self.writeFrameLocked(chunkFrame)
-                    } else {
-                        while offset < data.count {
-                            let chunkSize = min(data.count - offset, maxChunk)
-                            let chunkData = data.subdata(in: offset..<offset+chunkSize)
-                            let chunkFrame = CborFrame.chunk(
-                                reqId: requestId,
-                                streamId: streamId,
-                                seq: seq,
-                                payload: chunkData
-                            )
-                            self.writeFrameLocked(chunkFrame)
-                            offset += chunkSize
-                            seq += 1
-                        }
-                    }
-
-                    if chunk.isEof {
-                        // STREAM_END + END
-                        let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
-                        self.writeFrameLocked(streamEndFrame)
-                        let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
-                        self.writeFrameLocked(endFrame)
-                        return
-                    }
-
-                case .failure(let error):
-                    let errFrame = CborFrame.err(
-                        id: requestId,
-                        code: "PEER_ERROR",
-                        message: "\(error)"
-                    )
-                    self.writeFrameLocked(errFrame)
+            // Spawn on demand if registered but not running
+            if needsSpawn {
+                do {
+                    try spawnPlugin(at: pluginIdx)
+                } catch {
+                    sendToRelay(CborFrame.err(id: frame.id, code: "SPAWN_FAILED", message: "Failed to spawn plugin: \(error.localizedDescription)"))
                     return
                 }
             }
 
-            // Stream ended without isEof — send STREAM_END + END
-            if streamStarted {
-                let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
-                self.writeFrameLocked(streamEndFrame)
+            stateLock.lock()
+            requestRouting[frame.id] = pluginIdx
+            let plugin = plugins[pluginIdx]
+            stateLock.unlock()
+
+            if !plugin.writeFrame(frame) {
+                // Plugin is dead — send ERR and clean up
+                sendToRelay(CborFrame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+                stateLock.lock()
+                requestRouting.removeValue(forKey: frame.id)
+                stateLock.unlock()
             }
-            let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
-            self.writeFrameLocked(endFrame)
+
+        case .streamStart, .chunk, .streamEnd, .end, .err:
+            // Route by req_id to the mapped plugin
+            stateLock.lock()
+            guard let pluginIdx = requestRouting[frame.id] else {
+                stateLock.unlock()
+                // Already cleaned up (e.g., plugin died, death handler sent ERR)
+                return
+            }
+            let plugin = plugins[pluginIdx]
+            let isPeerResponse = peerRequests.contains(frame.id)
+            stateLock.unlock()
+
+            let isTerminal = frame.frameType == .end || frame.frameType == .err
+
+            // If the plugin is dead, send ERR to engine and clean up routing
+            if !plugin.writeFrame(frame) {
+                sendToRelay(CborFrame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+                stateLock.lock()
+                requestRouting.removeValue(forKey: frame.id)
+                peerRequests.remove(frame.id)
+                stateLock.unlock()
+                return
+            }
+
+            // Only remove routing on terminal frames if this is a peer response
+            // (engine responding to a plugin's peer invoke). For engine-initiated
+            // requests, the relay END is just the end of the request body — the
+            // plugin still needs to respond, so routing must survive.
+            if isTerminal && isPeerResponse {
+                stateLock.lock()
+                requestRouting.removeValue(forKey: frame.id)
+                peerRequests.remove(frame.id)
+                stateLock.unlock()
+            }
+
+        case .hello, .heartbeat, .log:
+            // These should never arrive from the engine through the relay
+            fputs("[CborPluginHost] Protocol error: \(frame.frameType) from relay\n", stderr)
+
+        case .relayNotify, .relayState:
+            // Relay frames should be intercepted by the relay layer, never reach here
+            fputs("[CborPluginHost] Protocol error: relay frame \(frame.frameType) reached host\n", stderr)
         }
     }
 
-    // MARK: - Public API
+    // MARK: - Plugin Frame Handling (Plugin -> Engine)
 
-    /// Send a cap request and receive responses via an AsyncStream.
-    ///
-    /// Returns an AsyncStream that yields response chunks. Iterate over it
-    /// to receive all chunks until completion.
-    ///
-    /// Multiple requests can be sent concurrently - each gets its own
-    /// response stream. The runtime handles all multiplexing and
-    /// heartbeats transparently.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke
-    ///   - payload: Request payload
-    ///   - contentType: Content type of payload (default: "application/json")
-    /// - Returns: AsyncStream of response chunks
-    /// - Throws: CborPluginHostError if host is closed or send fails
-    /// Send a cap request with typed arguments and receive a stream of response chunks.
-    ///
-    /// Each argument becomes an independent stream (STREAM_START + CHUNK(s) + STREAM_END).
-    /// This matches the Rust AsyncPluginHost.request_with_arguments() wire format exactly.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke
-    ///   - arguments: Arguments as array of (mediaUrn, value) pairs
-    /// - Returns: AsyncStream of response chunks
-    /// - Throws: CborPluginHostError if host is closed or send fails
-    public func requestWithArguments(
-        capUrn: String,
-        arguments: [(mediaUrn: String, value: Data)]
-    ) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
-        pendingLock.lock()
-        if closed {
-            pendingLock.unlock()
-            throw CborPluginHostError.closed
-        }
-        let maxChunk = limits.maxChunk
-        pendingLock.unlock()
+    /// Handle a frame received from a plugin.
+    private func handlePluginFrame(pluginIdx: Int, frame: CborFrame) {
+        switch frame.frameType {
+        case .hello:
+            // HELLO should be consumed during handshake, never during run
+            fputs("[CborPluginHost] Protocol error: HELLO from plugin \(pluginIdx) during run\n", stderr)
 
-        let requestId = CborMessageId.newUUID()
+        case .heartbeat:
+            // Handle heartbeat locally, never forward
+            stateLock.lock()
+            let plugin = plugins[pluginIdx]
+            let wasOurs = plugin.pendingHeartbeats.removeValue(forKey: frame.id) != nil
+            stateLock.unlock()
 
-        let stream = AsyncStream<Result<CborResponseChunk, CborPluginHostError>> { continuation in
-            pendingLock.lock()
-            pending[requestId] = PendingRequest(continuation: continuation, streams: [], ended: false)
-            pendingLock.unlock()
-
-            continuation.onTermination = { [weak self] _ in
-                self?.pendingLock.lock()
-                self?.pending.removeValue(forKey: requestId)
-                self?.pendingLock.unlock()
-            }
-        }
-
-        // REQ with empty payload — arguments come as streams
-        let reqFrame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
-        try writeFrameOrCleanup(reqFrame, requestId: requestId)
-
-        // Each argument becomes an independent stream
-        for (i, arg) in arguments.enumerated() {
-            let streamId = "arg-\(i)"
-
-            // STREAM_START with the argument's media_urn
-            let startFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: arg.mediaUrn)
-            try writeFrameOrCleanup(startFrame, requestId: requestId)
-
-            // CHUNK(s)
-            var offset = 0
-            var seq: UInt64 = 0
-            while offset < arg.value.count {
-                let chunkSize = min(arg.value.count - offset, maxChunk)
-                let chunkData = arg.value.subdata(in: offset..<(offset + chunkSize))
-                let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunkData)
-                try writeFrameOrCleanup(chunkFrame, requestId: requestId)
-                offset += chunkSize
-                seq += 1
+            if !wasOurs {
+                // Plugin-initiated heartbeat — respond
+                plugin.writeFrame(CborFrame.heartbeat(id: frame.id))
             }
 
-            // STREAM_END
-            let endStreamFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
-            try writeFrameOrCleanup(endStreamFrame, requestId: requestId)
+        case .relayNotify, .relayState:
+            // Plugins must never send relay frames
+            fputs("[CborPluginHost] Protocol error: relay frame \(frame.frameType) from plugin \(pluginIdx)\n", stderr)
+
+        case .req:
+            // Plugin peer invoke — register routing and forward to relay
+            stateLock.lock()
+            requestRouting[frame.id] = pluginIdx
+            peerRequests.insert(frame.id)
+            stateLock.unlock()
+            sendToRelay(frame)
+
+        default:
+            // Everything else: pass through to relay
+            let isTerminal = frame.frameType == .end || frame.frameType == .err
+
+            if isTerminal {
+                stateLock.lock()
+                if !peerRequests.contains(frame.id) {
+                    // Engine-initiated request: plugin's END/ERR is the final response
+                    if let idx = requestRouting[frame.id], idx == pluginIdx {
+                        requestRouting.removeValue(forKey: frame.id)
+                    }
+                }
+                // Peer-initiated: don't remove routing — relay's response
+                // (END/ERR from engine) will clean up in handleRelayFrame
+                stateLock.unlock()
+            }
+
+            sendToRelay(frame)
         }
-
-        // END closes the entire request
-        let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
-        try writeFrameOrCleanup(endFrame, requestId: requestId)
-
-        return stream
     }
 
-    /// Send a cap request with typed arguments and wait for the complete response.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke
-    ///   - arguments: Arguments as array of (mediaUrn, value) pairs
-    /// - Returns: Complete CborPluginResponse
-    /// - Throws: CborPluginHostError if call fails
-    public func callWithArguments(
-        capUrn: String,
-        arguments: [(mediaUrn: String, value: Data)]
-    ) async throws -> CborPluginResponse {
-        let stream = try requestWithArguments(capUrn: capUrn, arguments: arguments)
+    // MARK: - Plugin Death Handling
 
-        var chunks: [CborResponseChunk] = []
-        for await result in stream {
-            switch result {
-            case .success(let chunk):
-                let isEof = chunk.isEof
-                chunks.append(chunk)
-                if isEof {
+    /// Handle a plugin death (reader thread detected EOF/error).
+    private func handlePluginDeath(pluginIdx: Int) {
+        stateLock.lock()
+        let plugin = plugins[pluginIdx]
+        plugin.running = false
+        plugin.writer = nil
+
+        // Close stdin to ensure plugin process exits
+        if let stdinHandle = plugin.stdinHandle {
+            try? stdinHandle.close()
+            plugin.stdinHandle = nil
+        }
+
+        // Send ERR for all requests routed to this plugin
+        var requestsToClean: [CborMessageId] = []
+        for (reqId, idx) in requestRouting {
+            if idx == pluginIdx {
+                requestsToClean.append(reqId)
+            }
+        }
+        for reqId in requestsToClean {
+            requestRouting.removeValue(forKey: reqId)
+            peerRequests.remove(reqId)
+        }
+
+        // Remove caps for this plugin
+        capTable.removeAll { $0.1 == pluginIdx }
+        rebuildCapabilities()
+        stateLock.unlock()
+
+        // Send ERR frames outside the lock
+        for reqId in requestsToClean {
+            sendToRelay(CborFrame.err(id: reqId, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+        }
+    }
+
+    // MARK: - Plugin Reader Thread
+
+    /// Start a background reader thread for a plugin.
+    private func startPluginReaderThread(pluginIdx: Int, reader: CborFrameReader) {
+        let thread = Thread { [weak self] in
+            while true {
+                do {
+                    guard let frame = try reader.read() else {
+                        // EOF — plugin closed stdout
+                        self?.pushEvent(.death(pluginIdx: pluginIdx))
+                        break
+                    }
+                    self?.pushEvent(.frame(pluginIdx: pluginIdx, frame: frame))
+                } catch {
+                    // Read error — treat as death
+                    self?.pushEvent(.death(pluginIdx: pluginIdx))
                     break
                 }
-            case .failure(let error):
-                throw error
+            }
+        }
+        thread.name = "CborPluginHost.plugin[\(pluginIdx)]"
+
+        stateLock.lock()
+        plugins[pluginIdx].readerThread = thread
+        stateLock.unlock()
+
+        thread.start()
+    }
+
+    // MARK: - Event Queue
+
+    /// Push an event from a plugin reader thread.
+    private func pushEvent(_ event: PluginEvent) {
+        eventLock.lock()
+        eventQueue.append(event)
+        eventLock.unlock()
+        eventSemaphore.signal()
+    }
+
+    /// Drain and process all pending events (used internally).
+    private func processEvents() {
+        eventLock.lock()
+        let events = eventQueue
+        eventQueue.removeAll()
+        eventLock.unlock()
+
+        for event in events {
+            switch event {
+            case .frame(let pluginIdx, let frame):
+                handlePluginFrame(pluginIdx: pluginIdx, frame: frame)
+            case .death(let pluginIdx):
+                handlePluginDeath(pluginIdx: pluginIdx)
+            case .relayFrame(let frame):
+                handleRelayFrame(frame)
+            case .relayClosed:
+                break // Handled in run() loop
+            }
+        }
+    }
+
+    // MARK: - Outbound Writing
+
+    /// Write a frame to the relay (toward engine). Thread-safe.
+    private func sendToRelay(_ frame: CborFrame) {
+        outboundLock.lock()
+        defer { outboundLock.unlock() }
+        guard let w = outboundWriter else { return }
+        try? w.write(frame)
+    }
+
+    // MARK: - Internal Helpers
+
+    /// Rebuild aggregate capabilities from all running plugins.
+    /// Must hold stateLock when calling.
+    private func rebuildCapabilities() {
+        var allCaps: [[String: Any]] = []
+        for plugin in plugins where plugin.running {
+            // Try to parse manifest as JSON to extract caps
+            if !plugin.manifest.isEmpty,
+               let json = try? JSONSerialization.jsonObject(with: plugin.manifest) as? [String: Any],
+               let caps = json["caps"] as? [[String: Any]] {
+                allCaps.append(contentsOf: caps)
             }
         }
 
-        if chunks.isEmpty {
-            return .single(Data())
-        } else if chunks.count == 1 {
-            return .single(chunks[0].payload)
+        if let data = try? JSONSerialization.data(withJSONObject: allCaps) {
+            _capabilities = data
         } else {
-            return .streaming(chunks)
+            _capabilities = "[]".data(using: .utf8) ?? Data()
         }
     }
 
-    /// Send a heartbeat to the plugin.
-    ///
-    /// Note: Heartbeat response is handled by reader loop transparently.
-    /// This method returns immediately after sending.
-    ///
-    /// - Throws: CborPluginHostError if host is closed or send fails
-    public func sendHeartbeat() throws {
-        pendingLock.lock()
-        if closed {
-            pendingLock.unlock()
-            throw CborPluginHostError.closed
+    /// Extract cap URN strings from a manifest JSON blob.
+    private static func extractCaps(from manifest: Data) -> [String] {
+        guard let json = try? JSONSerialization.jsonObject(with: manifest) as? [String: Any],
+              let caps = json["caps"] as? [[String: Any]] else {
+            return []
         }
-        pendingLock.unlock()
+        return caps.compactMap { $0["urn"] as? String }
+    }
 
-        let heartbeatId = CborMessageId.newUUID()
-        let frame = CborFrame.heartbeat(id: heartbeatId)
+    // MARK: - Spawn On Demand
 
-        // Track this heartbeat so we don't respond to the response
-        heartbeatLock.lock()
-        pendingHeartbeats.insert(heartbeatId)
-        heartbeatLock.unlock()
+    /// Spawn a registered plugin binary on demand.
+    ///
+    /// Performs posix_spawn + HELLO handshake + starts reader thread.
+    /// Does NOT hold stateLock during blocking operations (handshake).
+    ///
+    /// - Parameter idx: Plugin index in the plugins array
+    /// - Throws: CborPluginHostError if spawn or handshake fails
+    private func spawnPlugin(at idx: Int) throws {
+        // Read plugin info without holding lock during blocking ops
+        stateLock.lock()
+        let path = plugins[idx].path
+        let alreadyRunning = plugins[idx].running
+        let alreadyFailed = plugins[idx].helloFailed
+        stateLock.unlock()
 
-        writerLock.lock()
+        guard !path.isEmpty else {
+            throw CborPluginHostError.handshakeFailed("No binary path for plugin \(idx)")
+        }
+        guard !alreadyRunning else { return }
+        guard !alreadyFailed else {
+            throw CborPluginHostError.handshakeFailed("Plugin previously failed HELLO — permanently removed")
+        }
+
+        // Setup pipes
+        let inputPipe = Pipe()   // host writes → plugin reads (stdin)
+        let outputPipe = Pipe()  // plugin writes → host reads (stdout)
+        let errorPipe = Pipe()   // plugin writes → host reads (stderr)
+
+        var pid: pid_t = 0
+
+        // Build argv (null-terminated for posix_spawn)
+        let argv: [UnsafeMutablePointer<CChar>?] = [strdup(path), nil]
+        defer { argv.compactMap { $0 }.forEach { free($0) } }
+
+        // File actions for pipe redirection
+        var fileActions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&fileActions)
+        defer { posix_spawn_file_actions_destroy(&fileActions) }
+
+        posix_spawn_file_actions_adddup2(&fileActions, inputPipe.fileHandleForReading.fileDescriptor, STDIN_FILENO)
+        posix_spawn_file_actions_adddup2(&fileActions, outputPipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
+        posix_spawn_file_actions_adddup2(&fileActions, errorPipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
+
+        // Close all pipe descriptors in child
+        posix_spawn_file_actions_addclose(&fileActions, inputPipe.fileHandleForReading.fileDescriptor)
+        posix_spawn_file_actions_addclose(&fileActions, inputPipe.fileHandleForWriting.fileDescriptor)
+        posix_spawn_file_actions_addclose(&fileActions, outputPipe.fileHandleForReading.fileDescriptor)
+        posix_spawn_file_actions_addclose(&fileActions, outputPipe.fileHandleForWriting.fileDescriptor)
+        posix_spawn_file_actions_addclose(&fileActions, errorPipe.fileHandleForReading.fileDescriptor)
+        posix_spawn_file_actions_addclose(&fileActions, errorPipe.fileHandleForWriting.fileDescriptor)
+
+        // Spawn
+        let spawnResult = posix_spawn(&pid, path, &fileActions, nil, argv, nil)
+        guard spawnResult == 0 else {
+            let desc = String(cString: strerror(spawnResult))
+            throw CborPluginHostError.handshakeFailed("posix_spawn failed for \(path): \(desc)")
+        }
+
+        // Close child's ends in parent
+        inputPipe.fileHandleForReading.closeFile()
+        outputPipe.fileHandleForWriting.closeFile()
+        errorPipe.fileHandleForWriting.closeFile()
+
+        let stdinHandle = inputPipe.fileHandleForWriting
+        let stdoutHandle = outputPipe.fileHandleForReading
+        let stderrHandle = errorPipe.fileHandleForReading
+
+        // HELLO handshake (blocking — stateLock NOT held)
+        let reader = CborFrameReader(handle: stdoutHandle)
+        let writer = CborFrameWriter(handle: stdinHandle)
+
+        let handshakeResult: HandshakeResult
         do {
-            try frameWriter.write(frame)
+            handshakeResult = try performHandshakeWithManifest(reader: reader, writer: writer)
         } catch {
-            writerLock.unlock()
-            // Remove from tracking on failure
-            heartbeatLock.lock()
-            pendingHeartbeats.remove(heartbeatId)
-            heartbeatLock.unlock()
-            throw CborPluginHostError.sendFailed("\(error)")
+            // HELLO failure → permanent removal (binary is broken)
+            kill(pid, SIGKILL)
+            _ = waitpid(pid, nil, 0)
+            stdinHandle.closeFile()
+            stdoutHandle.closeFile()
+            stderrHandle.closeFile()
+
+            stateLock.lock()
+            plugins[idx].helloFailed = true
+            capTable.removeAll { $0.1 == idx }
+            rebuildCapabilities()
+            stateLock.unlock()
+
+            throw CborPluginHostError.handshakeFailed("HELLO failed for \(path): \(error.localizedDescription)")
         }
-        writerLock.unlock()
+
+        let caps = Self.extractCaps(from: handshakeResult.manifest ?? Data())
+
+        // Update plugin state under lock
+        stateLock.lock()
+        let plugin = plugins[idx]
+        plugin.pid = pid
+        plugin.stdinHandle = stdinHandle
+        plugin.stdoutHandle = stdoutHandle
+        plugin.stderrHandle = stderrHandle
+        plugin.writer = writer
+        plugin.manifest = handshakeResult.manifest ?? Data()
+        plugin.limits = handshakeResult.limits
+        plugin.caps = caps
+        plugin.running = true
+
+        // Update capTable with actual caps from manifest
+        capTable.removeAll { $0.1 == idx }
+        for cap in caps {
+            capTable.append((cap, idx))
+        }
+        rebuildCapabilities()
+        stateLock.unlock()
+
+        // Start reader thread
+        startPluginReaderThread(pluginIdx: idx, reader: reader)
     }
 
-    /// Get the negotiated protocol limits
-    public var negotiatedLimits: CborLimits {
-        return limits
-    }
+    // MARK: - Lifecycle
 
-    /// Get the plugin manifest extracted from HELLO handshake.
-    /// This is JSON-encoded plugin metadata including name, version, and caps.
-    /// Returns the manifest data received from the plugin during handshake.
-    public var pluginManifest: Data? {
-        return _pluginManifest
-    }
-
-    /// Check if the host is closed
-    public var isClosed: Bool {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
-        return closed
-    }
-
-
-    /// Close the plugin host.
+    /// Close the host, killing all managed plugin processes.
     ///
-    /// Signals EOF to the plugin by closing stdin, marks as closed,
-    /// and notifies all pending requests.
+    /// After close(), the run() loop will exit. Any pending requests get ERR frames.
     public func close() {
-        pendingLock.lock()
-        if closed {
-            pendingLock.unlock()
+        stateLock.lock()
+        guard !closed else {
+            stateLock.unlock()
             return
         }
         closed = true
-        pendingLock.unlock()
 
-        // Close stdin to signal EOF to plugin
-        try? stdinHandle.close()
+        // Kill all running plugins
+        for plugin in plugins {
+            plugin.writerLock.lock()
+            plugin.writer = nil
+            plugin.writerLock.unlock()
 
-        // Notify all pending requests
-        notifyAllPending(error: .closed)
-    }
-}
+            if let stdin = plugin.stdinHandle {
+                try? stdin.close()
+                plugin.stdinHandle = nil
+            }
+            if let stderr = plugin.stderrHandle {
+                try? stderr.close()
+                plugin.stderrHandle = nil
+            }
+            plugin.killProcess()
+            plugin.running = false
+        }
+        stateLock.unlock()
 
-// MARK: - Convenience Extensions
-
-@available(macOS 10.15.4, iOS 13.4, *)
-public extension CborPluginHost {
-    /// Send a JSON-encodable request and receive raw response
-    func requestWithJSON<T: Encodable>(capUrn: String, request: T) throws -> AsyncStream<Result<CborResponseChunk, CborPluginHostError>> {
-        let data = try JSONEncoder().encode(request)
-        let args: [(mediaUrn: String, value: Data)] = [(mediaUrn: "media:json", value: data)]
-        return try self.requestWithArguments(capUrn: capUrn, arguments: args)
-    }
-
-    /// Call with JSON-encodable request and JSON-decodable response
-    func callWithJSON<Req: Encodable, Res: Decodable>(capUrn: String, request: Req) async throws -> Res {
-        let requestData = try JSONEncoder().encode(request)
-        let args: [(mediaUrn: String, value: Data)] = [(mediaUrn: "media:json", value: requestData)]
-        let response = try await callWithArguments(capUrn: capUrn, arguments: args)
-        return try JSONDecoder().decode(Res.self, from: response.concatenated())
+        // Signal the event loop to wake up and exit
+        pushEvent(.relayClosed)
     }
 }
