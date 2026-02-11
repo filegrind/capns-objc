@@ -405,56 +405,7 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
         return YES;
     }
 
-    // First check if they're compatible
-    if (![self isCompatibleWith:other]) {
-        return NO;
-    }
-
     return self.specificity > other.specificity;
-}
-
-- (BOOL)isCompatibleWith:(CSCapUrn *)other {
-    if (!other) {
-        return YES;
-    }
-
-    // Check direction compatibility (inSpec) using TaggedUrn matching
-    // Compatible if either direction of matches succeeds
-    if (![self.inSpec isEqualToString:@"*"] &&
-        ![other.inSpec isEqualToString:@"*"]) {
-        if (!CSMediaUrnInstanceConformsToPattern(self.inSpec, other.inSpec) &&
-            !CSMediaUrnInstanceConformsToPattern(other.inSpec, self.inSpec)) {
-            return NO;
-        }
-    }
-
-    // Check direction compatibility (outSpec)
-    if (![self.outSpec isEqualToString:@"*"] &&
-        ![other.outSpec isEqualToString:@"*"]) {
-        if (!CSMediaUrnInstanceConformsToPattern(self.outSpec, other.outSpec) &&
-            !CSMediaUrnInstanceConformsToPattern(other.outSpec, self.outSpec)) {
-            return NO;
-        }
-    }
-
-    // Get all unique tag keys from both caps
-    NSMutableSet<NSString *> *allKeys = [NSMutableSet setWithArray:self.mutableTags.allKeys];
-    [allKeys addObjectsFromArray:other.mutableTags.allKeys];
-
-    for (NSString *key in allKeys) {
-        NSString *v1 = self.mutableTags[key];
-        NSString *v2 = other.mutableTags[key];
-
-        if (v1 && v2) {
-            // Both have the tag - they must match or one must be wildcard
-            if (![v1 isEqualToString:@"*"] && ![v2 isEqualToString:@"*"] && ![v1 isEqualToString:v2]) {
-                return NO;
-            }
-        }
-        // If only one has the tag, it's compatible (missing tag is wildcard)
-    }
-
-    return YES;
 }
 
 - (CSCapUrn *)withWildcardTag:(NSString *)key {

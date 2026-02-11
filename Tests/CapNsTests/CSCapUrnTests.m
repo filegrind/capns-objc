@@ -280,25 +280,35 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap2 isMoreSpecificThan:cap1]);
 }
 
-// TEST024: Test compatibility checking (missing tags = wildcards, different directions = incompatible)
-- (void)testCompatibility {
+// TEST024: Test directional accepts (cap accepts request, op mismatch rejects, direction mismatch rejects)
+- (void)testDirectionalAccepts {
     NSError *error;
-    CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
-    CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate;format=*") error:&error];
+    // Cap with more tags accepts request with fewer tags (cap is more specific than needed)
+    CSCapUrn *general = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
+    XCTAssertNotNil(general);
+    CSCapUrn *specific = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
+    XCTAssertNotNil(specific);
+
+    XCTAssertTrue([general accepts:specific]); // general cap accepts specific request
+    XCTAssertTrue([specific accepts:general]); // specific cap accepts general request (extra ext not checked)
+
+    // Op mismatch: neither direction accepts
     CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"op=extract;ext=pdf") error:&error];
+    XCTAssertNotNil(cap3);
+    XCTAssertFalse([specific accepts:cap3]); // op mismatch
+    XCTAssertFalse([cap3 accepts:specific]); // op mismatch
 
-    XCTAssertTrue([cap1 isCompatibleWith:cap2]);
-    XCTAssertTrue([cap2 isCompatibleWith:cap1]);
-    XCTAssertFalse([cap1 isCompatibleWith:cap3]); // op mismatch
+    // Bidirectional accepts with wildcard tags
+    CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate;format=*") error:&error];
+    XCTAssertNotNil(cap2);
+    XCTAssertTrue([cap2 accepts:specific]); // op matches, cap's format=* not in request so fine
+    XCTAssertTrue([specific accepts:cap2]); // op matches, request's format=* accepted by cap's missing format
 
-    // Missing tags are treated as wildcards for compatibility
-    CSCapUrn *cap4 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertTrue([cap1 isCompatibleWith:cap4]);
-    XCTAssertTrue([cap4 isCompatibleWith:cap1]);
-
-    // Different direction is incompatible
+    // Different direction is not accepted
     CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:form=map;textable\"" error:&error];
-    XCTAssertFalse([cap1 isCompatibleWith:cap5]); // different inSpec
+    XCTAssertNotNil(cap5);
+    XCTAssertFalse([general accepts:cap5]); // different inSpec (void vs string)
+    XCTAssertFalse([cap5 accepts:general]); // different inSpec
 }
 
 #pragma mark - Convenience Methods Tests

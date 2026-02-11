@@ -191,13 +191,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)isMoreSpecificThan:(CSCapUrn * _Nonnull)other;
 
 /**
- * Check if this cap is compatible with another
- * @param other The other cap to check compatibility with
- * @return YES if the caps are compatible
- */
-- (BOOL)isCompatibleWith:(CSCapUrn * _Nonnull)other;
-
-/**
  * Create a new cap with a specific tag set to wildcard
  * For "in" key, uses withInSpec:@"*"
  * For "out" key, uses withOutSpec:@"*"
