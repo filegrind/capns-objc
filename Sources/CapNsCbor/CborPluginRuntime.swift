@@ -1134,39 +1134,65 @@ public final class CborPluginRuntime: @unchecked Sendable {
         let cliArgs = Array(args.dropFirst(2))
         let payload = try buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
 
-        // Extract effective payload from CBOR arguments (same as CBOR mode)
-        // CLI mode builds CBOR arguments, so content type is application/cbor
-        let effectivePayload = try extractEffectivePayload(payload: payload, contentType: "application/cbor", capUrn: cap.urn)
-
-        // Parse cap URN to get input spec
-        let capParsed = try CSCapUrn.fromString(cap.urn)
-        let inputMediaUrn = capParsed.getInSpec()
-
-        // Create AsyncStream with Frame sequence: STREAM_START → CHUNK → STREAM_END → END
+        // Create AsyncStream with Frame sequence for each argument
+        // Each argument as separate stream: STREAM_START → CHUNK → STREAM_END per arg, then END
         let (stream, continuation) = AsyncStream<CborFrame>.makeStream()
         let requestId = CborMessageId.newUUID()
-        let inputStreamId = "cli-input"
 
-        // STREAM_START
-        continuation.yield(CborFrame.streamStart(
-            reqId: requestId,
-            streamId: inputStreamId,
-            mediaUrn: inputMediaUrn
-        ))
+        // Decode CBOR arguments array
+        if !payload.isEmpty {
+            if let cborValue = try? CBOR.decode([UInt8](payload)),
+               case .array(let arguments) = cborValue {
+                // Send each argument as a separate stream
+                for (i, arg) in arguments.enumerated() {
+                    guard case .map(let argMap) = arg else { continue }
 
-        // CHUNK (single chunk with all data)
-        continuation.yield(CborFrame.chunk(
-            reqId: requestId,
-            streamId: inputStreamId,
-            seq: 0,
-            payload: effectivePayload
-        ))
+                    var mediaUrn: String?
+                    var value: CBOR?
 
-        // STREAM_END
-        continuation.yield(CborFrame.streamEnd(
-            reqId: requestId,
-            streamId: inputStreamId
-        ))
+                    // Extract media_urn and value from arg map
+                    for (key, val) in argMap {
+                        if case .utf8String(let keyStr) = key {
+                            if keyStr == "media_urn" {
+                                if case .utf8String(let urnStr) = val {
+                                    mediaUrn = urnStr
+                                }
+                            } else if keyStr == "value" {
+                                value = val
+                            }
+                        }
+                    }
+
+                    guard let mediaUrn = mediaUrn, let value = value else { continue }
+
+                    let streamId = "arg-\(i)"
+
+                    // STREAM_START
+                    continuation.yield(CborFrame.streamStart(
+                        reqId: requestId,
+                        streamId: streamId,
+                        mediaUrn: mediaUrn
+                    ))
+
+                    // CHUNK: CBOR-encode the value before sending
+                    // Protocol: ALL values must be CBOR-encoded (encode once, no double-wrapping)
+                    let cborValue = Data(value.encode())
+
+                    continuation.yield(CborFrame.chunk(
+                        reqId: requestId,
+                        streamId: streamId,
+                        seq: 0,
+                        payload: cborValue
+                    ))
+
+                    // STREAM_END
+                    continuation.yield(CborFrame.streamEnd(
+                        reqId: requestId,
+                        streamId: streamId
+                    ))
+                }
+            }
+        }
 
         // END
         continuation.yield(CborFrame.end(id: requestId))
@@ -1511,6 +1537,20 @@ public final class CborPluginRuntime: @unchecked Sendable {
             return nil
         }
 
+        // Non-blocking check: use poll() with 0 timeout to see if data is ready
+        var pollfd = Darwin.pollfd(fd: stdin.fileDescriptor, events: Int16(POLLIN), revents: 0)
+        let pollResult = Darwin.poll(&pollfd, 1, 0)  // 0 timeout = non-blocking
+
+        if pollResult < 0 {
+            throw CborPluginRuntimeError.ioError("poll() failed")
+        }
+
+        // No data ready - return nil immediately without blocking
+        if pollResult == 0 || (pollfd.revents & Int16(POLLIN)) == 0 {
+            return nil
+        }
+
+        // Data is ready - read it
         let data = stdin.readDataToEndOfFile()
         return data.isEmpty ? nil : data
     }
