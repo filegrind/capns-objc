@@ -1761,7 +1761,23 @@ final class CborFilePathConversionTests: XCTestCase {
 
     // ErrorInputStream that simulates an IO error
     class ErrorInputStream: InputStream {
+        private var _streamStatus: Stream.Status = .notOpen
+        private var _streamError: Error?
+
+        override func open() {
+            _streamStatus = .open
+        }
+
+        override func close() {
+            _streamStatus = .closed
+        }
+
+        override var streamStatus: Stream.Status {
+            return _streamStatus
+        }
+
         override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+            _streamError = NSError(domain: "test", code: -1, userInfo: [NSLocalizedDescriptionKey: "simulated read error"])
             return -1 // Simulate error
         }
 
@@ -1770,7 +1786,7 @@ final class CborFilePathConversionTests: XCTestCase {
         }
 
         override var streamError: Error? {
-            return NSError(domain: "test", code: -1, userInfo: [NSLocalizedDescriptionKey: "simulated read error"])
+            return _streamError
         }
     }
 
