@@ -575,17 +575,19 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     func testPluginRuntimeHandlerRegistration() throws {
         let runtime = CborPluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:op=echo") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=echo") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
-            for await chunk in stream {
-                data.append(chunk.data)
+            for await frame in stream {
+                if case .chunk = frame.frameType, let payload = frame.payload {
+                    data.append(payload)
+                }
             }
-            emitter.emitCbor(.byteString([UInt8](data)))
+            try emitter.emitCbor(.byteString([UInt8](data)))
         }
 
-        runtime.registerRaw(capUrn: "cap:op=transform") { (stream: AsyncStream<CborStreamChunk>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=transform") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
-            emitter.emitCbor(.byteString([UInt8]("transformed".utf8)))
+            try emitter.emitCbor(.byteString([UInt8]("transformed".utf8)))
         }
 
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:op=echo"), "echo handler must be found")
