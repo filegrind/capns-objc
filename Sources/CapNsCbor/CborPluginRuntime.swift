@@ -396,6 +396,16 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
     }
 
     func emitCbor(_ value: CBOR) throws {
+        // CHUNK payloads = complete, independently decodable CBOR values
+        //
+        // Streams might never end (logs, video, real-time data), so each CHUNK must be
+        // processable immediately without waiting for END frame.
+        //
+        // For byteString/utf8String: split raw data, encode each chunk as complete value
+        // For other types: encode once (typically small)
+        //
+        // Each CHUNK payload can be decoded independently
+
         // Send STREAM_START if this is the first emission
         streamLock.lock()
         if !streamStarted {
@@ -419,15 +429,155 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
             streamLock.unlock()
         }
 
-        // Encode CBOR value to bytes
-        let bytes = Data(value.encode())
+        // Split large byte/text data, encode each chunk as complete CBOR value
+        switch value {
+        case .byteString(let bytes):
+            // Split bytes BEFORE encoding, encode each chunk as CBOR.byteString
+            let bytesData = Data(bytes)
+            var offset = 0
+            while offset < bytesData.count {
+                let chunkSize = min(maxChunk, bytesData.count - offset)
+                let chunkBytes = Array(bytesData.subdata(in: offset..<offset+chunkSize))
 
-        // Auto-chunk using negotiated limit
-        var offset = 0
+                // Encode as complete CBOR.byteString - independently decodable
+                let chunkValue = CBOR.byteString(chunkBytes)
+                let cborPayload = Data(chunkValue.encode())
 
-        while offset < bytes.count {
-            let chunkSize = min(maxChunk, bytes.count - offset)
-            let chunkData = bytes.subdata(in: offset..<offset+chunkSize)
+                seqLock.lock()
+                let currentSeq = seq
+                seq += 1
+                seqLock.unlock()
+
+                let frame = CborFrame.chunk(
+                    reqId: requestId,
+                    streamId: streamId,
+                    seq: currentSeq,
+                    payload: cborPayload
+                )
+
+                writerLock.lock()
+                do {
+                    try writer.write(frame)
+                } catch {
+                    writerLock.unlock()
+                    throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
+                }
+                writerLock.unlock()
+
+                offset += chunkSize
+            }
+
+        case .utf8String(let text):
+            // Split string BEFORE encoding, encode each chunk as CBOR.utf8String
+            let textData = text.data(using: .utf8)!
+            var offset = 0
+            while offset < textData.count {
+                var chunkSize = min(maxChunk, textData.count - offset)
+                // Ensure we split on UTF-8 character boundaries
+                while chunkSize > 0 {
+                    let chunkData = textData.subdata(in: offset..<offset+chunkSize)
+                    if let chunkText = String(data: chunkData, encoding: .utf8) {
+                        // Valid UTF-8 boundary
+
+                        // Encode as complete CBOR.utf8String - independently decodable
+                        let chunkValue = CBOR.utf8String(chunkText)
+                        let cborPayload = Data(chunkValue.encode())
+
+                        seqLock.lock()
+                        let currentSeq = seq
+                        seq += 1
+                        seqLock.unlock()
+
+                        let frame = CborFrame.chunk(
+                            reqId: requestId,
+                            streamId: streamId,
+                            seq: currentSeq,
+                            payload: cborPayload
+                        )
+
+                        writerLock.lock()
+                        do {
+                            try writer.write(frame)
+                        } catch {
+                            writerLock.unlock()
+                            throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
+                        }
+                        writerLock.unlock()
+
+                        offset += chunkSize
+                        break
+                    } else {
+                        chunkSize -= 1
+                    }
+                }
+                if chunkSize == 0 {
+                    throw CborPluginRuntimeError.handlerError("Cannot split string on character boundary")
+                }
+            }
+
+        case .array(let elements):
+            // Array: send each element as independent CBOR chunk
+            // Allows receiver to reconstruct elements without waiting for entire array
+            for element in elements {
+                // Encode each element as complete CBOR value
+                let cborPayload = Data(element.encode())
+
+                seqLock.lock()
+                let currentSeq = seq
+                seq += 1
+                seqLock.unlock()
+
+                let frame = CborFrame.chunk(
+                    reqId: requestId,
+                    streamId: streamId,
+                    seq: currentSeq,
+                    payload: cborPayload
+                )
+
+                writerLock.lock()
+                do {
+                    try writer.write(frame)
+                } catch {
+                    writerLock.unlock()
+                    throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
+                }
+                writerLock.unlock()
+            }
+
+        case .map(let entries):
+            // Map: send each entry as independent CBOR chunk
+            // Receiver must wait for all entries before reconstructing map
+            for (key, val) in entries {
+                // Encode each key-value pair as a 2-element array: [key, value]
+                let entry = CBOR.array([key, val])
+                let cborPayload = Data(entry.encode())
+
+                seqLock.lock()
+                let currentSeq = seq
+                seq += 1
+                seqLock.unlock()
+
+                let frame = CborFrame.chunk(
+                    reqId: requestId,
+                    streamId: streamId,
+                    seq: currentSeq,
+                    payload: cborPayload
+                )
+
+                writerLock.lock()
+                do {
+                    try writer.write(frame)
+                } catch {
+                    writerLock.unlock()
+                    throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
+                }
+                writerLock.unlock()
+            }
+
+        default:
+            // For other types (int, float, bool, null): encode as single chunk
+            // These have single-value semantics and are typically small
+            let cborPayload = Data(value.encode())
 
             seqLock.lock()
             let currentSeq = seq
@@ -438,7 +588,7 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
                 reqId: requestId,
                 streamId: streamId,
                 seq: currentSeq,
-                payload: chunkData
+                payload: cborPayload
             )
 
             writerLock.lock()
@@ -449,8 +599,6 @@ final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
                 throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
             }
             writerLock.unlock()
-
-            offset += chunkSize
         }
     }
 
@@ -516,13 +664,19 @@ final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
                 let startFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: arg.mediaUrn)
                 try writer.write(startFrame)
 
-                // CHUNK(s)
+                // CHUNK(s): Send argument data as CBOR-encoded chunks
+                // Each CHUNK payload MUST be independently decodable CBOR
                 var offset = 0
                 var seq: UInt64 = 0
                 while offset < arg.value.count {
                     let chunkSize = min(arg.value.count - offset, maxChunk)
-                    let chunkData = arg.value.subdata(in: offset..<(offset + chunkSize))
-                    let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunkData)
+                    let chunkBytes = Array(arg.value.subdata(in: offset..<(offset + chunkSize)))
+
+                    // CBOR-encode chunk as byteString - independently decodable
+                    let chunkValue = CBOR.byteString(chunkBytes)
+                    let cborPayload = Data(chunkValue.encode())
+
+                    let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: cborPayload)
                     try writer.write(chunkFrame)
                     offset += chunkSize
                     seq += 1
