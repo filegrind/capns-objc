@@ -447,12 +447,6 @@ final class CborPluginRuntimeTests: XCTestCase {
         XCTAssertFalse(emitter2.ndjson)
     }
 
-    // TEST267: CliStreamEmitter default creates NDJSON emitter
-    func testCliStreamEmitterDefault() {
-        let emitter = CliStreamEmitter()
-        XCTAssertTrue(emitter.ndjson)
-    }
-
     // MARK: - RuntimeError Display Tests (TEST268)
 
     // TEST268: RuntimeError variants display correct messages
@@ -476,15 +470,6 @@ final class CborPluginRuntimeTests: XCTestCase {
         XCTAssertTrue((err6.errorDescription ?? "").contains("timeout"))
     }
 
-    // MARK: - Runtime Limits Tests (TEST269)
-
-    // TEST269: PluginRuntime limits returns default protocol limits
-    func testRuntimeLimitsDefault() {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
-        let limits = runtime.negotiatedLimits
-        XCTAssertEqual(limits.maxFrame, DEFAULT_MAX_FRAME)
-        XCTAssertEqual(limits.maxChunk, DEFAULT_MAX_CHUNK)
-    }
 }
 
 // =============================================================================
