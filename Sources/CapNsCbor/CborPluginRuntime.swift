@@ -1361,6 +1361,64 @@ public final class CborPluginRuntime: @unchecked Sendable {
         return data.isEmpty ? nil : data
     }
 
+    /// Build payload from streaming reader (testable version).
+    ///
+    /// This simulates the CBOR chunked request flow for CLI piped stdin:
+    /// - Pure binary chunks from reader
+    /// - Accumulated in chunks (respecting maxChunk size)
+    /// - Built into CBOR arguments array (same format as CBOR mode)
+    ///
+    /// This makes all 4 modes use the SAME payload format:
+    /// - CLI file path → read file → payload
+    /// - CLI piped binary → chunk reader → payload
+    /// - CBOR chunked → payload
+    /// - CBOR file path → auto-convert → payload
+    func buildPayloadFromStreamingReader(cap: CborCapDefinition, reader: InputStream, maxChunk: Int) throws -> Data {
+        // Accumulate chunks
+        var chunks: [Data] = []
+        var totalBytes = 0
+
+        reader.open()
+        defer { reader.close() }
+
+        while reader.hasBytesAvailable {
+            var buffer = [UInt8](repeating: 0, count: maxChunk)
+            let bytesRead = reader.read(&buffer, maxLength: maxChunk)
+            if bytesRead < 0 {
+                throw CborPluginRuntimeError.ioError("Stream read error: \(reader.streamError?.localizedDescription ?? "unknown")")
+            }
+            if bytesRead == 0 {
+                break
+            }
+            let chunk = Data(buffer.prefix(bytesRead))
+            chunks.append(chunk)
+            totalBytes += bytesRead
+        }
+
+        // Concatenate chunks
+        var completePayload = Data()
+        for chunk in chunks {
+            completePayload.append(chunk)
+        }
+
+        // Build CBOR arguments array (same format as CBOR mode)
+        let capUrn = try CSCapUrn.fromString(cap.urn)
+        let expectedMediaUrn = capUrn.inSpec
+
+        let arg = CborCapArgumentValue(mediaUrn: expectedMediaUrn, value: completePayload)
+
+        // Encode as CBOR array
+        let cborArgs: [CBOR] = [
+            CBOR.map([
+                CBOR.utf8String("media_urn"): CBOR.utf8String(arg.mediaUrn),
+                CBOR.utf8String("value"): CBOR.byteString([UInt8](arg.value)),
+            ])
+        ]
+
+        let cborArray = CBOR.array(cborArgs)
+        return Data(cborArray.encode())
+    }
+
     /// Print help message showing all available subcommands.
     private func printHelp(manifest: CborManifest) {
         let stderr = FileHandle.standardError

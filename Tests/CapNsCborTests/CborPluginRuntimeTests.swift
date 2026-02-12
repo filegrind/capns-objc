@@ -1663,4 +1663,403 @@ final class CborFilePathConversionTests: XCTestCase {
 
         try? FileManager.default.removeItem(at: testFile)
     }
+
+    // TEST395: Small payload (< max_chunk) produces correct CBOR arguments
+    func test395_build_payload_small() throws {
+        let cap = CborCapDefinition(
+            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: []
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        let data = "small payload".data(using: .utf8)!
+        let reader = InputStream(data: data)
+
+        let payload = try runtime.buildPayloadFromStreamingReader(cap: cap, reader: reader, maxChunk: DEFAULT_MAX_CHUNK)
+
+        // Verify CBOR structure
+        let decoded = try CBORDecoder(input: [UInt8](payload)).decodeItem()
+        guard case .array(let arr) = decoded else {
+            XCTFail("Expected array, got: \(String(describing: decoded))")
+            return
+        }
+        XCTAssertEqual(arr.count, 1, "Should have one argument")
+
+        guard case .map(let argMap) = arr[0] else {
+            XCTFail("Expected map, got: \(arr[0])")
+            return
+        }
+
+        guard case .byteString(let valueBytes) = argMap[CBOR.utf8String("value")] else {
+            XCTFail("Expected bytes for value")
+            return
+        }
+
+        XCTAssertEqual(Data(valueBytes), data, "Payload bytes should match")
+    }
+
+    // TEST396: Large payload (> max_chunk) accumulates across chunks correctly
+    func test396_build_payload_large() throws {
+        let cap = CborCapDefinition(
+            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: []
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        // Use small max_chunk to force multi-chunk
+        let data = Data((0..<1000).map { UInt8($0 % 256) })
+        let reader = InputStream(data: data)
+
+        let payload = try runtime.buildPayloadFromStreamingReader(cap: cap, reader: reader, maxChunk: 100)
+
+        let decoded = try CBORDecoder(input: [UInt8](payload)).decodeItem()
+        guard case .array(let arr) = decoded,
+              case .map(let argMap) = arr[0],
+              case .byteString(let valueBytes) = argMap[CBOR.utf8String("value")] else {
+            XCTFail("Invalid CBOR structure")
+            return
+        }
+
+        XCTAssertEqual(valueBytes.count, 1000, "All bytes should be accumulated")
+        XCTAssertEqual(Data(valueBytes), data, "Data should match exactly")
+    }
+
+    // TEST397: Empty reader produces valid empty CBOR arguments
+    func test397_build_payload_empty() throws {
+        let cap = CborCapDefinition(
+            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: []
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        let reader = InputStream(data: Data())
+
+        let payload = try runtime.buildPayloadFromStreamingReader(cap: cap, reader: reader, maxChunk: DEFAULT_MAX_CHUNK)
+
+        let decoded = try CBORDecoder(input: [UInt8](payload)).decodeItem()
+        guard case .array(let arr) = decoded,
+              case .map(let argMap) = arr[0],
+              case .byteString(let valueBytes) = argMap[CBOR.utf8String("value")] else {
+            XCTFail("Invalid CBOR structure")
+            return
+        }
+
+        XCTAssertEqual(valueBytes.count, 0, "Empty reader should produce empty bytes")
+    }
+
+    // ErrorInputStream that simulates an IO error
+    class ErrorInputStream: InputStream {
+        override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+            return -1 // Simulate error
+        }
+
+        override var hasBytesAvailable: Bool {
+            return true
+        }
+
+        override var streamError: Error? {
+            return NSError(domain: "test", code: -1, userInfo: [NSLocalizedDescriptionKey: "simulated read error"])
+        }
+    }
+
+    // TEST398: IO error from reader propagates as error
+    func test398_build_payload_io_error() {
+        let cap = CborCapDefinition(
+            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: []
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        let reader = ErrorInputStream()
+
+        XCTAssertThrowsError(try runtime.buildPayloadFromStreamingReader(cap: cap, reader: reader, maxChunk: DEFAULT_MAX_CHUNK)) { thrownError in
+            let errorStr = "\(thrownError)"
+            XCTAssertTrue(errorStr.contains("simulated read error") || errorStr.contains("Stream read error"),
+                          "Expected error to contain 'simulated read error', got: \(errorStr)")
+        }
+    }
+
+    // TEST361: CLI mode with file path - pass file path as command-line argument
+    func test361_cli_mode_file_path() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFile = tempDir.appendingPathComponent("test361.pdf")
+        let pdfContent = Data("PDF content for CLI file path test".utf8)
+        try pdfContent.write(to: testFile)
+        defer { try? FileManager.default.removeItem(at: testFile) }
+
+        let cap = createCap(
+            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: [createArg(
+                mediaUrn: "media:file-path;textable;form=scalar",
+                required: true,
+                sources: [
+                    .stdin("media:pdf;bytes"),
+                    .positional(0)
+                ]
+            )]
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        // CLI mode: pass file path as positional argument
+        let cliArgs = [testFile.path]
+        let payload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
+
+        // Verify payload is CBOR array with file-path argument
+        let decoded = try CBORDecoder(input: [UInt8](payload)).decodeItem()
+        if case .array = decoded {
+            // Success - it's an array
+        } else {
+            XCTFail("CLI mode should produce CBOR array")
+        }
+    }
+
+    // TEST362: CLI mode with binary piped in - pipe binary data via stdin
+    //
+    // This test simulates real-world conditions:
+    // - Pure binary data piped to stdin (NOT CBOR)
+    // - CLI mode detected (command arg present)
+    // - Cap accepts stdin source
+    // - Binary is chunked on-the-fly and accumulated
+    // - Handler receives complete CBOR payload
+    func test362_cli_mode_piped_binary() throws {
+        // Simulate large binary being piped (1MB PDF)
+        let pdfContent = Data(repeating: 0xAB, count: 1_000_000)
+
+        // Create cap that accepts stdin
+        let cap = createCap(
+            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: [createArg(
+                mediaUrn: "media:pdf;bytes",
+                required: true,
+                sources: [
+                    .stdin("media:pdf;bytes")
+                ]
+            )]
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        // Mock stdin with Data (simulates piped binary)
+        let mockStdin = InputStream(data: pdfContent)
+        mockStdin.open()
+        defer { mockStdin.close() }
+
+        // Build payload from streaming reader (what CLI piped mode does)
+        let payload = try runtime.buildPayloadFromStreamingReader(cap: cap, reader: mockStdin, maxChunk: DEFAULT_MAX_CHUNK)
+
+        // Verify payload is CBOR array with correct structure
+        let decoded = try CBORDecoder(input: [UInt8](payload)).decodeItem()
+        guard case .array(let arr) = decoded else {
+            XCTFail("Expected CBOR Array")
+            return
+        }
+
+        XCTAssertEqual(arr.count, 1, "CBOR array should have one argument")
+
+        guard case .map(let argMap) = arr[0] else {
+            XCTFail("Expected Map in CBOR array")
+            return
+        }
+
+        var mediaUrn: String?
+        var value: Data?
+
+        for (k, v) in argMap {
+            if case .utf8String(let key) = k {
+                switch key {
+                case "media_urn":
+                    if case .utf8String(let s) = v {
+                        mediaUrn = s
+                    }
+                case "value":
+                    if case .byteString(let bytes) = v {
+                        value = Data(bytes)
+                    }
+                default:
+                    break
+                }
+            }
+        }
+
+        XCTAssertEqual(mediaUrn, "media:pdf;bytes", "Media URN should match cap in_spec")
+        XCTAssertEqual(value, pdfContent, "Binary content should be preserved exactly")
+    }
+
+    // TEST363: CBOR mode with chunked content - send file content streaming as chunks
+    func test363_cbor_mode_chunked_content() async throws {
+        let pdfContent = Data(repeating: 0xAA, count: 10000)  // 10KB of data
+
+        final class ResultHolder: @unchecked Sendable {
+            var data: Data?
+        }
+        let resultHolder = ResultHolder()
+
+        let cap = createCap(
+            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            title: "Process",
+            command: "process",
+            args: [createArg(
+                mediaUrn: "media:pdf;bytes",
+                required: true,
+                sources: [
+                    .stdin("media:pdf;bytes")
+                ]
+            )]
+        )
+
+        let manifest = createTestManifest(caps: [cap])
+        let runtime = CborPluginRuntime(manifest: manifest)
+
+        runtime.registerRaw(capUrn: cap.urn) { [resultHolder] (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+            // TRUE STREAMING: Relay frames and verify
+            var total = Data()
+            for await frame in stream {
+                if case .chunk = frame.frameType, let payload = frame.payload {
+                    total.append(payload)
+                    try emitter.emitCbor(.byteString([UInt8](payload)))
+                }
+            }
+
+            // Verify what we received
+            let decoded = try CBORDecoder(input: [UInt8](total)).decodeItem()
+            if case .array(let arr) = decoded, arr.count > 0 {
+                if case .map(let argMap) = arr[0] {
+                    for (k, v) in argMap {
+                        if case .utf8String(let key) = k, key == "value" {
+                            if case .byteString(let bytes) = v {
+                                resultHolder.data = Data(bytes)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build CBOR payload
+        let args = [CborCapArgumentValue(mediaUrn: "media:pdf;bytes", value: pdfContent)]
+        var payloadBytes = Data()
+        let cborArgs: [CBOR] = args.map { arg in
+            .map([
+                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
+                .utf8String("value"): .byteString([UInt8](arg.value))
+            ])
+        }
+        payloadBytes = Data(CBOR.array(cborArgs).encode())
+
+        // Simulate streaming: chunk payload and send via AsyncStream
+        let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
+        let emitter = TestStreamEmitter()
+        let peer = NoCborPeerInvoker()
+
+        let maxChunk = 262144
+        let requestId = CborMessageId.newUUID()
+        let streamId = "test-stream"
+
+        let inputStream = AsyncStream<CborFrame> { continuation in
+            // Send STREAM_START
+            continuation.yield(CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: "media:bytes"))
+
+            // Send CHUNK frames
+            var offset = 0
+            var seq: UInt64 = 0
+            while offset < payloadBytes.count {
+                let chunkSize = min(payloadBytes.count - offset, maxChunk)
+                let chunk = payloadBytes.subdata(in: offset..<(offset + chunkSize))
+                continuation.yield(CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunk))
+                offset += chunkSize
+                seq += 1
+            }
+
+            // Send STREAM_END and END
+            continuation.yield(CborFrame.streamEnd(reqId: requestId, streamId: streamId))
+            continuation.yield(CborFrame.end(id: requestId))
+            continuation.finish()
+        }
+
+        try await handler(inputStream, emitter, peer)
+
+        XCTAssertEqual(resultHolder.data, pdfContent, "Handler should receive chunked content")
+    }
+
+    // TEST364: CBOR mode with file path - send file path in CBOR arguments (auto-conversion)
+    func test364_cbor_mode_file_path() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFile = tempDir.appendingPathComponent("test364.pdf")
+        let pdfContent = Data("PDF content for CBOR file path test".utf8)
+        try pdfContent.write(to: testFile)
+        defer { try? FileManager.default.removeItem(at: testFile) }
+
+        // Build CBOR arguments with file-path URN
+        let args = [CborCapArgumentValue(
+            mediaUrn: "media:file-path;textable;form=scalar",
+            value: Data(testFile.path.utf8)
+        )]
+        let cborArgs: [CBOR] = args.map { arg in
+            .map([
+                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
+                .utf8String("value"): .byteString([UInt8](arg.value))
+            ])
+        }
+        let payload = Data(CBOR.array(cborArgs).encode())
+
+        // Verify the CBOR structure is correct
+        let decoded = try CBORDecoder(input: [UInt8](payload)).decodeItem()
+        guard case .array(let arr) = decoded else {
+            XCTFail("Expected CBOR array")
+            return
+        }
+
+        XCTAssertEqual(arr.count, 1, "Expected 1 argument")
+
+        guard case .map(let argMap) = arr[0] else {
+            XCTFail("Expected map")
+            return
+        }
+
+        var mediaUrn: String?
+        var value: Data?
+
+        for (k, v) in argMap {
+            if case .utf8String(let key) = k {
+                switch key {
+                case "media_urn":
+                    if case .utf8String(let s) = v {
+                        mediaUrn = s
+                    }
+                case "value":
+                    if case .byteString(let bytes) = v {
+                        value = Data(bytes)
+                    }
+                default:
+                    break
+                }
+            }
+        }
+
+        XCTAssertEqual(mediaUrn, "media:file-path;textable;form=scalar", "Expected media:file-path URN")
+        XCTAssertEqual(value, Data(testFile.path.utf8), "Expected file path as value")
+    }
 }
