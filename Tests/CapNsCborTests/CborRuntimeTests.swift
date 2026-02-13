@@ -7,7 +7,7 @@ import SwiftCBOR
 // CborPluginHost Multi-Plugin Runtime Tests
 //
 // Tests the restructured CborPluginHost which manages N plugin binaries with
-// frame routing. These mirror the Rust AsyncPluginHost tests (TEST413-425).
+// frame routing. These mirror the Rust PluginHostRuntime tests (TEST413-425).
 //
 // Test architecture:
 //   Engine task ←→ Relay pipes ←→ CborPluginHost.run() ←→ Plugin pipes ←→ Plugin task
