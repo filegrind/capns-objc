@@ -104,7 +104,7 @@ final class CborIntegrationTests: XCTestCase {
                     return
                 }
                 XCTAssertEqual(frame.frameType, .req)
-                XCTAssertEqual(frame.cap, "cap:op=echo")
+                XCTAssertEqual(frame.cap, "cap:in=media:;out=media:")
                 XCTAssertEqual(frame.payload, "hello".data(using: .utf8))
 
                 try writer.write(CborFrame.end(id: frame.id, finalPayload: "hello back".data(using: .utf8)))
@@ -121,7 +121,7 @@ final class CborIntegrationTests: XCTestCase {
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
         let requestId = CborMessageId.newUUID()
-        try writer.write(CborFrame.req(id: requestId, capUrn: "cap:op=echo",
+        try writer.write(CborFrame.req(id: requestId, capUrn: "cap:in=media:;out=media:",
                                        payload: "hello".data(using: .utf8)!,
                                        contentType: "application/json"))
 

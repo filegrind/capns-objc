@@ -575,7 +575,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     func testPluginRuntimeHandlerRegistration() throws {
         let runtime = CborPluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:op=echo") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:in=media:;out=media:") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -590,7 +590,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try emitter.emitCbor(.byteString([UInt8]("transformed".utf8)))
         }
 
-        XCTAssertNotNil(runtime.findHandler(capUrn: "cap:op=echo"), "echo handler must be found")
+        XCTAssertNotNil(runtime.findHandler(capUrn: "cap:in=media:;out=media:"), "echo handler must be found")
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:op=transform"), "transform handler must be found")
         XCTAssertNil(runtime.findHandler(capUrn: "cap:op=unknown"), "unknown handler must be nil")
     }

@@ -32,7 +32,7 @@ final class CborRelaySwitchTests: XCTestCase {
             var reader = CborFrameReader(handle: slaveSocks.read)
             let writer = CborFrameWriter(handle: slaveSocks.write)
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=echo;out=\"media:void\""]]
+            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
             done.signal()
 
@@ -52,7 +52,7 @@ final class CborRelaySwitchTests: XCTestCase {
         // Send REQ
         let req = CborFrame.req(
             id: CborMessageId(1),
-            cap: "cap:in=\"media:void\";op=echo;out=\"media:void\"",
+            cap: "cap:in=media:;out=media:",
             payload: Data([1, 2, 3]),
             contentType: "text/plain"
         )
@@ -82,7 +82,7 @@ final class CborRelaySwitchTests: XCTestCase {
             var reader = CborFrameReader(handle: slaveSocks1.read)
             let writer = CborFrameWriter(handle: slaveSocks1.write)
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=echo;out=\"media:void\""]]
+            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
             done1.signal()
 
@@ -122,7 +122,7 @@ final class CborRelaySwitchTests: XCTestCase {
         // Send REQ for echo cap → routes to master 1
         let req1 = CborFrame.req(
             id: CborMessageId(1),
-            cap: "cap:in=\"media:void\";op=echo;out=\"media:void\"",
+            cap: "cap:in=media:;out=media:",
             payload: Data(),
             contentType: "text/plain"
         )
@@ -154,7 +154,7 @@ final class CborRelaySwitchTests: XCTestCase {
         DispatchQueue.global().async {
             let writer = CborFrameWriter(handle: slaveSocks.write)
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=echo;out=\"media:void\""]]
+            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
             done.signal()
         }
@@ -192,7 +192,7 @@ final class CborRelaySwitchTests: XCTestCase {
 
         DispatchQueue.global().async {
             let writer = CborFrameWriter(handle: slaveSocks1.write)
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=echo;out=\"media:void\""]]
+            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
             done1.signal()
         }
@@ -229,7 +229,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let done1 = DispatchSemaphore(value: 0)
         let done2 = DispatchSemaphore(value: 0)
 
-        let sameCap = "cap:in=\"media:void\";op=echo;out=\"media:void\""
+        let sameCap = "cap:in=media:;out=media:"
 
         // Spawn slave 1
         DispatchQueue.global().async {
@@ -372,7 +372,7 @@ final class CborRelaySwitchTests: XCTestCase {
             let writer = CborFrameWriter(handle: slaveSocks1.write)
             let manifest: [String: Any] = [
                 "capabilities": [
-                    "cap:in=\"media:void\";op=echo;out=\"media:void\"",
+                    "cap:in=media:;out=media:",
                     "cap:in=\"media:void\";op=double;out=\"media:void\""
                 ]
             ]
@@ -384,7 +384,7 @@ final class CborRelaySwitchTests: XCTestCase {
             let writer = CborFrameWriter(handle: slaveSocks2.write)
             let manifest: [String: Any] = [
                 "capabilities": [
-                    "cap:in=\"media:void\";op=echo;out=\"media:void\"",  // Duplicate
+                    "cap:in=media:;out=media:",  // Duplicate
                     "cap:in=\"media:void\";op=triple;out=\"media:void\""
                 ]
             ]
@@ -406,7 +406,7 @@ final class CborRelaySwitchTests: XCTestCase {
         // Should have 3 unique caps (echo appears twice but deduplicated)
         XCTAssertEqual(capList.count, 3)
         XCTAssertTrue(capList.contains("cap:in=\"media:void\";op=double;out=\"media:void\""))
-        XCTAssertTrue(capList.contains("cap:in=\"media:void\";op=echo;out=\"media:void\""))
+        XCTAssertTrue(capList.contains("cap:in=media:;out=media:"))
         XCTAssertTrue(capList.contains("cap:in=\"media:void\";op=triple;out=\"media:void\""))
     }
 
