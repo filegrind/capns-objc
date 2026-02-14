@@ -83,7 +83,7 @@ FOUNDATION_EXPORT NSString * const CSMediaDecisionArray;// media:decision;bool;t
 
 /// Standard echo capability URN
 /// Accepts any media type as input and outputs any media type
-FOUNDATION_EXPORT NSString * const CSCapEcho;           // cap:in=media:;out=media:
+FOUNDATION_EXPORT NSString * const CSCapIdentity;           // cap:in=media:;out=media:
 
 // ============================================================================
 // SCHEMA URL CONFIGURATION
