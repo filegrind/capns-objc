@@ -6,6 +6,7 @@
 #import "CSMediaSpec.h"
 #import "CSCapUrn.h"
 #import "CSCap.h"
+#import "CSMediaUrn.h"
 @import TaggedUrn;
 
 NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";

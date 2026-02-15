@@ -14,6 +14,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import "CSMediaUrn.h"
 
 @class CSCapUrn;
 @class CSMediaValidation;

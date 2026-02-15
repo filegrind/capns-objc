@@ -170,6 +170,13 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNil(empty);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
+
+    // cap:op=raw also fails - has tags but missing required in/out
+    error = nil;
+    CSCapUrn *missingInOut = [CSCapUrn fromString:@"cap:op=raw" error:&error];
+    XCTAssertNil(missingInOut, @"cap:op=raw should fail - missing required in/out specs");
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec, @"Should fail with MissingInSpec error");
 }
 
 // TEST029: Test minimal valid cap URN has just in and out, empty tags

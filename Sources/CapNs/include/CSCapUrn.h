@@ -238,7 +238,9 @@ typedef NS_ERROR_ENUM(CSCapUrnErrorDomain, CSCapUrnError) {
     CSCapUrnErrorUnterminatedQuote = 8,
     CSCapUrnErrorInvalidEscapeSequence = 9,
     CSCapUrnErrorMissingInSpec = 10,
-    CSCapUrnErrorMissingOutSpec = 11
+    CSCapUrnErrorMissingOutSpec = 11,
+    CSCapUrnErrorInvalidInSpec = 12,
+    CSCapUrnErrorInvalidOutSpec = 13
 };
 
 /**
