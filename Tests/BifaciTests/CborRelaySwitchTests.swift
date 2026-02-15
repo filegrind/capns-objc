@@ -1,4 +1,4 @@
-/// Tests for CborRelaySwitch — TEST426-TEST435
+/// Tests for RelaySwitch — TEST426-TEST435
 
 import XCTest
 import Foundation
@@ -9,9 +9,9 @@ import CapNs
 final class CborRelaySwitchTests: XCTestCase {
 
     // Helper to send RelayNotify
-    private func sendNotify(writer: CborFrameWriter, manifestJSON: [String: Any], limits: CborLimits) throws {
+    private func sendNotify(writer: FrameWriter, manifestJSON: [String: Any], limits: Limits) throws {
         let manifestBytes = try JSONSerialization.data(withJSONObject: manifestJSON)
-        let notify = CborFrame.relayNotify(
+        let notify = Frame.relayNotify(
             manifest: manifestBytes,
             maxFrame: limits.maxFrame,
             maxChunk: limits.maxChunk
@@ -29,16 +29,16 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn mock slave that sends RelayNotify then echoes frames
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks.read)
-            let writer = CborFrameWriter(handle: slaveSocks.write)
+            var reader = FrameReader(handle: slaveSocks.read)
+            let writer = FrameWriter(handle: slaveSocks.write)
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done.signal()
 
             // Read one REQ and send response
             if let frame = try? reader.read(), frame?.frameType == .req {
-                let response = CborFrame.end(id: frame!.id, payload: Data([42]))
+                let response = Frame.end(id: frame!.id, payload: Data([42]))
                 try! writer.write(response)
             }
         }
@@ -47,11 +47,11 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
 
         // Create RelaySwitch
-        let switch_ = try CborRelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
+        let switch_ = try RelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
 
         // Send REQ
-        let req = CborFrame.req(
-            id: CborMessageId(1),
+        let req = Frame.req(
+            id: MessageId(1),
             cap: "cap:in=media:;out=media:",
             payload: Data([1, 2, 3]),
             contentType: "text/plain"
@@ -62,7 +62,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let response = try switch_.readFromMasters()
         XCTAssertNotNil(response)
         XCTAssertEqual(response?.frameType, .end)
-        XCTAssertEqual(response?.id.toString(), CborMessageId(1).toString())
+        XCTAssertEqual(response?.id.toString(), MessageId(1).toString())
         XCTAssertEqual(response?.payload, Data([42]))
     }
 
@@ -79,16 +79,16 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn slave 1 (echo cap)
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks1.read)
-            let writer = CborFrameWriter(handle: slaveSocks1.write)
+            var reader = FrameReader(handle: slaveSocks1.read)
+            let writer = FrameWriter(handle: slaveSocks1.write)
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done1.signal()
 
             while let frame = try? reader.read(), frame != nil {
                 if frame!.frameType == .req {
-                    let response = CborFrame.end(id: frame!.id, payload: Data([1]))
+                    let response = Frame.end(id: frame!.id, payload: Data([1]))
                     try! writer.write(response)
                 }
             }
@@ -96,16 +96,16 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn slave 2 (double cap)
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks2.read)
-            let writer = CborFrameWriter(handle: slaveSocks2.write)
+            var reader = FrameReader(handle: slaveSocks2.read)
+            let writer = FrameWriter(handle: slaveSocks2.write)
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=double;out=\"media:void\""]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done2.signal()
 
             while let frame = try? reader.read(), frame != nil {
                 if frame!.frameType == .req {
-                    let response = CborFrame.end(id: frame!.id, payload: Data([2]))
+                    let response = Frame.end(id: frame!.id, payload: Data([2]))
                     try! writer.write(response)
                 }
             }
@@ -114,14 +114,14 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [
+        let switch_ = try RelaySwitch(sockets: [
             CborSocketPair(read: engineSocks1.read, write: engineSocks1.write),
             CborSocketPair(read: engineSocks2.read, write: engineSocks2.write),
         ])
 
         // Send REQ for echo cap → routes to master 1
-        let req1 = CborFrame.req(
-            id: CborMessageId(1),
+        let req1 = Frame.req(
+            id: MessageId(1),
             cap: "cap:in=media:;out=media:",
             payload: Data(),
             contentType: "text/plain"
@@ -132,8 +132,8 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(resp1?.payload, Data([1]))
 
         // Send REQ for double cap → routes to master 2
-        let req2 = CborFrame.req(
-            id: CborMessageId(2),
+        let req2 = Frame.req(
+            id: MessageId(2),
             cap: "cap:in=\"media:void\";op=double;out=\"media:void\"",
             payload: Data(),
             contentType: "text/plain"
@@ -152,27 +152,27 @@ final class CborRelaySwitchTests: XCTestCase {
         let done = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks.write)
+            let writer = FrameWriter(handle: slaveSocks.write)
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done.signal()
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
+        let switch_ = try RelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
 
         // Send REQ for unknown cap
-        let req = CborFrame.req(
-            id: CborMessageId(1),
+        let req = Frame.req(
+            id: MessageId(1),
             cap: "cap:in=\"media:void\";op=unknown;out=\"media:void\"",
             payload: Data(),
             contentType: "text/plain"
         )
 
         XCTAssertThrowsError(try switch_.sendToMaster(req)) { error in
-            guard case CborRelaySwitchError.noHandler = error else {
+            guard case RelaySwitchError.noHandler = error else {
                 XCTFail("Expected noHandler error")
                 return
             }
@@ -191,23 +191,23 @@ final class CborRelaySwitchTests: XCTestCase {
         let done2 = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks1.write)
+            let writer = FrameWriter(handle: slaveSocks1.write)
             let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done1.signal()
         }
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks2.write)
+            let writer = FrameWriter(handle: slaveSocks2.write)
             let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=double;out=\"media:void\""]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done2.signal()
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [
+        let switch_ = try RelaySwitch(sockets: [
             CborSocketPair(read: engineSocks1.read, write: engineSocks1.write),
             CborSocketPair(read: engineSocks2.read, write: engineSocks2.write),
         ])
@@ -233,16 +233,16 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn slave 1
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks1.read)
-            let writer = CborFrameWriter(handle: slaveSocks1.write)
+            var reader = FrameReader(handle: slaveSocks1.read)
+            let writer = FrameWriter(handle: slaveSocks1.write)
             let manifest: [String: Any] = ["capabilities": [sameCap]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done1.signal()
 
             // Echo with marker 1
             while let frame = try? reader.read(), frame != nil {
                 if frame!.frameType == .req {
-                    let response = CborFrame.end(id: frame!.id, payload: Data([1]))
+                    let response = Frame.end(id: frame!.id, payload: Data([1]))
                     try! writer.write(response)
                 }
             }
@@ -250,16 +250,16 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn slave 2
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks2.read)
-            let writer = CborFrameWriter(handle: slaveSocks2.write)
+            var reader = FrameReader(handle: slaveSocks2.read)
+            let writer = FrameWriter(handle: slaveSocks2.write)
             let manifest: [String: Any] = ["capabilities": [sameCap]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done2.signal()
 
             // Echo with marker 2 (should never be called if routing is consistent)
             while let frame = try? reader.read(), frame != nil {
                 if frame!.frameType == .req {
-                    let response = CborFrame.end(id: frame!.id, payload: Data([2]))
+                    let response = Frame.end(id: frame!.id, payload: Data([2]))
                     try! writer.write(response)
                 }
             }
@@ -268,20 +268,20 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [
+        let switch_ = try RelaySwitch(sockets: [
             CborSocketPair(read: engineSocks1.read, write: engineSocks1.write),
             CborSocketPair(read: engineSocks2.read, write: engineSocks2.write),
         ])
 
         // Send first request - should go to master 0 (first match)
-        let req1 = CborFrame.req(id: CborMessageId(1), cap: sameCap, payload: Data(), contentType: "text/plain")
+        let req1 = Frame.req(id: MessageId(1), cap: sameCap, payload: Data(), contentType: "text/plain")
         try switch_.sendToMaster(req1)
 
         let resp1 = try switch_.readFromMasters()
         XCTAssertEqual(resp1?.payload, Data([1]))  // From master 0
 
         // Send second request - should ALSO go to master 0 (consistent routing)
-        let req2 = CborFrame.req(id: CborMessageId(2), cap: sameCap, payload: Data(), contentType: "text/plain")
+        let req2 = Frame.req(id: MessageId(2), cap: sameCap, payload: Data(), contentType: "text/plain")
         try switch_.sendToMaster(req2)
 
         let resp2 = try switch_.readFromMasters()
@@ -296,11 +296,11 @@ final class CborRelaySwitchTests: XCTestCase {
         let done = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks.read)
-            let writer = CborFrameWriter(handle: slaveSocks.write)
+            var reader = FrameReader(handle: slaveSocks.read)
+            let writer = FrameWriter(handle: slaveSocks.write)
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=test;out=\"media:void\""]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done.signal()
 
             // Read REQ
@@ -318,26 +318,26 @@ final class CborRelaySwitchTests: XCTestCase {
             XCTAssertEqual(end.id.toString(), req.id.toString())
 
             // Send response
-            let response = CborFrame.end(id: req.id, payload: Data([42]))
+            let response = Frame.end(id: req.id, payload: Data([42]))
             try! writer.write(response)
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
+        let switch_ = try RelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
 
-        let reqId = CborMessageId(1)
+        let reqId = MessageId(1)
 
         // Send REQ
-        let req = CborFrame.req(id: reqId, cap: "cap:in=\"media:void\";op=test;out=\"media:void\"", payload: Data(), contentType: "text/plain")
+        let req = Frame.req(id: reqId, cap: "cap:in=\"media:void\";op=test;out=\"media:void\"", payload: Data(), contentType: "text/plain")
         try switch_.sendToMaster(req)
 
         // Send CHUNK continuation
-        let chunk = CborFrame.chunk(id: reqId, streamId: "stream1", seq: 0, payload: Data([1, 2, 3]))
+        let chunk = Frame.chunk(id: reqId, streamId: "stream1", seq: 0, payload: Data([1, 2, 3]))
         try switch_.sendToMaster(chunk)
 
         // Send END continuation
-        let end = CborFrame.end(id: reqId, payload: nil)
+        let end = Frame.end(id: reqId, payload: nil)
         try switch_.sendToMaster(end)
 
         // Read response
@@ -348,8 +348,8 @@ final class CborRelaySwitchTests: XCTestCase {
 
     // TEST432: Empty masters list returns error
     func test_432_empty_masters_list_error() throws {
-        XCTAssertThrowsError(try CborRelaySwitch(sockets: [])) { error in
-            guard case CborRelaySwitchError.protocolError(let msg) = error else {
+        XCTAssertThrowsError(try RelaySwitch(sockets: [])) { error in
+            guard case RelaySwitchError.protocolError(let msg) = error else {
                 XCTFail("Expected protocolError")
                 return
             }
@@ -369,33 +369,33 @@ final class CborRelaySwitchTests: XCTestCase {
         let done2 = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks1.write)
+            let writer = FrameWriter(handle: slaveSocks1.write)
             let manifest: [String: Any] = [
                 "capabilities": [
                     "cap:in=media:;out=media:",
                     "cap:in=\"media:void\";op=double;out=\"media:void\""
                 ]
             ]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done1.signal()
         }
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks2.write)
+            let writer = FrameWriter(handle: slaveSocks2.write)
             let manifest: [String: Any] = [
                 "capabilities": [
                     "cap:in=media:;out=media:",  // Duplicate
                     "cap:in=\"media:void\";op=triple;out=\"media:void\""
                 ]
             ]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done2.signal()
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [
+        let switch_ = try RelaySwitch(sockets: [
             CborSocketPair(read: engineSocks1.read, write: engineSocks1.write),
             CborSocketPair(read: engineSocks2.read, write: engineSocks2.write),
         ])
@@ -421,17 +421,17 @@ final class CborRelaySwitchTests: XCTestCase {
         let done2 = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks1.write)
+            let writer = FrameWriter(handle: slaveSocks1.write)
             let manifest: [String: Any] = ["capabilities": []]
-            let limits1 = CborLimits(maxFrame: 1_000_000, maxChunk: 100_000)
+            let limits1 = Limits(maxFrame: 1_000_000, maxChunk: 100_000)
             try! self.sendNotify(writer: writer, manifest: manifest, limits: limits1)
             done1.signal()
         }
 
         DispatchQueue.global().async {
-            let writer = CborFrameWriter(handle: slaveSocks2.write)
+            let writer = FrameWriter(handle: slaveSocks2.write)
             let manifest: [String: Any] = ["capabilities": []]
-            let limits2 = CborLimits(maxFrame: 2_000_000, maxChunk: 50_000)  // Larger frame, smaller chunk
+            let limits2 = Limits(maxFrame: 2_000_000, maxChunk: 50_000)  // Larger frame, smaller chunk
             try! self.sendNotify(writer: writer, manifest: manifest, limits: limits2)
             done2.signal()
         }
@@ -439,7 +439,7 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [
+        let switch_ = try RelaySwitch(sockets: [
             CborSocketPair(read: engineSocks1.read, write: engineSocks1.write),
             CborSocketPair(read: engineSocks2.read, write: engineSocks2.write),
         ])
@@ -460,16 +460,16 @@ final class CborRelaySwitchTests: XCTestCase {
         let registeredCap = "cap:in=\"media:text;utf8\";op=process;out=\"media:text;utf8\""
 
         DispatchQueue.global().async {
-            var reader = CborFrameReader(handle: slaveSocks.read)
-            let writer = CborFrameWriter(handle: slaveSocks.write)
+            var reader = FrameReader(handle: slaveSocks.read)
+            let writer = FrameWriter(handle: slaveSocks.write)
             let manifest: [String: Any] = ["capabilities": [registeredCap]]
-            try! self.sendNotify(writer: writer, manifest: manifest, limits: CborLimits())
+            try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
             done.signal()
 
             // Respond to request
             while let frame = try? reader.read(), frame != nil {
                 if frame!.frameType == .req {
-                    let response = CborFrame.end(id: frame!.id, payload: Data([42]))
+                    let response = Frame.end(id: frame!.id, payload: Data([42]))
                     try! writer.write(response)
                 }
             }
@@ -477,24 +477,24 @@ final class CborRelaySwitchTests: XCTestCase {
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
 
-        let switch_ = try CborRelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
+        let switch_ = try RelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
 
         // Exact match should work
-        let req1 = CborFrame.req(id: CborMessageId(1), cap: registeredCap, payload: Data(), contentType: "text/plain")
+        let req1 = Frame.req(id: MessageId(1), cap: registeredCap, payload: Data(), contentType: "text/plain")
         try switch_.sendToMaster(req1)
         let resp1 = try switch_.readFromMasters()
         XCTAssertEqual(resp1?.payload, Data([42]))
 
         // More specific request should NOT match less specific registered cap
         // (request is more specific, registered is less specific → no match)
-        let req2 = CborFrame.req(
-            id: CborMessageId(2),
+        let req2 = Frame.req(
+            id: MessageId(2),
             cap: "cap:in=\"media:text;utf8;normalized\";op=process;out=\"media:text\"",
             payload: Data(),
             contentType: "text/plain"
         )
         XCTAssertThrowsError(try switch_.sendToMaster(req2)) { error in
-            guard case CborRelaySwitchError.noHandler = error else {
+            guard case RelaySwitchError.noHandler = error else {
                 XCTFail("Expected noHandler error")
                 return
             }

@@ -18,15 +18,15 @@ class CborRelayTests: XCTestCase {
     // TEST404: Slave sends RelayNotify on connect (initial_notify parameter)
     func testSlaveSendsRelayNotifyOnConnect() throws {
         let manifest = "{\"caps\":[\"cap:op=test\"]}".data(using: .utf8)!
-        let limits = CborLimits()
+        let limits = Limits()
 
         // Socket: slave writes -> master reads
         let socket = createPipe()
-        let socketWriter = CborFrameWriter(handle: socket.write)
-        let socketReader = CborFrameReader(handle: socket.read)
+        let socketWriter = FrameWriter(handle: socket.write)
+        let socketReader = FrameReader(handle: socket.read)
 
         // Send notify
-        try CborRelaySlave.sendNotify(
+        try RelaySlave.sendNotify(
             socketWriter: socketWriter,
             manifest: manifest,
             limits: limits
@@ -49,14 +49,14 @@ class CborRelayTests: XCTestCase {
     // TEST405: Master reads RelayNotify and extracts manifest + limits
     func testMasterReadsRelayNotify() throws {
         let manifest = "{\"caps\":[\"cap:op=convert\"]}".data(using: .utf8)!
-        let limits = CborLimits(maxFrame: 1_000_000, maxChunk: 64_000)
+        let limits = Limits(maxFrame: 1_000_000, maxChunk: 64_000)
 
         let socket = createPipe()
-        let socketWriter = CborFrameWriter(handle: socket.write)
-        let socketReader = CborFrameReader(handle: socket.read)
+        let socketWriter = FrameWriter(handle: socket.write)
+        let socketReader = FrameReader(handle: socket.read)
 
         // Slave sends RelayNotify
-        let frame = CborFrame.relayNotify(
+        let frame = Frame.relayNotify(
             manifest: manifest,
             maxFrame: limits.maxFrame,
             maxChunk: limits.maxChunk
@@ -65,7 +65,7 @@ class CborRelayTests: XCTestCase {
         socket.write.closeFile()
 
         // Master connects
-        let master = try CborRelayMaster.connect(socketReader: socketReader)
+        let master = try RelayMaster.connect(socketReader: socketReader)
         XCTAssertEqual(master.manifest, manifest)
         XCTAssertEqual(master.limits.maxFrame, 1_000_000)
         XCTAssertEqual(master.limits.maxChunk, 64_000)
@@ -83,16 +83,16 @@ class CborRelayTests: XCTestCase {
         let localReadPipe = createPipe()
         let localWritePipe = createPipe()
 
-        let slave = CborRelaySlave(localRead: localReadPipe.read, localWrite: localWritePipe.write)
+        let slave = RelaySlave(localRead: localReadPipe.read, localWrite: localWritePipe.write)
 
-        let socketWriter = CborFrameWriter(handle: socketPipe.write)
+        let socketWriter = FrameWriter(handle: socketPipe.write)
 
         // Master sends RelayState
-        try CborRelayMaster.sendState(socketWriter: socketWriter, resources: resources)
+        try RelayMaster.sendState(socketWriter: socketWriter, resources: resources)
         socketPipe.write.closeFile()
 
         // Slave reads frame directly (not via run() since that requires bidirectional)
-        let socketReader = CborFrameReader(handle: socketPipe.read)
+        let socketReader = FrameReader(handle: socketPipe.read)
         let frame = try socketReader.read()
         XCTAssertNotNil(frame)
         XCTAssertEqual(frame!.frameType, .relayState)
@@ -110,24 +110,24 @@ class CborRelayTests: XCTestCase {
         let slaveToRuntime = createPipe()
         let runtimeToSlave = createPipe()
 
-        let reqId = CborMessageId.newUUID()
+        let reqId = MessageId.newUUID()
 
         // Slave relay: manually forward one frame each direction
-        let masterWriter = CborFrameWriter(handle: masterToSlave.write)
-        let slaveSocketReader = CborFrameReader(handle: masterToSlave.read)
-        let slaveSocketWriter = CborFrameWriter(handle: slaveToMaster.write)
-        let slaveLocalReader = CborFrameReader(handle: runtimeToSlave.read)
-        let slaveLocalWriter = CborFrameWriter(handle: slaveToRuntime.write)
+        let masterWriter = FrameWriter(handle: masterToSlave.write)
+        let slaveSocketReader = FrameReader(handle: masterToSlave.read)
+        let slaveSocketWriter = FrameWriter(handle: slaveToMaster.write)
+        let slaveLocalReader = FrameReader(handle: runtimeToSlave.read)
+        let slaveLocalWriter = FrameWriter(handle: slaveToRuntime.write)
 
         // Master sends a REQ through the socket
-        let req = CborFrame.req(id: reqId, capUrn: "cap:op=test", payload: "hello".data(using: .utf8)!, contentType: "text/plain")
+        let req = Frame.req(id: reqId, capUrn: "cap:op=test", payload: "hello".data(using: .utf8)!, contentType: "text/plain")
         try masterWriter.write(req)
         masterToSlave.write.closeFile()
 
         // Runtime sends a CHUNK through the local write
-        let chunkId = CborMessageId.newUUID()
-        let chunk = CborFrame.chunk(reqId: chunkId, streamId: "stream-1", seq: 0, payload: "response".data(using: .utf8)!)
-        let runtimeWriter = CborFrameWriter(handle: runtimeToSlave.write)
+        let chunkId = MessageId.newUUID()
+        let chunk = Frame.chunk(reqId: chunkId, streamId: "stream-1", seq: 0, payload: "response".data(using: .utf8)!)
+        let runtimeWriter = FrameWriter(handle: runtimeToSlave.write)
         try runtimeWriter.write(chunk)
         runtimeToSlave.write.closeFile()
 
@@ -144,14 +144,14 @@ class CborRelayTests: XCTestCase {
         slaveToMaster.write.closeFile()
 
         // Runtime reads the forwarded REQ
-        let runtimeReader = CborFrameReader(handle: slaveToRuntime.read)
+        let runtimeReader = FrameReader(handle: slaveToRuntime.read)
         let runtimeFrame = try runtimeReader.read()!
         XCTAssertEqual(runtimeFrame.frameType, .req)
         XCTAssertEqual(runtimeFrame.cap, "cap:op=test")
         XCTAssertEqual(runtimeFrame.payload, "hello".data(using: .utf8)!)
 
         // Master reads the forwarded CHUNK
-        let masterReader = CborFrameReader(handle: slaveToMaster.read)
+        let masterReader = FrameReader(handle: slaveToMaster.read)
         let masterFrame = try masterReader.read()!
         XCTAssertEqual(masterFrame.frameType, .chunk)
         XCTAssertEqual(masterFrame.payload, "response".data(using: .utf8)!)
@@ -165,16 +165,16 @@ class CborRelayTests: XCTestCase {
         let socketPipe = createPipe()
         let localWritePipe = createPipe()
 
-        let masterWriter = CborFrameWriter(handle: socketPipe.write)
-        let socketReader = CborFrameReader(handle: socketPipe.read)
-        let localWriter = CborFrameWriter(handle: localWritePipe.write)
+        let masterWriter = FrameWriter(handle: socketPipe.write)
+        let socketReader = FrameReader(handle: socketPipe.read)
+        let localWriter = FrameWriter(handle: localWritePipe.write)
 
         // Send RelayState (should be intercepted)
-        let state = CborFrame.relayState(resources: "{\"memory\":1024}".data(using: .utf8)!)
+        let state = Frame.relayState(resources: "{\"memory\":1024}".data(using: .utf8)!)
         try masterWriter.write(state)
 
         // Send normal REQ (should pass through)
-        let req = CborFrame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
+        let req = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
         try masterWriter.write(req)
         socketPipe.write.closeFile()
 
@@ -196,21 +196,21 @@ class CborRelayTests: XCTestCase {
     // TEST409: Slave can inject RelayNotify mid-stream (cap change)
     func testSlaveInjectsRelayNotifyMidstream() throws {
         let socketPipe = createPipe()
-        let socketWriter = CborFrameWriter(handle: socketPipe.write)
-        let socketReader = CborFrameReader(handle: socketPipe.read)
-        let limits = CborLimits()
+        let socketWriter = FrameWriter(handle: socketPipe.write)
+        let socketReader = FrameReader(handle: socketPipe.read)
+        let limits = Limits()
 
         // Send initial RelayNotify
         let initial = "{\"caps\":[\"cap:op=test\"]}".data(using: .utf8)!
-        try CborRelaySlave.sendNotify(socketWriter: socketWriter, manifest: initial, limits: limits)
+        try RelaySlave.sendNotify(socketWriter: socketWriter, manifest: initial, limits: limits)
 
         // Forward a normal CHUNK frame
-        let chunk = CborFrame.chunk(reqId: .newUUID(), streamId: "stream-1", seq: 0, payload: "data".data(using: .utf8)!)
+        let chunk = Frame.chunk(reqId: .newUUID(), streamId: "stream-1", seq: 0, payload: "data".data(using: .utf8)!)
         try socketWriter.write(chunk)
 
         // Inject updated RelayNotify (new cap discovered)
         let updated = "{\"caps\":[\"cap:op=test\",\"cap:op=convert\"]}".data(using: .utf8)!
-        try CborRelaySlave.sendNotify(socketWriter: socketWriter, manifest: updated, limits: limits)
+        try RelaySlave.sendNotify(socketWriter: socketWriter, manifest: updated, limits: limits)
         socketPipe.write.closeFile()
 
         // Read initial RelayNotify
@@ -233,32 +233,32 @@ class CborRelayTests: XCTestCase {
     // TEST410: Master receives updated RelayNotify (cap change callback via readFrame)
     func testMasterReceivesUpdatedRelayNotify() throws {
         let socketPipe = createPipe()
-        let socketWriter = CborFrameWriter(handle: socketPipe.write)
-        let socketReader = CborFrameReader(handle: socketPipe.read)
+        let socketWriter = FrameWriter(handle: socketPipe.write)
+        let socketReader = FrameReader(handle: socketPipe.read)
 
-        let limits = CborLimits(maxFrame: 2_000_000, maxChunk: 100_000)
+        let limits = Limits(maxFrame: 2_000_000, maxChunk: 100_000)
 
         // Initial RelayNotify
         let initialManifest = "{\"caps\":[\"cap:op=a\"]}".data(using: .utf8)!
-        let initial = CborFrame.relayNotify(manifest: initialManifest, maxFrame: limits.maxFrame, maxChunk: limits.maxChunk)
+        let initial = Frame.relayNotify(manifest: initialManifest, maxFrame: limits.maxFrame, maxChunk: limits.maxChunk)
         try socketWriter.write(initial)
 
         // Normal frame
-        let end1 = CborFrame.end(id: .newUUID())
+        let end1 = Frame.end(id: .newUUID())
         try socketWriter.write(end1)
 
         // Updated RelayNotify with new limits
         let updatedManifest = "{\"caps\":[\"cap:op=a\",\"cap:op=b\"]}".data(using: .utf8)!
-        let updated = CborFrame.relayNotify(manifest: updatedManifest, maxFrame: 3_000_000, maxChunk: 200_000)
+        let updated = Frame.relayNotify(manifest: updatedManifest, maxFrame: 3_000_000, maxChunk: 200_000)
         try socketWriter.write(updated)
 
         // Another normal frame
-        let end2 = CborFrame.end(id: .newUUID())
+        let end2 = Frame.end(id: .newUUID())
         try socketWriter.write(end2)
         socketPipe.write.closeFile()
 
         // Master connects
-        let master = try CborRelayMaster.connect(socketReader: socketReader)
+        let master = try RelayMaster.connect(socketReader: socketReader)
         XCTAssertEqual(master.manifest, initialManifest)
         XCTAssertEqual(master.limits.maxFrame, 2_000_000)
 
@@ -283,20 +283,20 @@ class CborRelayTests: XCTestCase {
         // Master -> slave: master closes, slave detects
         let pipe1 = createPipe()
         pipe1.write.closeFile() // Close immediately
-        let reader1 = CborFrameReader(handle: pipe1.read)
+        let reader1 = FrameReader(handle: pipe1.read)
         let result1 = try reader1.read()
         XCTAssertNil(result1, "closed socket must return nil")
 
         // Slave -> master: slave sends RelayNotify then closes
         let pipe2 = createPipe()
-        let writer2 = CborFrameWriter(handle: pipe2.write)
-        let reader2 = CborFrameReader(handle: pipe2.read)
+        let writer2 = FrameWriter(handle: pipe2.write)
+        let reader2 = FrameReader(handle: pipe2.read)
 
-        let notify = CborFrame.relayNotify(manifest: "[]".data(using: .utf8)!, maxFrame: CborLimits().maxFrame, maxChunk: CborLimits().maxChunk)
+        let notify = Frame.relayNotify(manifest: "[]".data(using: .utf8)!, maxFrame: Limits().maxFrame, maxChunk: Limits().maxChunk)
         try writer2.write(notify)
         pipe2.write.closeFile()
 
-        let master = try CborRelayMaster.connect(socketReader: reader2)
+        let master = try RelayMaster.connect(socketReader: reader2)
         XCTAssertNotNil(master)
         let result2 = try master.readFrame(socketReader: reader2)
         XCTAssertNil(result2, "closed socket must return nil")
@@ -310,18 +310,18 @@ class CborRelayTests: XCTestCase {
         let masterToSlave = createPipe()
         let slaveToMaster = createPipe()
 
-        let reqId1 = CborMessageId.newUUID()
-        let reqId2 = CborMessageId.newUUID()
-        let respId = CborMessageId.newUUID()
+        let reqId1 = MessageId.newUUID()
+        let reqId2 = MessageId.newUUID()
+        let respId = MessageId.newUUID()
 
-        let masterWriter = CborFrameWriter(handle: masterToSlave.write)
-        let slaveSocketReader = CborFrameReader(handle: masterToSlave.read)
-        let slaveSocketWriter = CborFrameWriter(handle: slaveToMaster.write)
-        let masterReader = CborFrameReader(handle: slaveToMaster.read)
+        let masterWriter = FrameWriter(handle: masterToSlave.write)
+        let slaveSocketReader = FrameReader(handle: masterToSlave.read)
+        let slaveSocketWriter = FrameWriter(handle: slaveToMaster.write)
+        let masterReader = FrameReader(handle: slaveToMaster.read)
 
         // Master writes 2 REQ frames
-        let req1 = CborFrame.req(id: reqId1, capUrn: "cap:op=a", payload: "data-a".data(using: .utf8)!, contentType: "text/plain")
-        let req2 = CborFrame.req(id: reqId2, capUrn: "cap:op=b", payload: "data-b".data(using: .utf8)!, contentType: "text/plain")
+        let req1 = Frame.req(id: reqId1, capUrn: "cap:op=a", payload: "data-a".data(using: .utf8)!, contentType: "text/plain")
+        let req2 = Frame.req(id: reqId2, capUrn: "cap:op=b", payload: "data-b".data(using: .utf8)!, contentType: "text/plain")
         try masterWriter.write(req1)
         try masterWriter.write(req2)
         masterToSlave.write.closeFile()
@@ -335,8 +335,8 @@ class CborRelayTests: XCTestCase {
         XCTAssertEqual(f2.id, reqId2)
 
         // Slave writes response frames
-        let chunk = CborFrame.chunk(reqId: respId, streamId: "s1", seq: 0, payload: "resp-a".data(using: .utf8)!)
-        let end = CborFrame.end(id: respId)
+        let chunk = Frame.chunk(reqId: respId, streamId: "s1", seq: 0, payload: "resp-a".data(using: .utf8)!)
+        let end = Frame.end(id: respId)
         try slaveSocketWriter.write(chunk)
         try slaveSocketWriter.write(end)
         slaveToMaster.write.closeFile()

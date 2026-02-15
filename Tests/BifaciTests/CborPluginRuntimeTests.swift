@@ -4,7 +4,7 @@ import SwiftCBOR
 @testable import Bifaci
 
 // =============================================================================
-// CborPluginRuntime + CborCapArgumentValue Tests
+// PluginRuntime + CborCapArgumentValue Tests
 //
 // Covers TEST248-273 from plugin_runtime.rs and TEST274-283 from caller.rs
 // in the reference Rust implementation.
@@ -20,7 +20,7 @@ import SwiftCBOR
 
 /// Collect all CHUNK frame payloads from a frame stream
 @available(macOS 10.15.4, iOS 13.4, *)
-func collectFramePayloads(_ frames: AsyncStream<CborFrame>) async -> Data {
+func collectFramePayloads(_ frames: AsyncStream<Frame>) async -> Data {
     var accumulated = Data()
     for await frame in frames {
         if case .chunk = frame.frameType, let payload = frame.payload {
@@ -32,12 +32,12 @@ func collectFramePayloads(_ frames: AsyncStream<CborFrame>) async -> Data {
 
 /// Create a test frame stream with a single payload chunk
 @available(macOS 10.15.4, iOS 13.4, *)
-func createSinglePayloadStream(requestId: CborMessageId = .newUUID(), streamId: String = "test", mediaUrn: String = "media:bytes", data: Data) -> AsyncStream<CborFrame> {
-    return AsyncStream<CborFrame> { continuation in
-        continuation.yield(CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: mediaUrn))
-        continuation.yield(CborFrame.chunk(reqId: requestId, streamId: streamId, seq: 0, payload: data))
-        continuation.yield(CborFrame.streamEnd(reqId: requestId, streamId: streamId))
-        continuation.yield(CborFrame.end(id: requestId))
+func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: String = "test", mediaUrn: String = "media:bytes", data: Data) -> AsyncStream<Frame> {
+    return AsyncStream<Frame> { continuation in
+        continuation.yield(Frame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: mediaUrn))
+        continuation.yield(Frame.chunk(reqId: requestId, streamId: streamId, seq: 0, payload: data))
+        continuation.yield(Frame.streamEnd(reqId: requestId, streamId: streamId))
+        continuation.yield(Frame.end(id: requestId))
         continuation.finish()
     }
 }
@@ -79,9 +79,9 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST248: Register handler by exact cap URN and find it by the same URN
     func testRegisterAndFindHandler() {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:in=*;op=test;out=*") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:in=*;op=test;out=*") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -97,9 +97,9 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST249: register raw handler works with bytes directly without deserialization
     func testRawHandler() async throws {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:op=raw") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=raw") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -122,7 +122,7 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST250: register typed handler deserializes JSON and executes correctly
     func testTypedHandlerDeserialization() async throws {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
 
         runtime.register(capUrn: "cap:op=test") {
             (req: [String: String], _: CborStreamEmitter, _: CborPeerInvoker) async throws -> [String: String] in
@@ -146,7 +146,7 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST251: typed handler returns error for invalid JSON input
     func testTypedHandlerRejectsInvalidJson() async throws {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
 
         runtime.register(capUrn: "cap:op=test") {
             (req: [String: String], _: CborStreamEmitter, _: CborPeerInvoker) async throws -> Data in
@@ -170,24 +170,24 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST252: find_handler returns None for unregistered cap URNs
     func testFindHandlerUnknownCap() {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
         XCTAssertNil(runtime.findHandler(capUrn: "cap:op=nonexistent"),
             "unregistered cap must return nil")
     }
 
     // TEST270: Registering multiple handlers for different caps and finding each independently
     func testMultipleHandlers() async throws {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:op=alpha") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=alpha") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
             try emitter.emitCbor(.byteString([UInt8]("a".utf8)))
         }
-        runtime.registerRaw(capUrn: "cap:op=beta") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=beta") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
             try emitter.emitCbor(.byteString([UInt8]("b".utf8)))
         }
-        runtime.registerRaw(capUrn: "cap:op=gamma") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=gamma") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
             try emitter.emitCbor(.byteString([UInt8]("g".utf8)))
         }
@@ -216,13 +216,13 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST271: Handler replacing an existing registration for the same cap URN
     func testHandlerReplacement() async throws {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:op=test") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=test") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
             try emitter.emitCbor(.byteString([UInt8]("first".utf8)))
         }
-        runtime.registerRaw(capUrn: "cap:op=test") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=test") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
             try emitter.emitCbor(.byteString([UInt8]("second".utf8)))
         }
@@ -243,7 +243,7 @@ final class CborPluginRuntimeTests: XCTestCase {
         let noPeer = NoCborPeerInvoker()
 
         XCTAssertThrowsError(try noPeer.invoke(capUrn: "cap:op=test", arguments: [])) { error in
-            if let runtimeError = error as? CborPluginRuntimeError,
+            if let runtimeError = error as? PluginRuntimeError,
                case .peerRequestError(let msg) = runtimeError {
                 XCTAssertTrue(msg.lowercased().contains("not supported") || msg.lowercased().contains("cli mode"),
                     "error must indicate peer not supported: \(msg)")
@@ -266,21 +266,21 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST256: PluginRuntime with manifest JSON stores manifest data and parses when valid
     func testWithManifestJson() {
-        let runtime = CborPluginRuntime(manifestJSON: Self.testManifestJSON)
+        let runtime = PluginRuntime(manifestJSON: Self.testManifestJSON)
         XCTAssertFalse(runtime.manifestData.isEmpty, "manifestData must be populated")
-        // Note: "cap:op=test" may or may not parse as valid CborManifest depending on validation
+        // Note: "cap:op=test" may or may not parse as valid Manifest depending on validation
     }
 
     // TEST257: PluginRuntime with invalid JSON still creates runtime
     func testNewWithInvalidJson() {
-        let runtime = CborPluginRuntime(manifest: "not json".data(using: .utf8)!)
+        let runtime = PluginRuntime(manifest: "not json".data(using: .utf8)!)
         XCTAssertFalse(runtime.manifestData.isEmpty, "manifestData should store raw bytes")
         XCTAssertNil(runtime.parsedManifest, "invalid JSON should leave parsedManifest as nil")
     }
 
     // TEST258: PluginRuntime with valid manifest data creates runtime with parsed manifest
     func testWithManifestStruct() {
-        let runtime = CborPluginRuntime(manifest: Self.testManifestData)
+        let runtime = PluginRuntime(manifest: Self.testManifestData)
         XCTAssertFalse(runtime.manifestData.isEmpty)
         // parsedManifest may or may not be nil depending on whether "cap:op=test" validates
         // The key behavior is that manifestData is stored
@@ -336,7 +336,7 @@ final class CborPluginRuntimeTests: XCTestCase {
             contentType: "application/cbor",
             capUrn: "cap:in=media:string;textable;form=scalar;op=test;out=*"
         )) { error in
-            if let runtimeError = error as? CborPluginRuntimeError,
+            if let runtimeError = error as? PluginRuntimeError,
                case .deserializationError(let msg) = runtimeError {
                 XCTAssertTrue(msg.contains("No argument found matching"), "\(msg)")
             }
@@ -362,7 +362,7 @@ final class CborPluginRuntimeTests: XCTestCase {
             contentType: "application/cbor",
             capUrn: "cap:in=*;op=test;out=*"
         )) { error in
-            if let runtimeError = error as? CborPluginRuntimeError,
+            if let runtimeError = error as? PluginRuntimeError,
                case .deserializationError(let msg) = runtimeError {
                 XCTAssertTrue(msg.contains("must be an array"), "\(msg)")
             }
@@ -384,7 +384,7 @@ final class CborPluginRuntimeTests: XCTestCase {
             contentType: "application/cbor",
             capUrn: "not-a-cap-urn"
         )) { error in
-            if let runtimeError = error as? CborPluginRuntimeError,
+            if let runtimeError = error as? PluginRuntimeError,
                case .capUrnError = runtimeError {
                 // Expected - matches Rust behavior
             } else {
@@ -451,22 +451,22 @@ final class CborPluginRuntimeTests: XCTestCase {
 
     // TEST268: RuntimeError variants display correct messages
     func testRuntimeErrorDisplay() {
-        let err1 = CborPluginRuntimeError.noHandler("cap:op=missing")
+        let err1 = PluginRuntimeError.noHandler("cap:op=missing")
         XCTAssertTrue((err1.errorDescription ?? "").contains("cap:op=missing"))
 
-        let err2 = CborPluginRuntimeError.missingArgument("model")
+        let err2 = PluginRuntimeError.missingArgument("model")
         XCTAssertTrue((err2.errorDescription ?? "").contains("model"))
 
-        let err3 = CborPluginRuntimeError.unknownSubcommand("badcmd")
+        let err3 = PluginRuntimeError.unknownSubcommand("badcmd")
         XCTAssertTrue((err3.errorDescription ?? "").contains("badcmd"))
 
-        let err4 = CborPluginRuntimeError.manifestError("parse failed")
+        let err4 = PluginRuntimeError.manifestError("parse failed")
         XCTAssertTrue((err4.errorDescription ?? "").contains("parse failed"))
 
-        let err5 = CborPluginRuntimeError.peerRequestError("denied")
+        let err5 = PluginRuntimeError.peerRequestError("denied")
         XCTAssertTrue((err5.errorDescription ?? "").contains("denied"))
 
-        let err6 = CborPluginRuntimeError.peerResponseError("timeout")
+        let err6 = PluginRuntimeError.peerResponseError("timeout")
         XCTAssertTrue((err6.errorDescription ?? "").contains("timeout"))
     }
 
@@ -543,8 +543,8 @@ final class CborCapArgumentValueTests: XCTestCase {
 final class CborFilePathConversionTests: XCTestCase {
 
     // Helper to create test manifest with caps
-    private func createTestManifest(caps: [CborCapDefinition]) -> Data {
-        let manifest = CborManifest(
+    private func createTestManifest(caps: [CapDefinition]) -> Data {
+        let manifest = Manifest(
             name: "TestPlugin",
             version: "1.0.0",
             description: "Test plugin",
@@ -558,9 +558,9 @@ final class CborFilePathConversionTests: XCTestCase {
         urn: String,
         title: String,
         command: String,
-        args: [CborCapArg] = []
-    ) -> CborCapDefinition {
-        return CborCapDefinition(
+        args: [CapArg] = []
+    ) -> CapDefinition {
+        return CapDefinition(
             urn: urn,
             title: title,
             command: command,
@@ -573,9 +573,9 @@ final class CborFilePathConversionTests: XCTestCase {
     private func createArg(
         mediaUrn: String,
         required: Bool,
-        sources: [CborArgSource]
-    ) -> CborCapArg {
-        return CborCapArg(
+        sources: [ArgSource]
+    ) -> CapArg {
+        return CapArg(
             mediaUrn: mediaUrn,
             required: required,
             sources: sources,
@@ -605,10 +605,10 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Register handler that echoes payload
-        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -662,7 +662,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
         // Use reflection or manual extraction to test extractArgValue
@@ -700,9 +700,9 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -751,7 +751,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Pass glob pattern as JSON array
         let pattern = "\(tempDir.path)/*.txt"
@@ -808,7 +808,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = ["/nonexistent/file.pdf"]
 
@@ -841,9 +841,9 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -888,7 +888,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // CLI: plugin test /path/to/file (position 0 after subcommand)
         let cliArgs = [testFile.path]
@@ -918,7 +918,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = ["mlx-community/Llama-3.2-3B-Instruct-4bit"]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -948,7 +948,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Pass invalid JSON (not an array)
         let cliArgs = ["not a json array"]
@@ -982,7 +982,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Construct JSON array with both existing and non-existing files
         let pathsJSON = try JSONEncoder().encode([file1.path, file2Path.path])
@@ -1026,7 +1026,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1059,7 +1059,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1092,7 +1092,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1126,7 +1126,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Only provide position arg, no --file flag
         let cliArgs = [testFile.path]
@@ -1160,7 +1160,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Track what the handler receives using a class wrapper for thread-safe capture
         final class PayloadCapture: @unchecked Sendable {
@@ -1168,7 +1168,7 @@ final class CborFilePathConversionTests: XCTestCase {
         }
         let capture = PayloadCapture()
 
-        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -1222,7 +1222,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = ["[]"]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1267,7 +1267,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
 
@@ -1299,7 +1299,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = ["test value"]
         let payload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1363,7 +1363,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Glob pattern that matches nothing
         let pattern = "\(tempDir.path)/nonexistent_*.xyz"
@@ -1414,7 +1414,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Glob that matches both file and directory
         let pattern = "\(tempDir.path)/*"
@@ -1473,7 +1473,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Multiple patterns
         let pattern1 = "\(tempDir.path)/*.txt"
@@ -1539,7 +1539,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [linkFile.path]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1575,7 +1575,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
@@ -1603,7 +1603,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Invalid glob pattern (unclosed bracket)
         let pattern = "[invalid"
@@ -1644,7 +1644,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let cliArgs = [testFile.path]
 
@@ -1666,7 +1666,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
     // TEST395: Small payload (< max_chunk) produces correct CBOR arguments
     func test395_build_payload_small() throws {
-        let cap = CborCapDefinition(
+        let cap = CapDefinition(
             urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
@@ -1674,7 +1674,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let data = "small payload".data(using: .utf8)!
         let reader = InputStream(data: data)
@@ -1704,7 +1704,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
     // TEST396: Large payload (> max_chunk) accumulates across chunks correctly
     func test396_build_payload_large() throws {
-        let cap = CborCapDefinition(
+        let cap = CapDefinition(
             urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
@@ -1712,7 +1712,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Use small max_chunk to force multi-chunk
         let data = Data((0..<1000).map { UInt8($0 % 256) })
@@ -1734,7 +1734,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
     // TEST397: Empty reader produces valid empty CBOR arguments
     func test397_build_payload_empty() throws {
-        let cap = CborCapDefinition(
+        let cap = CapDefinition(
             urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
@@ -1742,7 +1742,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let reader = InputStream(data: Data())
 
@@ -1792,7 +1792,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
     // TEST398: IO error from reader propagates as error
     func test398_build_payload_io_error() {
-        let cap = CborCapDefinition(
+        let cap = CapDefinition(
             urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
@@ -1800,7 +1800,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         let reader = ErrorInputStream()
 
@@ -1834,7 +1834,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // CLI mode: pass file path as positional argument
         let cliArgs = [testFile.path]
@@ -1876,7 +1876,7 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
         // Mock stdin with Data (simulates piped binary)
         let mockStdin = InputStream(data: pdfContent)
@@ -1947,9 +1947,9 @@ final class CborFilePathConversionTests: XCTestCase {
         )
 
         let manifest = createTestManifest(caps: [cap])
-        let runtime = CborPluginRuntime(manifest: manifest)
+        let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.registerRaw(capUrn: cap.urn) { [resultHolder] (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: cap.urn) { [resultHolder] (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             // TRUE STREAMING: Relay frames and verify
             var total = Data()
             for await frame in stream {
@@ -1991,12 +1991,12 @@ final class CborFilePathConversionTests: XCTestCase {
         let peer = NoCborPeerInvoker()
 
         let maxChunk = 262144
-        let requestId = CborMessageId.newUUID()
+        let requestId = MessageId.newUUID()
         let streamId = "test-stream"
 
-        let inputStream = AsyncStream<CborFrame> { continuation in
+        let inputStream = AsyncStream<Frame> { continuation in
             // Send STREAM_START
-            continuation.yield(CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: "media:bytes"))
+            continuation.yield(Frame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: "media:bytes"))
 
             // Send CHUNK frames
             var offset = 0
@@ -2004,14 +2004,14 @@ final class CborFilePathConversionTests: XCTestCase {
             while offset < payloadBytes.count {
                 let chunkSize = min(payloadBytes.count - offset, maxChunk)
                 let chunk = payloadBytes.subdata(in: offset..<(offset + chunkSize))
-                continuation.yield(CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunk))
+                continuation.yield(Frame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: chunk))
                 offset += chunkSize
                 seq += 1
             }
 
             // Send STREAM_END and END
-            continuation.yield(CborFrame.streamEnd(reqId: requestId, streamId: streamId))
-            continuation.yield(CborFrame.end(id: requestId))
+            continuation.yield(Frame.streamEnd(reqId: requestId, streamId: streamId))
+            continuation.yield(Frame.end(id: requestId))
             continuation.finish()
         }
 

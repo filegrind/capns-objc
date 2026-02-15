@@ -4,13 +4,13 @@ import SwiftCBOR
 @testable import Bifaci
 
 // =============================================================================
-// CborPluginHost Multi-Plugin Runtime Tests
+// PluginHost Multi-Plugin Runtime Tests
 //
-// Tests the restructured CborPluginHost which manages N plugin binaries with
+// Tests the restructured PluginHost which manages N plugin binaries with
 // frame routing. These mirror the Rust PluginHostRuntime tests (TEST413-425).
 //
 // Test architecture:
-//   Engine task ←→ Relay pipes ←→ CborPluginHost.run() ←→ Plugin pipes ←→ Plugin task
+//   Engine task ←→ Relay pipes ←→ PluginHost.run() ←→ Plugin pipes ←→ Plugin task
 // =============================================================================
 
 @available(macOS 10.15.4, iOS 13.4, *)
@@ -24,8 +24,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     """
     nonisolated static let testManifestData = testManifestJSON.data(using: .utf8)!
 
-    nonisolated static func helloWithManifest(maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK) -> CborFrame {
-        return CborFrame.hello(maxFrame: maxFrame, maxChunk: maxChunk, manifest: testManifestData)
+    nonisolated static func helloWithManifest(maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK) -> Frame {
+        return Frame.hello(maxFrame: maxFrame, maxChunk: maxChunk, manifest: testManifestData)
     }
 
     nonisolated static func makeManifest(name: String, caps: [String]) -> Data {
@@ -33,14 +33,14 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         return "{\"name\":\"\(name)\",\"version\":\"1.0\",\"caps\":[\(capsJson)]}".data(using: .utf8)!
     }
 
-    nonisolated static func helloWith(manifest: Data, maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK) -> CborFrame {
-        return CborFrame.hello(maxFrame: maxFrame, maxChunk: maxChunk, manifest: manifest)
+    nonisolated static func helloWith(manifest: Data, maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK) -> Frame {
+        return Frame.hello(maxFrame: maxFrame, maxChunk: maxChunk, manifest: manifest)
     }
 
     /// Read a complete request: REQ + per-argument streams + END.
     nonisolated static func readCompleteRequest(
-        reader: CborFrameReader
-    ) throws -> (reqId: CborMessageId, cap: String, contentType: String, payload: Data) {
+        reader: FrameReader
+    ) throws -> (reqId: MessageId, cap: String, contentType: String, payload: Data) {
         let (reqId, cap, contentType, streams) = try readCompleteRequestStreams(reader: reader)
         var payload = Data()
         for (_, _, data) in streams {
@@ -50,13 +50,13 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     nonisolated static func readCompleteRequestStreams(
-        reader: CborFrameReader
-    ) throws -> (reqId: CborMessageId, cap: String, contentType: String, streams: [(streamId: String, mediaUrn: String, data: Data)]) {
+        reader: FrameReader
+    ) throws -> (reqId: MessageId, cap: String, contentType: String, streams: [(streamId: String, mediaUrn: String, data: Data)]) {
         guard let req = try reader.read() else {
-            throw CborPluginHostError.receiveFailed("No REQ frame")
+            throw PluginHostError.receiveFailed("No REQ frame")
         }
         guard req.frameType == .req else {
-            throw CborPluginHostError.handshakeFailed("Expected REQ, got \(req.frameType)")
+            throw PluginHostError.handshakeFailed("Expected REQ, got \(req.frameType)")
         }
 
         let reqId = req.id
@@ -70,7 +70,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
         while true {
             guard let frame = try reader.read() else {
-                throw CborPluginHostError.receiveFailed("Unexpected EOF reading request stream")
+                throw PluginHostError.receiveFailed("Unexpected EOF reading request stream")
             }
             switch frame.frameType {
             case .streamStart:
@@ -89,23 +89,23 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             case .end:
                 return (reqId, cap, contentType, streams)
             default:
-                throw CborPluginHostError.handshakeFailed("Unexpected frame type in request stream: \(frame.frameType)")
+                throw PluginHostError.handshakeFailed("Unexpected frame type in request stream: \(frame.frameType)")
             }
         }
     }
 
     /// Write a complete single-value response: STREAM_START + CHUNK + STREAM_END + END
     nonisolated static func writeResponse(
-        writer: CborFrameWriter,
-        reqId: CborMessageId,
+        writer: FrameWriter,
+        reqId: MessageId,
         payload: Data,
         streamId: String = "response-stream",
         mediaUrn: String = "media:bytes"
     ) throws {
-        try writer.write(CborFrame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: mediaUrn))
-        try writer.write(CborFrame.chunk(reqId: reqId, streamId: streamId, seq: 0, payload: payload))
-        try writer.write(CborFrame.streamEnd(reqId: reqId, streamId: streamId))
-        try writer.write(CborFrame.end(id: reqId, finalPayload: nil))
+        try writer.write(Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: mediaUrn))
+        try writer.write(Frame.chunk(reqId: reqId, streamId: streamId, seq: 0, payload: payload))
+        try writer.write(Frame.streamEnd(reqId: reqId, streamId: streamId))
+        try writer.write(Frame.end(id: reqId, finalPayload: nil))
     }
 
     // MARK: - Handshake Tests (TEST284, TEST290, TEST231-232)
@@ -115,20 +115,20 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
             guard let hostHello = try pluginReader.read() else {
-                throw CborPluginHostError.receiveFailed("No HELLO from host")
+                throw PluginHostError.receiveFailed("No HELLO from host")
             }
             guard hostHello.frameType == .hello else {
-                throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(hostHello.frameType)")
+                throw PluginHostError.handshakeFailed("Expected HELLO, got \(hostHello.frameType)")
             }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         let idx = try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -143,17 +143,17 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else {
-                throw CborPluginHostError.receiveFailed("No HELLO")
+                throw PluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: 500_000, maxChunk: 100_000, manifest: CborRuntimeTests.testManifestData))
+            try pluginWriter.write(Frame.hello(maxFrame: 500_000, maxChunk: 100_000, manifest: CborRuntimeTests.testManifestData))
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -167,24 +167,24 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else {
-                throw CborPluginHostError.receiveFailed("No HELLO")
+                throw PluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            try pluginWriter.write(Frame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         do {
             try host.attachPlugin(
                 stdinHandle: hostToPlugin.fileHandleForWriting,
                 stdoutHandle: pluginToHost.fileHandleForReading
             )
             XCTFail("Should have thrown handshake error due to missing manifest")
-        } catch let error as CborPluginHostError {
+        } catch let error as PluginHostError {
             if case .handshakeFailed(let msg) = error {
                 XCTAssertTrue(msg.contains("missing required manifest"), "Error should mention missing manifest: \(msg)")
             } else {
@@ -200,24 +200,24 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else {
-                throw CborPluginHostError.receiveFailed("No HELLO")
+                throw PluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(CborFrame.err(id: .uint(0), code: "WRONG", message: "Not a HELLO"))
+            try pluginWriter.write(Frame.err(id: .uint(0), code: "WRONG", message: "Not a HELLO"))
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         do {
             try host.attachPlugin(
                 stdinHandle: hostToPlugin.fileHandleForWriting,
                 stdoutHandle: pluginToHost.fileHandleForReading
             )
             XCTFail("Should have thrown handshake error")
-        } catch let error as CborPluginHostError {
+        } catch let error as PluginHostError {
             if case .handshakeFailed(let msg) = error {
                 XCTAssertTrue(msg.contains("Expected HELLO"))
             } else {
@@ -232,7 +232,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     // TEST413: registerPlugin adds to cap_table and findPluginForCap resolves it
     func testRegisterPluginAddsToCaptable() {
-        let host = CborPluginHost()
+        let host = PluginHost()
         host.registerPlugin(path: "/usr/bin/test", knownCaps: ["cap:op=convert"])
         XCTAssertNotNil(host.findPluginForCap("cap:op=convert"), "Registered cap must be found")
         XCTAssertNil(host.findPluginForCap("cap:op=unknown"), "Unregistered cap must not be found")
@@ -240,7 +240,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     // TEST414: capabilities returns empty initially
     func testCapabilitiesEmptyInitially() {
-        let host = CborPluginHost()
+        let host = PluginHost()
         // Capabilities are rebuilt from running plugins — no running plugins means empty
         let caps = host.capabilities
         XCTAssertTrue(caps.isEmpty || String(data: caps, encoding: .utf8) == "[]",
@@ -249,7 +249,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     // TEST425: findPluginForCap returns nil for unknown cap
     func testFindPluginForCapUnknown() {
-        let host = CborPluginHost()
+        let host = PluginHost()
         host.registerPlugin(path: "/test", knownCaps: ["cap:op=known"])
         XCTAssertNotNil(host.findPluginForCap("cap:op=known"))
         XCTAssertNil(host.findPluginForCap("cap:op=unknown"))
@@ -262,15 +262,15 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -296,24 +296,24 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         // Plugin: handshake + read REQ + write response
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Read REQ + streams + END from host
             let (reqId, cap, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
-            guard cap == "cap:op=test" else { throw CborPluginHostError.protocolError("Expected cap:op=test, got \(cap)") }
+            guard cap == "cap:op=test" else { throw PluginHostError.protocolError("Expected cap:op=test, got \(cap)") }
 
             // Write response
             try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId, payload: "hello-from-plugin".data(using: .utf8)!)
         }
 
         // Host: attach plugin + run
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -327,17 +327,17 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         }
 
         // Engine: write REQ, read response
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
         // Send argument stream
         let sid = "arg-0"
-        try engineWriter.write(CborFrame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: "request-data".data(using: .utf8)!))
-        try engineWriter.write(CborFrame.streamEnd(reqId: reqId, streamId: sid))
-        try engineWriter.write(CborFrame.end(id: reqId, finalPayload: nil))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: "request-data".data(using: .utf8)!))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: sid))
+        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         // Read response from plugin (via host relay)
         var responseData = Data()
@@ -365,29 +365,29 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         // Plugin: handshake, send heartbeat, then respond to REQ
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
 
             // Send a heartbeat to the host
-            let hbId = CborMessageId.newUUID()
-            try pluginWriter.write(CborFrame.heartbeat(id: hbId))
+            let hbId = MessageId.newUUID()
+            try pluginWriter.write(Frame.heartbeat(id: hbId))
 
             // Read heartbeat response from host
-            guard let hbResp = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No heartbeat response") }
-            guard hbResp.frameType == .heartbeat else { throw CborPluginHostError.protocolError("Expected heartbeat, got \(hbResp.frameType)") }
-            guard hbResp.id == hbId else { throw CborPluginHostError.protocolError("Heartbeat ID mismatch") }
+            guard let hbResp = try pluginReader.read() else { throw PluginHostError.receiveFailed("No heartbeat response") }
+            guard hbResp.frameType == .heartbeat else { throw PluginHostError.protocolError("Expected heartbeat, got \(hbResp.frameType)") }
+            guard hbResp.id == hbId else { throw PluginHostError.protocolError("Heartbeat ID mismatch") }
 
             // Read REQ and respond
             let (reqId, _, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
             try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId, payload: "ok".data(using: .utf8)!)
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -401,16 +401,16 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         }
 
         // Engine sends REQ
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
         let sid = "arg-0"
-        try engineWriter.write(CborFrame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: Data()))
-        try engineWriter.write(CborFrame.streamEnd(reqId: reqId, streamId: sid))
-        try engineWriter.write(CborFrame.end(id: reqId, finalPayload: nil))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: Data()))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: sid))
+        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         // Read response — should NOT contain any heartbeat frames
         var gotHeartbeat = false
@@ -446,28 +446,28 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let manifestA = CborRuntimeTests.makeManifest(name: "PluginA", caps: ["cap:op=alpha"])
         let manifestB = CborRuntimeTests.makeManifest(name: "PluginB", caps: ["cap:op=beta"])
 
-        let pluginAReader = CborFrameReader(handle: hostToPluginA.fileHandleForReading)
-        let pluginAWriter = CborFrameWriter(handle: pluginAToHost.fileHandleForWriting)
-        let pluginBReader = CborFrameReader(handle: hostToPluginB.fileHandleForReading)
-        let pluginBWriter = CborFrameWriter(handle: pluginBToHost.fileHandleForWriting)
+        let pluginAReader = FrameReader(handle: hostToPluginA.fileHandleForReading)
+        let pluginAWriter = FrameWriter(handle: pluginAToHost.fileHandleForWriting)
+        let pluginBReader = FrameReader(handle: hostToPluginB.fileHandleForReading)
+        let pluginBWriter = FrameWriter(handle: pluginBToHost.fileHandleForWriting)
 
         let taskA = Task.detached { @Sendable [manifestA] in
-            guard let _ = try pluginAReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginAReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginAWriter.write(CborRuntimeTests.helloWith(manifest: manifestA))
             let (reqId, cap, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginAReader)
-            guard cap == "cap:op=alpha" else { throw CborPluginHostError.protocolError("Expected alpha, got \(cap)") }
+            guard cap == "cap:op=alpha" else { throw PluginHostError.protocolError("Expected alpha, got \(cap)") }
             try CborRuntimeTests.writeResponse(writer: pluginAWriter, reqId: reqId, payload: "from-A".data(using: .utf8)!)
         }
 
         let taskB = Task.detached { @Sendable [manifestB] in
-            guard let _ = try pluginBReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginBReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginBWriter.write(CborRuntimeTests.helloWith(manifest: manifestB))
             let (reqId, cap, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginBReader)
-            guard cap == "cap:op=beta" else { throw CborPluginHostError.protocolError("Expected beta, got \(cap)") }
+            guard cap == "cap:op=beta" else { throw PluginHostError.protocolError("Expected beta, got \(cap)") }
             try CborRuntimeTests.writeResponse(writer: pluginBWriter, reqId: reqId, payload: "from-B".data(using: .utf8)!)
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(stdinHandle: hostToPluginA.fileHandleForWriting, stdoutHandle: pluginAToHost.fileHandleForReading)
         try host.attachPlugin(stdinHandle: hostToPluginB.fileHandleForWriting, stdoutHandle: pluginBToHost.fileHandleForReading)
 
@@ -478,24 +478,24 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         // Send REQ for alpha
-        let alphaId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: alphaId, capUrn: "cap:op=alpha", payload: Data(), contentType: "application/cbor"))
-        try engineWriter.write(CborFrame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: alphaId, streamId: "a0", seq: 0, payload: Data()))
-        try engineWriter.write(CborFrame.streamEnd(reqId: alphaId, streamId: "a0"))
-        try engineWriter.write(CborFrame.end(id: alphaId, finalPayload: nil))
+        let alphaId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: alphaId, capUrn: "cap:op=alpha", payload: Data(), contentType: "application/cbor"))
+        try engineWriter.write(Frame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: alphaId, streamId: "a0", seq: 0, payload: Data()))
+        try engineWriter.write(Frame.streamEnd(reqId: alphaId, streamId: "a0"))
+        try engineWriter.write(Frame.end(id: alphaId, finalPayload: nil))
 
         // Send REQ for beta
-        let betaId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: betaId, capUrn: "cap:op=beta", payload: Data(), contentType: "application/cbor"))
-        try engineWriter.write(CborFrame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: Data()))
-        try engineWriter.write(CborFrame.streamEnd(reqId: betaId, streamId: "b0"))
-        try engineWriter.write(CborFrame.end(id: betaId, finalPayload: nil))
+        let betaId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: betaId, capUrn: "cap:op=beta", payload: Data(), contentType: "application/cbor"))
+        try engineWriter.write(Frame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: Data()))
+        try engineWriter.write(Frame.streamEnd(reqId: betaId, streamId: "b0"))
+        try engineWriter.write(Frame.end(id: betaId, finalPayload: nil))
 
         // Read responses
         var alphaData = Data()
@@ -527,17 +527,17 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
             // Plugin just waits — no request should arrive for unknown cap
             try await Task.sleep(nanoseconds: 1_000_000_000)
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -550,12 +550,12 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         // Send REQ for unknown cap
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=nonexistent", payload: Data(), contentType: "text/plain"))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=nonexistent", payload: Data(), contentType: "text/plain"))
 
         // Should receive ERR with NO_HANDLER
         let frame = try engineReader.read()
@@ -573,9 +573,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     // TEST293: PluginRuntime handler registration and lookup
     func testPluginRuntimeHandlerRegistration() throws {
-        let runtime = CborPluginRuntime(manifest: CborRuntimeTests.testManifestData)
+        let runtime = PluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:in=media:;out=media:") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:in=media:;out=media:") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             var data = Data()
             for await frame in stream {
                 if case .chunk = frame.frameType, let payload = frame.payload {
@@ -585,7 +585,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try emitter.emitCbor(.byteString([UInt8](data)))
         }
 
-        runtime.registerRaw(capUrn: "cap:op=transform") { (stream: AsyncStream<CborFrame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
+        runtime.registerRaw(capUrn: "cap:op=transform") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
             for await _ in stream { }
             try emitter.emitCbor(.byteString([UInt8]("transformed".utf8)))
         }
@@ -602,7 +602,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         host.registerPlugin(path: "/nonexistent/plugin/binary/path", knownCaps: ["cap:op=spawn-test"])
 
         let hostTask = Task.detached { @Sendable in
@@ -612,11 +612,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=spawn-test", payload: Data(), contentType: "text/plain"))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=spawn-test", payload: Data(), contentType: "text/plain"))
 
         let frame = try engineReader.read()
         XCTAssertNotNil(frame, "Must receive ERR frame for failed spawn")
@@ -634,43 +634,43 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "ContPlugin", caps: ["cap:op=cont"])
             ))
 
             // Read REQ
-            guard let req = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No REQ") }
-            guard req.frameType == .req else { throw CborPluginHostError.protocolError("Expected REQ") }
+            guard let req = try pluginReader.read() else { throw PluginHostError.receiveFailed("No REQ") }
+            guard req.frameType == .req else { throw PluginHostError.protocolError("Expected REQ") }
             let reqId = req.id
 
             // Read STREAM_START
-            guard let ss = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No STREAM_START") }
-            guard ss.frameType == .streamStart else { throw CborPluginHostError.protocolError("Expected STREAM_START, got \(ss.frameType)") }
-            guard ss.id == reqId else { throw CborPluginHostError.protocolError("STREAM_START req_id mismatch") }
+            guard let ss = try pluginReader.read() else { throw PluginHostError.receiveFailed("No STREAM_START") }
+            guard ss.frameType == .streamStart else { throw PluginHostError.protocolError("Expected STREAM_START, got \(ss.frameType)") }
+            guard ss.id == reqId else { throw PluginHostError.protocolError("STREAM_START req_id mismatch") }
 
             // Read CHUNK
-            guard let chunk = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No CHUNK") }
-            guard chunk.frameType == .chunk else { throw CborPluginHostError.protocolError("Expected CHUNK, got \(chunk.frameType)") }
-            guard chunk.payload == "payload-data".data(using: .utf8) else { throw CborPluginHostError.protocolError("CHUNK payload mismatch") }
+            guard let chunk = try pluginReader.read() else { throw PluginHostError.receiveFailed("No CHUNK") }
+            guard chunk.frameType == .chunk else { throw PluginHostError.protocolError("Expected CHUNK, got \(chunk.frameType)") }
+            guard chunk.payload == "payload-data".data(using: .utf8) else { throw PluginHostError.protocolError("CHUNK payload mismatch") }
 
             // Read STREAM_END
-            guard let se = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No STREAM_END") }
-            guard se.frameType == .streamEnd else { throw CborPluginHostError.protocolError("Expected STREAM_END, got \(se.frameType)") }
+            guard let se = try pluginReader.read() else { throw PluginHostError.receiveFailed("No STREAM_END") }
+            guard se.frameType == .streamEnd else { throw PluginHostError.protocolError("Expected STREAM_END, got \(se.frameType)") }
 
             // Read END
-            guard let end = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("No END") }
-            guard end.frameType == .end else { throw CborPluginHostError.protocolError("Expected END, got \(end.frameType)") }
+            guard let end = try pluginReader.read() else { throw PluginHostError.receiveFailed("No END") }
+            guard end.frameType == .end else { throw PluginHostError.protocolError("Expected END, got \(end.frameType)") }
 
             // Respond
             try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId, payload: "ok".data(using: .utf8)!)
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -683,15 +683,15 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=cont", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(CborFrame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: "payload-data".data(using: .utf8)!))
-        try engineWriter.write(CborFrame.streamEnd(reqId: reqId, streamId: "arg-0"))
-        try engineWriter.write(CborFrame.end(id: reqId, finalPayload: nil))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=cont", payload: Data(), contentType: "text/plain"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: "payload-data".data(using: .utf8)!))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "arg-0"))
+        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         var responseData = Data()
         while true {
@@ -715,11 +715,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "FwdPlugin", caps: ["cap:op=fwd"])
             ))
@@ -727,14 +727,14 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             let (reqId, _, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
 
             // Send diverse frame types back
-            try pluginWriter.write(CborFrame.log(id: reqId, level: "info", message: "processing"))
-            try pluginWriter.write(CborFrame.streamStart(reqId: reqId, streamId: "output", mediaUrn: "media:bytes"))
-            try pluginWriter.write(CborFrame.chunk(reqId: reqId, streamId: "output", seq: 0, payload: "data".data(using: .utf8)!))
-            try pluginWriter.write(CborFrame.streamEnd(reqId: reqId, streamId: "output"))
-            try pluginWriter.write(CborFrame.end(id: reqId, finalPayload: nil))
+            try pluginWriter.write(Frame.log(id: reqId, level: "info", message: "processing"))
+            try pluginWriter.write(Frame.streamStart(reqId: reqId, streamId: "output", mediaUrn: "media:bytes"))
+            try pluginWriter.write(Frame.chunk(reqId: reqId, streamId: "output", seq: 0, payload: "data".data(using: .utf8)!))
+            try pluginWriter.write(Frame.streamEnd(reqId: reqId, streamId: "output"))
+            try pluginWriter.write(Frame.end(id: reqId, finalPayload: nil))
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -747,17 +747,17 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=fwd", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(CborFrame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: Data()))
-        try engineWriter.write(CborFrame.streamEnd(reqId: reqId, streamId: "a0"))
-        try engineWriter.write(CborFrame.end(id: reqId, finalPayload: nil))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=fwd", payload: Data(), contentType: "text/plain"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: Data()))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0"))
+        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
-        var receivedTypes: [CborFrameType] = []
+        var receivedTypes: [FrameType] = []
         while true {
             guard let frame = try engineReader.read() else { break }
             receivedTypes.append(frame.frameType)
@@ -783,11 +783,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "DiePlugin", caps: ["cap:op=die"])
             ))
@@ -795,7 +795,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             pluginToHost.fileHandleForWriting.closeFile()
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -834,11 +834,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "DiePlugin", caps: ["cap:op=die"])
             ))
@@ -847,7 +847,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             pluginToHost.fileHandleForWriting.closeFile()
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -860,18 +860,18 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let reqId = CborMessageId.newUUID()
-        try engineWriter.write(CborFrame.req(id: reqId, capUrn: "cap:op=die", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(CborFrame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: "hello".data(using: .utf8)!))
-        try engineWriter.write(CborFrame.streamEnd(reqId: reqId, streamId: "a0"))
-        try engineWriter.write(CborFrame.end(id: reqId, finalPayload: nil))
+        let reqId = MessageId.newUUID()
+        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=die", payload: Data(), contentType: "text/plain"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: "hello".data(using: .utf8)!))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0"))
+        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         // Should receive ERR with PLUGIN_DIED
-        var errFrame: CborFrame?
+        var errFrame: Frame?
         while true {
             guard let frame = try engineReader.read() else { break }
             if frame.frameType == .err {
@@ -896,11 +896,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
-        let pluginReader = CborFrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = CborFrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
         let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else { throw CborPluginHostError.receiveFailed("") }
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "ConcPlugin", caps: ["cap:op=conc"])
             ))
@@ -915,7 +915,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try CborRuntimeTests.writeResponse(writer: pluginWriter, reqId: reqId1, payload: "response-1".data(using: .utf8)!, streamId: "s1")
         }
 
-        let host = CborPluginHost()
+        let host = PluginHost()
         try host.attachPlugin(
             stdinHandle: hostToPlugin.fileHandleForWriting,
             stdoutHandle: pluginToHost.fileHandleForReading
@@ -928,24 +928,24 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        let engineWriter = CborFrameWriter(handle: engineToHost.fileHandleForWriting)
-        let engineReader = CborFrameReader(handle: hostToEngine.fileHandleForReading)
+        let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
+        let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        let id0 = CborMessageId.newUUID()
-        let id1 = CborMessageId.newUUID()
+        let id0 = MessageId.newUUID()
+        let id1 = MessageId.newUUID()
 
         // Send both requests
-        try engineWriter.write(CborFrame.req(id: id0, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(CborFrame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: Data()))
-        try engineWriter.write(CborFrame.streamEnd(reqId: id0, streamId: "a0"))
-        try engineWriter.write(CborFrame.end(id: id0, finalPayload: nil))
+        try engineWriter.write(Frame.req(id: id0, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
+        try engineWriter.write(Frame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: Data()))
+        try engineWriter.write(Frame.streamEnd(reqId: id0, streamId: "a0"))
+        try engineWriter.write(Frame.end(id: id0, finalPayload: nil))
 
-        try engineWriter.write(CborFrame.req(id: id1, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(CborFrame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:bytes"))
-        try engineWriter.write(CborFrame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: Data()))
-        try engineWriter.write(CborFrame.streamEnd(reqId: id1, streamId: "a1"))
-        try engineWriter.write(CborFrame.end(id: id1, finalPayload: nil))
+        try engineWriter.write(Frame.req(id: id1, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
+        try engineWriter.write(Frame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: Data()))
+        try engineWriter.write(Frame.streamEnd(reqId: id1, streamId: "a1"))
+        try engineWriter.write(Frame.end(id: id1, finalPayload: nil))
 
         // Read both responses
         var data0 = Data()
@@ -974,12 +974,12 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // TEST316: concatenated() returns full payload while finalPayload returns only last chunk
     func testConcatenatedVsFinalPayloadDivergence() {
         let chunks = [
-            CborResponseChunk(payload: "AAAA".data(using: .utf8)!, seq: 0, offset: nil, len: nil, isEof: false),
-            CborResponseChunk(payload: "BBBB".data(using: .utf8)!, seq: 1, offset: nil, len: nil, isEof: false),
-            CborResponseChunk(payload: "CCCC".data(using: .utf8)!, seq: 2, offset: nil, len: nil, isEof: true),
+            ResponseChunk(payload: "AAAA".data(using: .utf8)!, seq: 0, offset: nil, len: nil, isEof: false),
+            ResponseChunk(payload: "BBBB".data(using: .utf8)!, seq: 1, offset: nil, len: nil, isEof: false),
+            ResponseChunk(payload: "CCCC".data(using: .utf8)!, seq: 2, offset: nil, len: nil, isEof: true),
         ]
 
-        let response = CborPluginResponse.streaming(chunks)
+        let response = PluginResponse.streaming(chunks)
         XCTAssertEqual(String(data: response.concatenated(), encoding: .utf8), "AAAABBBBCCCC")
         XCTAssertEqual(String(data: response.finalPayload!, encoding: .utf8), "CCCC")
         XCTAssertNotEqual(response.concatenated(), response.finalPayload!,

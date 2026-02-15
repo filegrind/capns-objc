@@ -49,14 +49,14 @@ final class CborIntegrationTests: XCTestCase {
     func testHandshakeHostPlugin() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
-        var pluginLimits: CborLimits?
+        var pluginLimits: Limits?
         let pluginSemaphore = DispatchSemaphore(value: 0)
 
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 let limits = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -70,8 +70,8 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         let result = try performHandshakeWithManifest(reader: reader, writer: writer)
         let receivedManifest = result.manifest!
@@ -94,8 +94,8 @@ final class CborIntegrationTests: XCTestCase {
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 _ = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -107,7 +107,7 @@ final class CborIntegrationTests: XCTestCase {
                 XCTAssertEqual(frame.cap, "cap:in=media:;out=media:")
                 XCTAssertEqual(frame.payload, "hello".data(using: .utf8))
 
-                try writer.write(CborFrame.end(id: frame.id, finalPayload: "hello back".data(using: .utf8)))
+                try writer.write(Frame.end(id: frame.id, finalPayload: "hello back".data(using: .utf8)))
             } catch {
                 XCTFail("Plugin thread failed: \(error)")
             }
@@ -115,13 +115,13 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
-        let requestId = CborMessageId.newUUID()
-        try writer.write(CborFrame.req(id: requestId, capUrn: "cap:in=media:;out=media:",
+        let requestId = MessageId.newUUID()
+        try writer.write(Frame.req(id: requestId, capUrn: "cap:in=media:;out=media:",
                                        payload: "hello".data(using: .utf8)!,
                                        contentType: "application/json"))
 
@@ -144,8 +144,8 @@ final class CborIntegrationTests: XCTestCase {
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 _ = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -156,12 +156,12 @@ final class CborIntegrationTests: XCTestCase {
                 let requestId = frame.id
 
                 let sid = "response"
-                try writer.write(CborFrame.streamStart(reqId: requestId, streamId: sid, mediaUrn: "media:bytes"))
+                try writer.write(Frame.streamStart(reqId: requestId, streamId: sid, mediaUrn: "media:bytes"))
                 for (seq, data) in [Data("chunk1".utf8), Data("chunk2".utf8), Data("chunk3".utf8)].enumerated() {
-                    try writer.write(CborFrame.chunk(reqId: requestId, streamId: sid, seq: UInt64(seq), payload: data))
+                    try writer.write(Frame.chunk(reqId: requestId, streamId: sid, seq: UInt64(seq), payload: data))
                 }
-                try writer.write(CborFrame.streamEnd(reqId: requestId, streamId: sid))
-                try writer.write(CborFrame.end(id: requestId, finalPayload: nil))
+                try writer.write(Frame.streamEnd(reqId: requestId, streamId: sid))
+                try writer.write(Frame.end(id: requestId, finalPayload: nil))
             } catch {
                 XCTFail("Plugin thread failed: \(error)")
             }
@@ -169,13 +169,13 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
-        let requestId = CborMessageId.newUUID()
-        try writer.write(CborFrame.req(id: requestId, capUrn: "cap:op=stream",
+        let requestId = MessageId.newUUID()
+        try writer.write(Frame.req(id: requestId, capUrn: "cap:op=stream",
                                        payload: Data("go".utf8),
                                        contentType: "application/json"))
 
@@ -208,8 +208,8 @@ final class CborIntegrationTests: XCTestCase {
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 _ = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -219,7 +219,7 @@ final class CborIntegrationTests: XCTestCase {
                 }
                 XCTAssertEqual(frame.frameType, .heartbeat)
 
-                try writer.write(CborFrame.heartbeat(id: frame.id))
+                try writer.write(Frame.heartbeat(id: frame.id))
             } catch {
                 XCTFail("Plugin thread failed: \(error)")
             }
@@ -227,13 +227,13 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
-        let heartbeatId = CborMessageId.newUUID()
-        try writer.write(CborFrame.heartbeat(id: heartbeatId))
+        let heartbeatId = MessageId.newUUID()
+        try writer.write(Frame.heartbeat(id: heartbeatId))
 
         guard let response = try reader.read() else {
             XCTFail("Expected response")
@@ -249,14 +249,14 @@ final class CborIntegrationTests: XCTestCase {
     func testLimitsNegotiation() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
-        var pluginLimits: CborLimits?
+        var pluginLimits: Limits?
         let pluginSemaphore = DispatchSemaphore(value: 0)
 
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 pluginLimits = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
             } catch {
@@ -266,8 +266,8 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         let result = try performHandshakeWithManifest(reader: reader, writer: writer)
         let hostLimits = result.limits
@@ -291,8 +291,8 @@ final class CborIntegrationTests: XCTestCase {
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 _ = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -307,7 +307,7 @@ final class CborIntegrationTests: XCTestCase {
                     XCTAssertEqual(byte, UInt8(i), "Byte mismatch at position \(i)")
                 }
 
-                try writer.write(CborFrame.end(id: frame.id, finalPayload: payload))
+                try writer.write(Frame.end(id: frame.id, finalPayload: payload))
             } catch {
                 XCTFail("Plugin thread failed: \(error)")
             }
@@ -315,13 +315,13 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
-        let requestId = CborMessageId.newUUID()
-        try writer.write(CborFrame.req(id: requestId, capUrn: "cap:op=binary",
+        let requestId = MessageId.newUUID()
+        try writer.write(Frame.req(id: requestId, capUrn: "cap:op=binary",
                                        payload: binaryData,
                                        contentType: "application/octet-stream"))
 
@@ -343,14 +343,14 @@ final class CborIntegrationTests: XCTestCase {
     func testMessageIdUniqueness() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
-        var receivedIds: [CborMessageId] = []
+        var receivedIds: [MessageId] = []
         let pluginSemaphore = DispatchSemaphore(value: 0)
 
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 _ = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -360,7 +360,7 @@ final class CborIntegrationTests: XCTestCase {
                         return
                     }
                     receivedIds.append(frame.id)
-                    try writer.write(CborFrame.end(id: frame.id, finalPayload: Data("ok".utf8)))
+                    try writer.write(Frame.end(id: frame.id, finalPayload: Data("ok".utf8)))
                 }
             } catch {
                 XCTFail("Plugin thread failed: \(error)")
@@ -369,14 +369,14 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
         for _ in 0..<3 {
-            let requestId = CborMessageId.newUUID()
-            try writer.write(CborFrame.req(id: requestId, capUrn: "cap:op=test",
+            let requestId = MessageId.newUUID()
+            try writer.write(Frame.req(id: requestId, capUrn: "cap:op=test",
                                            payload: Data(),
                                            contentType: "application/json"))
             _ = try reader.read()
@@ -401,8 +401,8 @@ final class CborIntegrationTests: XCTestCase {
         // Plugin thread
         DispatchQueue.global().async {
             do {
-                let reader = CborFrameReader(handle: pluginRead)
-                let writer = CborFrameWriter(handle: pluginWrite)
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
 
                 _ = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
 
@@ -412,7 +412,7 @@ final class CborIntegrationTests: XCTestCase {
                 }
                 XCTAssert(frame.payload == nil || frame.payload!.isEmpty, "empty payload must arrive empty")
 
-                try writer.write(CborFrame.end(id: frame.id, finalPayload: Data()))
+                try writer.write(Frame.end(id: frame.id, finalPayload: Data()))
             } catch {
                 XCTFail("Plugin thread failed: \(error)")
             }
@@ -420,13 +420,13 @@ final class CborIntegrationTests: XCTestCase {
         }
 
         // Host side
-        let reader = CborFrameReader(handle: hostRead)
-        let writer = CborFrameWriter(handle: hostWrite)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
 
         _ = try performHandshakeWithManifest(reader: reader, writer: writer)
 
-        let requestId = CborMessageId.newUUID()
-        try writer.write(CborFrame.req(id: requestId, capUrn: "cap:op=empty",
+        let requestId = MessageId.newUUID()
+        try writer.write(Frame.req(id: requestId, capUrn: "cap:op=empty",
                                        payload: Data(),
                                        contentType: "application/json"))
 
