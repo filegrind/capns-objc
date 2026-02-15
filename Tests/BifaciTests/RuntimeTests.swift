@@ -165,7 +165,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
                 throw PluginHostError.receiveFailed("NO HELLO")
             }
             let limits = Limits(maxFrame: 500_000, maxChunk: 100_000, maxReorderBuffer: 64)
-            try pluginWriter.write(Frame.helloWithManifest(limits: limits, manifestJSON: CborRuntimeTests.testManifestData))
+            try pluginWriter.write(Frame.helloWithManifest(limits: limits, manifest: CborRuntimeTests.testManifestData))
         }
 
         let host = PluginHost()
@@ -505,8 +505,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let alphaId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: alphaId, capUrn: "cap:op=alpha", payload: Data(), contentType: "application/cbor"))
         try engineWriter.write(Frame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:bytes"))
-        try writeChunk(writer: engineWriter, reqId: alphaId, streamId: "a0", seq: 0, payload: Data(), chunkIndex: 0)
-        try writeStreamEnd(writer: engineWriter, reqId: alphaId, streamId: "a0", chunkCount: 1)
+        try Self.writeChunk(writer: engineWriter, reqId: alphaId, streamId: "a0", seq: 0, payload: Data(), chunkIndex: 0)
+        try Self.writeStreamEnd(writer: engineWriter, reqId: alphaId, streamId: "a0", chunkCount: 1)
         try engineWriter.write(Frame.end(id: alphaId, finalPayload: nil))
 
         // Send REQ for beta
@@ -596,13 +596,13 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     func testPluginRuntimeHandlerRegistration() throws {
         let runtime = PluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
-        runtime.register(capUrn: "cap:in=media:;out=media:") { (input: InputPackage, output: OutputStream, _: PeerInvoker) throws -> Void in
+        runtime.register(capUrn: "cap:in=media:;out=media:") { (input: InputPackage, output: Bifaci.OutputStream, _: PeerInvoker) throws -> Void in
             let data = try input.collectAllBytes()
             try output.write(data)
             try output.close()
         }
 
-        runtime.register(capUrn: "cap:op=transform") { (input: InputPackage, output: OutputStream, _: PeerInvoker) throws -> Void in
+        runtime.register(capUrn: "cap:op=transform") { (input: InputPackage, output: Bifaci.OutputStream, _: PeerInvoker) throws -> Void in
             _ = try input.collectAllBytes()
             try output.write("transformed".data(using: .utf8)!)
             try output.close()
@@ -707,8 +707,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=cont", payload: Data(), contentType: "text/plain"))
         try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:bytes"))
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: "payload-data".data(using: .utf8)!))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "arg-0"))
+        let chunkPayload = "payload-data".data(using: .utf8)!
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload)))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "arg-0", chunkCount: 1))
         try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         var responseData = Data()
@@ -747,8 +748,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             // Send diverse frame types back
             try pluginWriter.write(Frame.log(id: reqId, level: "info", message: "processing"))
             try pluginWriter.write(Frame.streamStart(reqId: reqId, streamId: "output", mediaUrn: "media:bytes"))
-            try pluginWriter.write(Frame.chunk(reqId: reqId, streamId: "output", seq: 0, payload: "data".data(using: .utf8)!))
-            try pluginWriter.write(Frame.streamEnd(reqId: reqId, streamId: "output"))
+            let payload = "data".data(using: .utf8)!
+            try pluginWriter.write(Frame.chunk(reqId: reqId, streamId: "output", seq: 0, payload: payload, chunkIndex: 0, checksum: Frame.computeChecksum(payload)))
+            try pluginWriter.write(Frame.streamEnd(reqId: reqId, streamId: "output", chunkCount: 1))
             try pluginWriter.write(Frame.end(id: reqId, finalPayload: nil))
         }
 
@@ -771,8 +773,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=fwd", payload: Data(), contentType: "text/plain"))
         try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: Data()))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0"))
+        let emptyPayload = Data()
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: Frame.computeChecksum(emptyPayload)))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1))
         try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         var receivedTypes: [FrameType] = []

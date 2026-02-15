@@ -58,8 +58,7 @@ class CborRelayTests: XCTestCase {
         // Slave sends RelayNotify
         let frame = Frame.relayNotify(
             manifest: manifest,
-            maxFrame: limits.maxFrame,
-            maxChunk: limits.maxChunk
+            limits: limits
         )
         try socketWriter.write(frame)
         socket.write.closeFile()
@@ -126,7 +125,8 @@ class CborRelayTests: XCTestCase {
 
         // Runtime sends a CHUNK through the local write
         let chunkId = MessageId.newUUID()
-        let chunk = Frame.chunk(reqId: chunkId, streamId: "stream-1", seq: 0, payload: "response".data(using: .utf8)!)
+        let chunkPayload = "response".data(using: .utf8)!
+        let chunk = Frame.chunk(reqId: chunkId, streamId: "stream-1", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload))
         let runtimeWriter = FrameWriter(handle: runtimeToSlave.write)
         try runtimeWriter.write(chunk)
         runtimeToSlave.write.closeFile()
@@ -205,7 +205,8 @@ class CborRelayTests: XCTestCase {
         try RelaySlave.sendNotify(socketWriter: socketWriter, manifest: initial, limits: limits)
 
         // Forward a normal CHUNK frame
-        let chunk = Frame.chunk(reqId: .newUUID(), streamId: "stream-1", seq: 0, payload: "data".data(using: .utf8)!)
+        let chunkPay = "data".data(using: .utf8)!
+        let chunk = Frame.chunk(reqId: .newUUID(), streamId: "stream-1", seq: 0, payload: chunkPay, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPay))
         try socketWriter.write(chunk)
 
         // Inject updated RelayNotify (new cap discovered)
@@ -240,7 +241,7 @@ class CborRelayTests: XCTestCase {
 
         // Initial RelayNotify
         let initialManifest = "{\"caps\":[\"cap:op=a\"]}".data(using: .utf8)!
-        let initial = Frame.relayNotify(manifest: initialManifest, maxFrame: limits.maxFrame, maxChunk: limits.maxChunk)
+        let initial = Frame.relayNotify(manifest: initialManifest, limits: limits)
         try socketWriter.write(initial)
 
         // Normal frame
@@ -249,7 +250,8 @@ class CborRelayTests: XCTestCase {
 
         // Updated RelayNotify with new limits
         let updatedManifest = "{\"caps\":[\"cap:op=a\",\"cap:op=b\"]}".data(using: .utf8)!
-        let updated = Frame.relayNotify(manifest: updatedManifest, maxFrame: 3_000_000, maxChunk: 200_000)
+        let updatedLimits = Limits(maxFrame: 3_000_000, maxChunk: 200_000, maxReorderBuffer: 64)
+        let updated = Frame.relayNotify(manifest: updatedManifest, limits: updatedLimits)
         try socketWriter.write(updated)
 
         // Another normal frame
@@ -292,7 +294,7 @@ class CborRelayTests: XCTestCase {
         let writer2 = FrameWriter(handle: pipe2.write)
         let reader2 = FrameReader(handle: pipe2.read)
 
-        let notify = Frame.relayNotify(manifest: "[]".data(using: .utf8)!, maxFrame: Limits().maxFrame, maxChunk: Limits().maxChunk)
+        let notify = Frame.relayNotify(manifest: "[]".data(using: .utf8)!, limits: Limits())
         try writer2.write(notify)
         pipe2.write.closeFile()
 
@@ -335,7 +337,8 @@ class CborRelayTests: XCTestCase {
         XCTAssertEqual(f2.id, reqId2)
 
         // Slave writes response frames
-        let chunk = Frame.chunk(reqId: respId, streamId: "s1", seq: 0, payload: "resp-a".data(using: .utf8)!)
+        let respPayload = "resp-a".data(using: .utf8)!
+        let chunk = Frame.chunk(reqId: respId, streamId: "s1", seq: 0, payload: respPayload, chunkIndex: 0, checksum: Frame.computeChecksum(respPayload))
         let end = Frame.end(id: respId)
         try slaveSocketWriter.write(chunk)
         try slaveSocketWriter.write(end)
