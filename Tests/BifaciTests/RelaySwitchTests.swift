@@ -13,8 +13,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let manifestBytes = try JSONSerialization.data(withJSONObject: manifestJSON)
         let notify = Frame.relayNotify(
             manifest: manifestBytes,
-            maxFrame: limits.maxFrame,
-            maxChunk: limits.maxChunk
+            limits: limits
         )
         try writer.write(notify)
     }
@@ -29,8 +28,8 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn mock slave that sends RelayNotify then echoes frames
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: slaveSocks.read)
-            let writer = FrameWriter(handle: slaveSocks.write)
+            var reader = FrameReader(handle: slaveSocks.read, limits: Limits())
+            let writer = FrameWriter(handle: slaveSocks.write, limits: Limits())
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
@@ -47,12 +46,12 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
 
         // Create RelaySwitch
-        let switch_ = try RelaySwitch(sockets: [CborSocketPair(read: engineSocks.read, write: engineSocks.write)])
+        let switch_ = try RelaySwitch(sockets: [SocketPair(read: engineSocks.read, write: engineSocks.write)])
 
         // Send REQ
         let req = Frame.req(
-            id: MessageId(1),
-            cap: "cap:in=media:;out=media:",
+            id: MessageId.uint(1),
+            capUrn: "cap:in=media:;out=media:",
             payload: Data([1, 2, 3]),
             contentType: "text/plain"
         )
@@ -62,7 +61,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let response = try switch_.readFromMasters()
         XCTAssertNotNil(response)
         XCTAssertEqual(response?.frameType, .end)
-        XCTAssertEqual(response?.id.toString(), MessageId(1).toString())
+        XCTAssertEqual(response?.id.toString(), MessageId.uint(1).toString())
         XCTAssertEqual(response?.payload, Data([42]))
     }
 
@@ -79,8 +78,8 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn slave 1 (echo cap)
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: slaveSocks1.read)
-            let writer = FrameWriter(handle: slaveSocks1.write)
+            var reader = FrameReader(handle: slaveSocks1.read, limits: Limits())
+            let writer = FrameWriter(handle: slaveSocks1.write, limits: Limits())
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
@@ -96,8 +95,8 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Spawn slave 2 (double cap)
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: slaveSocks2.read)
-            let writer = FrameWriter(handle: slaveSocks2.write)
+            var reader = FrameReader(handle: slaveSocks2.read, limits: Limits())
+            let writer = FrameWriter(handle: slaveSocks2.write, limits: Limits())
 
             let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=double;out=\"media:void\""]]
             try! self.sendNotify(writer: writer, manifest: manifest, limits: Limits())
@@ -115,14 +114,14 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
         let switch_ = try RelaySwitch(sockets: [
-            CborSocketPair(read: engineSocks1.read, write: engineSocks1.write),
-            CborSocketPair(read: engineSocks2.read, write: engineSocks2.write),
+            SocketPair(read: engineSocks1.read, write: engineSocks1.write),
+            SocketPair(read: engineSocks2.read, write: engineSocks2.write),
         ])
 
         // Send REQ for echo cap → routes to master 1
         let req1 = Frame.req(
-            id: MessageId(1),
-            cap: "cap:in=media:;out=media:",
+            id: MessageId.uint(1),
+            capUrn: "cap:in=media:;out=media:",
             payload: Data(),
             contentType: "text/plain"
         )
@@ -133,8 +132,8 @@ final class CborRelaySwitchTests: XCTestCase {
 
         // Send REQ for double cap → routes to master 2
         let req2 = Frame.req(
-            id: MessageId(2),
-            cap: "cap:in=\"media:void\";op=double;out=\"media:void\"",
+            id: MessageId.uint(2),
+            capUrn: "cap:in=\"media:void\";op=double;out=\"media:void\"",
             payload: Data(),
             contentType: "text/plain"
         )
