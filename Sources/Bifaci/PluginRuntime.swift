@@ -417,6 +417,43 @@ private final class UnsafeTransfer<T>: @unchecked Sendable {
     }
 }
 
+/// Thread-safe blocking queue for bridging async streams to sync iterators.
+/// Used to stream frames from AsyncStream to handler threads.
+private final class BlockingQueue<T>: @unchecked Sendable {
+    private var queue: [T] = []
+    private let lock = NSLock()
+    private let condition = NSCondition()
+    private var finished = false
+
+    func enqueue(_ item: T) {
+        condition.lock()
+        queue.append(item)
+        condition.signal()
+        condition.unlock()
+    }
+
+    func dequeue() -> T? {
+        condition.lock()
+        defer { condition.unlock() }
+
+        while queue.isEmpty && !finished {
+            condition.wait()
+        }
+
+        if !queue.isEmpty {
+            return queue.removeFirst()
+        }
+        return nil
+    }
+
+    func finish() {
+        condition.lock()
+        finished = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
 /// Demux a single response stream from frame channel.
 /// Used by PeerCall.finish() to convert response frames into InputStream.
 private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) throws -> InputStream {
@@ -2112,37 +2149,25 @@ public final class PluginRuntime: @unchecked Sendable {
                 )
                 pendingIncomingLock.unlock()
 
-                // Spawn async task for handler
+                // Spawn handler thread immediately (matches Rust: spawn on REQ, stream frames)
                 let requestId = frame.id
                 let outputMediaUrn = cap.getOutSpec()
 
-                DispatchQueue.global().async {
-                    // Convert AsyncStream to frames array synchronously
-                    let framesBox = NSMutableArray()
-                    let group = DispatchGroup()
-                    group.enter()
+                Thread.detachNewThread {
+                    // Create blocking queue for frame delivery
+                    let framesQueue = BlockingQueue<Frame>()
 
-                    Thread.detachNewThread {
-                        let localGroup = DispatchGroup()
-                        localGroup.enter()
-                        Task {
-                            for await frame in stream {
-                                framesBox.add(frame)
-                            }
-                            localGroup.leave()
+                    // Spawn async task to feed frames into queue
+                    Task {
+                        for await frame in stream {
+                            framesQueue.enqueue(frame)
                         }
-                        localGroup.wait()
-                        group.leave()
+                        framesQueue.finish() // Signal no more frames
                     }
 
-                    group.wait()
-                    let allFrames = framesBox.compactMap { $0 as? Frame }
-                    var frameIndex = 0
+                    // Create iterator that reads from blocking queue
                     let frameIterator = AnyIterator<Frame> {
-                        guard frameIndex < allFrames.count else { return nil }
-                        let frame = allFrames[frameIndex]
-                        frameIndex += 1
-                        return frame
+                        return framesQueue.dequeue()
                     }
 
                     // Demux frames into InputPackage
