@@ -487,8 +487,8 @@ final class CborRelaySwitchTests: XCTestCase {
         // More specific request should NOT match less specific registered cap
         // (request is more specific, registered is less specific → no match)
         let req2 = Frame.req(
-            id: MessageId(2),
-            cap: "cap:in=\"media:text;utf8;normalized\";op=process;out=\"media:text\"",
+            id: MessageId.uint(2),
+            capUrn: "cap:in=\"media:text;utf8;normalized\";op=process;out=\"media:text\"",
             payload: Data(),
             contentType: "text/plain"
         )

@@ -157,10 +157,12 @@ final class CborIntegrationTests: XCTestCase {
 
                 let sid = "response"
                 try writer.write(Frame.streamStart(reqId: requestId, streamId: sid, mediaUrn: "media:bytes"))
-                for (seq, data) in [Data("chunk1".utf8), Data("chunk2".utf8), Data("chunk3".utf8)].enumerated() {
-                    try writer.write(Frame.chunk(reqId: requestId, streamId: sid, seq: UInt64(seq), payload: data))
+                let chunks = [Data("chunk1".utf8), Data("chunk2".utf8), Data("chunk3".utf8)]
+                for (idx, data) in chunks.enumerated() {
+                    let checksum = Frame.computeChecksum(data)
+                    try writer.write(Frame.chunk(reqId: requestId, streamId: sid, seq: UInt64(idx), payload: data, chunkIndex: UInt64(idx), checksum: checksum))
                 }
-                try writer.write(Frame.streamEnd(reqId: requestId, streamId: sid))
+                try writer.write(Frame.streamEnd(reqId: requestId, streamId: sid, chunkCount: UInt64(chunks.count)))
                 try writer.write(Frame.end(id: requestId, finalPayload: nil))
             } catch {
                 XCTFail("Plugin thread failed: \(error)")

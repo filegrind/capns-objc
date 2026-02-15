@@ -1140,7 +1140,7 @@ final class CborFrameTests: XCTestCase {
         let encoded = try encodeFrame(original)
         let decoded = try decodeFrame(encoded)
 
-        XCTAssertEqual(decoded.frameType, .relayNotify)
+        XCTAssertEqual(decoded.frameType, FrameType.relayNotify)
 
         let extractedManifest = decoded.relayNotifyManifest
         XCTAssertNotNil(extractedManifest, "manifest must survive roundtrip")

@@ -42,28 +42,7 @@ func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: Stri
     }
 }
 
-/// Test emitter that collects output for verification
-@available(macOS 10.15.4, iOS 13.4, *)
-final class TestStreamEmitter: CborStreamEmitter, @unchecked Sendable {
-        var collectedOutput = Data()
-
-        func emitCbor(_ value: CBOR) throws {
-            // Extract bytes from CBOR value
-            switch value {
-            case .byteString(let bytes):
-                collectedOutput.append(contentsOf: bytes)
-            case .utf8String(let str):
-                collectedOutput.append(contentsOf: str.utf8)
-            default:
-                // For other types, encode as CBOR
-                collectedOutput.append(contentsOf: value.encode())
-            }
-        }
-
-        func emitLog(level: String, message: String) {
-            // Ignored for tests
-        }
-}
+// TestStreamEmitter removed - handlers now use OutputStream directly
 
 @available(macOS 10.15.4, iOS 13.4, *)
 final class CborPluginRuntimeTests: XCTestCase {
@@ -81,14 +60,10 @@ final class CborPluginRuntimeTests: XCTestCase {
     func testRegisterAndFindHandler() {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:in=*;op=test;out=*") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
-            var data = Data()
-            for await frame in stream {
-                if case .chunk = frame.frameType, let payload = frame.payload {
-                    data.append(payload)
-                }
-            }
-            try emitter.emitCbor(.byteString([UInt8]("result".utf8)))
+        runtime.register(capUrn: "cap:in=*;op=test;out=*") { (input: InputPackage, output: OutputStream, _: PeerInvoker) throws -> Void in
+            let data = try input.collectAllBytes()
+            try output.emitCbor(.byteString([UInt8]("result".utf8)))
+            try output.close()
         }
 
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:in=*;op=test;out=*"),
@@ -1760,7 +1735,7 @@ final class CborFilePathConversionTests: XCTestCase {
     }
 
     // ErrorInputStream that simulates an IO error
-    class ErrorInputStream: InputStream {
+    class ErrorInputStream: Foundation.InputStream {
         private var _streamStatus: Stream.Status = .notOpen
         private var _streamError: Error?
 
