@@ -113,23 +113,27 @@ final class CborFrameTests: XCTestCase {
 
     // TEST180: Frame.hello without manifest produces correct HELLO frame for host side
     func testHelloFrame() {
-        let frame = Frame.hello(maxFrame: 1_000_000, maxChunk: 100_000)
+        let limits = Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)
+        let frame = Frame.hello(limits: limits)
         XCTAssertEqual(frame.frameType, .hello)
         XCTAssertEqual(frame.helloMaxFrame, 1_000_000)
         XCTAssertEqual(frame.helloMaxChunk, 100_000)
+        XCTAssertEqual(frame.helloMaxReorderBuffer, 64)
         XCTAssertNil(frame.helloManifest, "Host HELLO should not include manifest")
     }
 
-    // TEST181: Frame.hello with manifest produces HELLO with manifest bytes for plugin side
+    // TEST181: Frame.helloWithManifest produces HELLO with manifest bytes for plugin side
     func testHelloFrameWithManifest() {
         let manifestJSON = """
         {"name":"TestPlugin","version":"1.0.0","description":"Test","caps":[]}
         """
         let manifestData = manifestJSON.data(using: .utf8)!
-        let frame = Frame.hello(maxFrame: 1_000_000, maxChunk: 100_000, manifest: manifestData)
+        let limits = Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)
+        let frame = Frame.helloWithManifest(limits: limits, manifest: manifestData)
         XCTAssertEqual(frame.frameType, .hello)
         XCTAssertEqual(frame.helloMaxFrame, 1_000_000)
         XCTAssertEqual(frame.helloMaxChunk, 100_000)
+        XCTAssertEqual(frame.helloMaxReorderBuffer, 64)
         XCTAssertNotNil(frame.helloManifest, "Plugin HELLO must include manifest")
         XCTAssertEqual(frame.helloManifest, manifestData)
     }
@@ -152,14 +156,17 @@ final class CborFrameTests: XCTestCase {
 
     // TEST183: REMOVED - Frame.res() removed (old single-response protocol no longer supported)
 
-    // TEST184: Frame.chunk stores seq, streamId and payload for multiplexed streaming
+    // TEST184: Frame.chunk stores seq, streamId, payload, chunkIndex, and checksum for multiplexed streaming
     func testChunkFrame() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-123"
-        let frame = Frame.chunk(reqId: reqId, streamId: streamId, seq: 5, payload: "data".data(using: .utf8)!)
+        let payload = "data".data(using: .utf8)!
+        let frame = Frame.chunk(reqId: reqId, streamId: streamId, seq: 5, payload: payload, chunkIndex: 0, checksum: Frame.computeChecksum(payload))
         XCTAssertEqual(frame.frameType, .chunk)
         XCTAssertEqual(frame.streamId, streamId)
         XCTAssertEqual(frame.seq, 5)
+        XCTAssertEqual(frame.chunkIndex, 0)
+        XCTAssertNotNil(frame.checksum)
         XCTAssertFalse(frame.isEof)
     }
 
@@ -308,19 +315,19 @@ final class CborFrameTests: XCTestCase {
 
     // TEST200: Integer key constants match the protocol specification
     func testKeyConstants() {
-        XCTAssertEqual(CborFrameKey.version.rawValue, 0)
-        XCTAssertEqual(CborFrameKey.frameType.rawValue, 1)
-        XCTAssertEqual(CborFrameKey.id.rawValue, 2)
-        XCTAssertEqual(CborFrameKey.seq.rawValue, 3)
-        XCTAssertEqual(CborFrameKey.contentType.rawValue, 4)
-        XCTAssertEqual(CborFrameKey.meta.rawValue, 5)
-        XCTAssertEqual(CborFrameKey.payload.rawValue, 6)
-        XCTAssertEqual(CborFrameKey.len.rawValue, 7)
-        XCTAssertEqual(CborFrameKey.offset.rawValue, 8)
-        XCTAssertEqual(CborFrameKey.eof.rawValue, 9)
-        XCTAssertEqual(CborFrameKey.cap.rawValue, 10)
-        XCTAssertEqual(CborFrameKey.streamId.rawValue, 11)
-        XCTAssertEqual(CborFrameKey.mediaUrn.rawValue, 12)
+        XCTAssertEqual(FrameKey.version.rawValue, 0)
+        XCTAssertEqual(FrameKey.frameType.rawValue, 1)
+        XCTAssertEqual(FrameKey.id.rawValue, 2)
+        XCTAssertEqual(FrameKey.seq.rawValue, 3)
+        XCTAssertEqual(FrameKey.contentType.rawValue, 4)
+        XCTAssertEqual(FrameKey.meta.rawValue, 5)
+        XCTAssertEqual(FrameKey.payload.rawValue, 6)
+        XCTAssertEqual(FrameKey.len.rawValue, 7)
+        XCTAssertEqual(FrameKey.offset.rawValue, 8)
+        XCTAssertEqual(FrameKey.eof.rawValue, 9)
+        XCTAssertEqual(FrameKey.cap.rawValue, 10)
+        XCTAssertEqual(FrameKey.streamId.rawValue, 11)
+        XCTAssertEqual(FrameKey.mediaUrn.rawValue, 12)
     }
 
     // TEST201: hello_with_manifest preserves binary manifest data (not just JSON text)
@@ -769,8 +776,8 @@ final class CborFrameTests: XCTestCase {
     func testDecodeMissingVersion() throws {
         // Build CBOR map with frame_type and id but missing version
         let map = CBOR.map([
-            .unsignedInt(CborFrameKey.frameType.rawValue): .unsignedInt(1),
-            .unsignedInt(CborFrameKey.id.rawValue): .unsignedInt(0)
+            .unsignedInt(FrameKey.frameType.rawValue): .unsignedInt(1),
+            .unsignedInt(FrameKey.id.rawValue): .unsignedInt(0)
         ])
         let bytes = Data(map.encode())
 
@@ -786,9 +793,9 @@ final class CborFrameTests: XCTestCase {
     // TEST227: decode_frame rejects CBOR map with invalid frame_type value
     func testDecodeInvalidFrameTypeValue() throws {
         let map = CBOR.map([
-            .unsignedInt(CborFrameKey.version.rawValue): .unsignedInt(1),
-            .unsignedInt(CborFrameKey.frameType.rawValue): .unsignedInt(99),
-            .unsignedInt(CborFrameKey.id.rawValue): .unsignedInt(0)
+            .unsignedInt(FrameKey.version.rawValue): .unsignedInt(1),
+            .unsignedInt(FrameKey.frameType.rawValue): .unsignedInt(99),
+            .unsignedInt(FrameKey.id.rawValue): .unsignedInt(0)
         ])
         let bytes = Data(map.encode())
 
@@ -804,8 +811,8 @@ final class CborFrameTests: XCTestCase {
     // TEST228: decode_frame rejects CBOR map missing required id field
     func testDecodeMissingId() throws {
         let map = CBOR.map([
-            .unsignedInt(CborFrameKey.version.rawValue): .unsignedInt(1),
-            .unsignedInt(CborFrameKey.frameType.rawValue): .unsignedInt(1)
+            .unsignedInt(FrameKey.version.rawValue): .unsignedInt(1),
+            .unsignedInt(FrameKey.frameType.rawValue): .unsignedInt(1)
             // No ID field
         ])
         let bytes = Data(map.encode())

@@ -157,14 +157,15 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading, limits: Limits())
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting, limits: Limits())
 
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else {
-                throw PluginHostError.receiveFailed("No HELLO")
+                throw PluginHostError.receiveFailed("NO HELLO")
             }
-            try pluginWriter.write(Frame.hello(maxFrame: 500_000, maxChunk: 100_000, manifest: CborRuntimeTests.testManifestData))
+            let limits = Limits(maxFrame: 500_000, maxChunk: 100_000, maxReorderBuffer: 64)
+            try pluginWriter.write(Frame.helloWithManifest(limits: limits, manifestJSON: CborRuntimeTests.testManifestData))
         }
 
         let host = PluginHost()
@@ -181,14 +182,15 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
-        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading, limits: Limits())
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting, limits: Limits())
 
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else {
                 throw PluginHostError.receiveFailed("No HELLO")
             }
-            try pluginWriter.write(Frame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK))
+            let limits = Limits(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK, maxReorderBuffer: DEFAULT_MAX_REORDER_BUFFER)
+            try pluginWriter.write(Frame.hello(limits: limits))
         }
 
         let host = PluginHost()
@@ -511,8 +513,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let betaId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: betaId, capUrn: "cap:op=beta", payload: Data(), contentType: "application/cbor"))
         try engineWriter.write(Frame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:bytes"))
-        try engineWriter.write(Frame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: Data()))
-        try engineWriter.write(Frame.streamEnd(reqId: betaId, streamId: "b0"))
+        let betaPayload = Data()
+        try engineWriter.write(Frame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: betaPayload, chunkIndex: 0, checksum: Frame.computeChecksum(betaPayload)))
+        try engineWriter.write(Frame.streamEnd(reqId: betaId, streamId: "b0", chunkCount: 1))
         try engineWriter.write(Frame.end(id: betaId, finalPayload: nil))
 
         // Read responses
@@ -593,19 +596,16 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     func testPluginRuntimeHandlerRegistration() throws {
         let runtime = PluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
-        runtime.registerRaw(capUrn: "cap:in=media:;out=media:") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
-            var data = Data()
-            for await frame in stream {
-                if case .chunk = frame.frameType, let payload = frame.payload {
-                    data.append(payload)
-                }
-            }
-            try emitter.emitCbor(.byteString([UInt8](data)))
+        runtime.register(capUrn: "cap:in=media:;out=media:") { (input: InputPackage, output: OutputStream, _: PeerInvoker) throws -> Void in
+            let data = try input.collectAllBytes()
+            try output.write(data)
+            try output.close()
         }
 
-        runtime.registerRaw(capUrn: "cap:op=transform") { (stream: AsyncStream<Frame>, emitter: CborStreamEmitter, _: CborPeerInvoker) async throws -> Void in
-            for await _ in stream { }
-            try emitter.emitCbor(.byteString([UInt8]("transformed".utf8)))
+        runtime.register(capUrn: "cap:op=transform") { (input: InputPackage, output: OutputStream, _: PeerInvoker) throws -> Void in
+            _ = try input.collectAllBytes()
+            try output.write("transformed".data(using: .utf8)!)
+            try output.close()
         }
 
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:in=media:;out=media:"), "echo handler must be found")
