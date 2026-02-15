@@ -586,14 +586,10 @@ final class CborFilePathConversionTests: XCTestCase {
         let runtime = PluginRuntime(manifest: manifest)
 
         // Register handler that echoes payload
-        runtime.registerRaw(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { (stream: AsyncStream<Frame>, emitter: REMOVED_CborStreamEmitter, _: PeerInvoker) async throws -> Void in
-            var data = Data()
-            for await frame in stream {
-                if case .chunk = frame.frameType, let payload = frame.payload {
-                    data.append(payload)
-                }
-            }
-            try emitter.emitCbor(.byteString([UInt8](data)))
+        runtime.register(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { (input, output, _) in
+            let data = try input.collectAllBytes()
+            try output.write(data)
+            try output.close()
         }
 
         // Simulate CLI invocation: plugin process /path/to/file.pdf
@@ -680,14 +676,10 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<Frame>, emitter: REMOVED_CborStreamEmitter, _: PeerInvoker) async throws -> Void in
-            var data = Data()
-            for await frame in stream {
-                if case .chunk = frame.frameType, let payload = frame.payload {
-                    data.append(payload)
-                }
-            }
-            try emitter.emitCbor(.byteString([UInt8](data)))
+        runtime.register(capUrn: cap.urn) { (input, output, _) in
+            let data = try input.collectAllBytes()
+            try output.write(data)
+            try output.close()
         }
 
         let cliArgs = ["--file", testFile.path]
@@ -821,14 +813,10 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.registerRaw(capUrn: cap.urn) { (stream: AsyncStream<Frame>, emitter: REMOVED_CborStreamEmitter, _: PeerInvoker) async throws -> Void in
-            var data = Data()
-            for await frame in stream {
-                if case .chunk = frame.frameType, let payload = frame.payload {
-                    data.append(payload)
-                }
-            }
-            try emitter.emitCbor(.byteString([UInt8](data)))
+        runtime.register(capUrn: cap.urn) { (input, output, _) in
+            let data = try input.collectAllBytes()
+            try output.write(data)
+            try output.close()
         }
 
         // Simulate stdin data being available
@@ -1964,12 +1952,6 @@ final class CborFilePathConversionTests: XCTestCase {
         // Execute handler
         let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
         try handler(inputPackage, outputStream, peer)
-            continuation.yield(Frame.streamEnd(reqId: requestId, streamId: streamId))
-            continuation.yield(Frame.end(id: requestId))
-            continuation.finish()
-        }
-
-        try await handler(inputStream, emitter, peer)
 
         XCTAssertEqual(resultHolder.data, pdfContent, "Handler should receive chunked content")
     }

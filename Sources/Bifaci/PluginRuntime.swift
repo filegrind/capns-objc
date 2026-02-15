@@ -484,7 +484,7 @@ private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) th
 /// Demux multiple input streams from frame iterator into InputPackage.
 /// Groups frames by stream_id, yields InputStream for each stream.
 /// Used for incoming requests (plugin receiving from host).
-private func demuxMultiStream(frameIterator: AnyIterator<Frame>) -> InputPackage {
+internal func demuxMultiStream(frameIterator: AnyIterator<Frame>) -> InputPackage {
     // Track per-stream state
     class StreamState {
         var mediaUrn: String = "media:bytes"
