@@ -28,12 +28,16 @@ NSString * const CSMediaObjectArray = @"media:form=list;textable";
 NSString * const CSMediaBinary = @"media:bytes";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
-NSString * const CSMediaImage = @"media:image;png;bytes";
+NSString * const CSMediaPng = @"media:image;png;bytes";
+NSString * const CSMediaImage = @"media:image;png;bytes"; // alias for CSMediaPng
 NSString * const CSMediaAudio = @"media:wav;audio;bytes;";
 NSString * const CSMediaVideo = @"media:video;bytes";
 // Semantic AI input types
 NSString * const CSMediaAudioSpeech = @"media:audio;wav;bytes;speech";
 NSString * const CSMediaImageThumbnail = @"media:image;png;bytes;thumbnail";
+// Collection types
+NSString * const CSMediaCollection = @"media:collection;form=map";
+NSString * const CSMediaCollectionList = @"media:collection;form=list";
 // Document types (PRIMARY naming - type IS the format)
 NSString * const CSMediaPdf = @"media:pdf;bytes";
 NSString * const CSMediaEpub = @"media:epub;bytes";
@@ -53,8 +57,25 @@ NSString * const CSMediaModelRepo = @"media:model-repo;textable;form=map";
 // File path types
 NSString * const CSMediaFilePath = @"media:file-path;textable;form=scalar";
 NSString * const CSMediaFilePathArray = @"media:file-path;textable;form=list";
+// Semantic input types (continued)
+NSString * const CSMediaFrontmatterText = @"media:frontmatter;textable;form=scalar";
+NSString * const CSMediaMlxModelPath = @"media:mlx-model-path;textable;form=scalar";
 // Semantic output types
 NSString * const CSMediaModelDim = @"media:model-dim;integer;textable;numeric;form=scalar";
+NSString * const CSMediaDownloadOutput = @"media:download-result;textable;form=map";
+NSString * const CSMediaListOutput = @"media:model-list;textable;form=map";
+NSString * const CSMediaStatusOutput = @"media:model-status;textable;form=map";
+NSString * const CSMediaContentsOutput = @"media:model-contents;textable;form=map";
+NSString * const CSMediaAvailabilityOutput = @"media:model-availability;textable;form=map";
+NSString * const CSMediaPathOutput = @"media:model-path;textable;form=map";
+NSString * const CSMediaEmbeddingVector = @"media:embedding-vector;textable;form=map";
+NSString * const CSMediaLlmInferenceOutput = @"media:generated-text;textable;form=map";
+NSString * const CSMediaFileMetadata = @"media:file-metadata;textable;form=map";
+NSString * const CSMediaDocumentOutline = @"media:document-outline;textable;form=map";
+NSString * const CSMediaDisboundPage = @"media:disbound-page;textable;form=list";
+NSString * const CSMediaCaptionOutput = @"media:image-caption;textable;form=map";
+NSString * const CSMediaTranscriptionOutput = @"media:transcription;textable;form=map";
+NSString * const CSMediaVisionInferenceOutput = @"media:vision-inference-output;textable;form=map";
 NSString * const CSMediaDecision = @"media:decision;bool;textable;form=scalar";
 NSString * const CSMediaDecisionArray = @"media:decision;bool;textable;form=list";
 

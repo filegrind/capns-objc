@@ -48,12 +48,16 @@ FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:form=list;texta
 FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:bytes
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
-FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:image;png;bytes
+FOUNDATION_EXPORT NSString * const CSMediaPng;          // media:image;png;bytes
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:image;png;bytes (alias for CSMediaPng)
 FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;bytes;
 FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;bytes
 // Semantic AI input types
 FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;bytes;speech
 FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;bytes;thumbnail
+// Collection types
+FOUNDATION_EXPORT NSString * const CSMediaCollection;            // media:collection;form=map
+FOUNDATION_EXPORT NSString * const CSMediaCollectionList;        // media:collection;form=list
 // Document types (PRIMARY naming - type IS the format)
 FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;bytes
 FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub;bytes
@@ -73,10 +77,27 @@ FOUNDATION_EXPORT NSString * const CSMediaModelRepo;    // media:model-repo;text
 // File path types
 FOUNDATION_EXPORT NSString * const CSMediaFilePath;     // media:file-path;textable;form=scalar
 FOUNDATION_EXPORT NSString * const CSMediaFilePathArray; // media:file-path;textable;form=list
+// Semantic input types (continued)
+FOUNDATION_EXPORT NSString * const CSMediaFrontmatterText; // media:frontmatter;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaMlxModelPath;    // media:mlx-model-path;textable;form=scalar
 // Semantic output types
-FOUNDATION_EXPORT NSString * const CSMediaModelDim;     // media:model-dim;integer;textable;numeric;form=scalar
-FOUNDATION_EXPORT NSString * const CSMediaDecision;     // media:decision;bool;textable;form=scalar
-FOUNDATION_EXPORT NSString * const CSMediaDecisionArray;// media:decision;bool;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaModelDim;        // media:model-dim;integer;textable;numeric;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaDownloadOutput;  // media:download-result;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaListOutput;      // media:model-list;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaStatusOutput;    // media:model-status;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaContentsOutput;  // media:model-contents;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaAvailabilityOutput; // media:model-availability;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaPathOutput;      // media:model-path;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaEmbeddingVector; // media:embedding-vector;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaLlmInferenceOutput; // media:generated-text;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaFileMetadata;    // media:file-metadata;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaDocumentOutline; // media:document-outline;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaDisboundPage;    // media:disbound-page;textable;form=list
+FOUNDATION_EXPORT NSString * const CSMediaCaptionOutput;   // media:image-caption;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaTranscriptionOutput; // media:transcription;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaVisionInferenceOutput; // media:vision-inference-output;textable;form=map
+FOUNDATION_EXPORT NSString * const CSMediaDecision;        // media:decision;bool;textable;form=scalar
+FOUNDATION_EXPORT NSString * const CSMediaDecisionArray;   // media:decision;bool;textable;form=list
 
 // ============================================================================
 // STANDARD CAP URN CONSTANTS
