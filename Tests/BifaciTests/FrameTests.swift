@@ -642,7 +642,8 @@ final class CborFrameTests: XCTestCase {
             XCTAssertEqual(frame.frameType, .chunk)
             XCTAssertEqual(frame.id, id)
             XCTAssertEqual(frame.streamId, streamId)
-            XCTAssertEqual(frame.seq, chunkCount)
+            XCTAssertEqual(frame.seq, 0, "writeChunked emits seq=0; SeqAssigner assigns at output stage")
+            XCTAssertEqual(frame.chunkIndex, chunkCount, "chunk_index tracks chunk order")
 
             if chunkCount == 0 {
                 firstChunkHadLen = frame.len != nil

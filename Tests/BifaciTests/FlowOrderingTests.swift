@@ -253,19 +253,23 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST455: ReorderBuffer overflow triggers protocol error
-    func testReorderBufferOverflow() {
-        var buffer = ReorderBuffer(maxBufferPerFlow: 2)
+    func testReorderBufferOverflow() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 3)
         let rid = MessageId.newUUID()
-        let flow = FlowKey(rid: rid, xid: nil)
 
-        // Send seq 0, then skip to seq 10 (exceeds buffer capacity)
-        let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
-        let f10 = Frame.chunk(reqId: rid, streamId: "s1", seq: 10, payload: Data(), chunkIndex: 10, checksum: 0)
+        // Fill buffer to capacity with out-of-order frames (expectedSeq is 0, send 1,2,3)
+        _ = try buffer.accept(Frame.chunk(reqId: rid, streamId: "s1", seq: 1, payload: Data(), chunkIndex: 1, checksum: 0))
+        _ = try buffer.accept(Frame.chunk(reqId: rid, streamId: "s1", seq: 2, payload: Data(), chunkIndex: 2, checksum: 0))
+        _ = try buffer.accept(Frame.chunk(reqId: rid, streamId: "s1", seq: 3, payload: Data(), chunkIndex: 3, checksum: 0))
 
-        _ = try? buffer.accept( f0)
-
-        XCTAssertThrowsError(try buffer.accept( f10), "Buffer overflow must throw") { error in
-            XCTAssertTrue(error is FrameError, "Must throw FrameError")
+        // Overflow when trying to buffer 4th frame
+        XCTAssertThrowsError(try buffer.accept(Frame.chunk(reqId: rid, streamId: "s1", seq: 4, payload: Data(), chunkIndex: 4, checksum: 0)),
+                             "Buffer overflow must throw") { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected FrameError.protocolError, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("overflow"), "Error message must mention overflow")
         }
     }
 
@@ -338,13 +342,15 @@ final class FlowOrderingTests: XCTestCase {
         let flow = FlowKey(rid: rid, xid: nil)
 
         let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
-        let endFrame = Frame.end(id: rid, finalPayload: nil)
+        var endFrame = Frame.end(id: rid, finalPayload: nil)
+        endFrame.seq = 1  // Terminal frames have sequential seq numbers
 
         _ = try buffer.accept( f0)
         let outEnd = try buffer.accept( endFrame)
 
         XCTAssertEqual(outEnd.count, 1, "END frame must flow through")
         XCTAssertEqual(outEnd[0].frameType, FrameType.end)
+        XCTAssertEqual(outEnd[0].seq, 1, "END must have seq=1")
     }
 
     // TEST460: Terminal ERR frame flows through correctly
@@ -354,13 +360,15 @@ final class FlowOrderingTests: XCTestCase {
         let flow = FlowKey(rid: rid, xid: nil)
 
         let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
-        let errFrame = Frame.err(id: rid, code: "TEST_ERROR", message: "test")
+        var errFrame = Frame.err(id: rid, code: "TEST_ERROR", message: "test")
+        errFrame.seq = 1  // Terminal frames have sequential seq numbers
 
         _ = try buffer.accept( f0)
         let outErr = try buffer.accept( errFrame)
 
         XCTAssertEqual(outErr.count, 1, "ERR frame must flow through")
         XCTAssertEqual(outErr[0].frameType, FrameType.err)
+        XCTAssertEqual(outErr[0].seq, 1, "ERR must have seq=1")
     }
 
     // TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage

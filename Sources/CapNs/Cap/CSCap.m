@@ -900,7 +900,8 @@
     NSError *error;
     CSCapUrn *requestId = [CSCapUrn fromString:request error:&error];
     if (!requestId) return NO;
-    return [self.capUrn accepts:requestId];
+    // Request is pattern, self.capUrn (cap) is instance
+    return [requestId accepts:self.capUrn];
 }
 
 - (BOOL)conformsToRequest:(CSCapUrn *)request {

@@ -412,7 +412,6 @@ public class FrameWriter: @unchecked Sendable {
             return
         }
 
-        var seq: UInt64 = 0
         var chunkIndex: UInt64 = 0
         var offset = 0
 
@@ -423,10 +422,11 @@ public class FrameWriter: @unchecked Sendable {
             let chunkData = data.subdata(in: offset..<(offset + chunkSize))
             let checksum = Frame.computeChecksum(chunkData)
 
-            var frame = Frame.chunk(reqId: id, streamId: streamId, seq: seq, payload: chunkData, chunkIndex: chunkIndex, checksum: checksum)
+            // seq=0 for all chunks - SeqAssigner handles seq assignment at output stage
+            var frame = Frame.chunk(reqId: id, streamId: streamId, seq: 0, payload: chunkData, chunkIndex: chunkIndex, checksum: checksum)
             frame.offset = UInt64(offset)
 
-            // Set content_type and total len on first chunk
+            // Set content_type and total len on first chunk (chunk_index-based, not seq-based)
             if chunkIndex == 0 {
                 frame.contentType = contentType
                 frame.len = totalLen
@@ -438,7 +438,6 @@ public class FrameWriter: @unchecked Sendable {
 
             try writeFrame(frame, to: handle, limits: currentLimits)
 
-            seq += 1
             chunkIndex += 1
             offset += chunkSize
         }
@@ -459,8 +458,8 @@ public struct HandshakeResult: Sendable {
 /// Returns HandshakeResult containing negotiated limits and plugin manifest.
 @available(macOS 10.15.4, iOS 13.4, *)
 public func performHandshakeWithManifest(reader: FrameReader, writer: FrameWriter) throws -> HandshakeResult {
-    // Send our HELLO with default limits
-    let ourLimits = Limits()
+    // Send our HELLO with our current limits
+    let ourLimits = writer.getLimits()
     let ourHello = Frame.hello(limits: ourLimits)
     try writer.write(ourHello)
 
@@ -532,7 +531,7 @@ public func acceptHandshakeWithManifest(reader: FrameReader, writer: FrameWriter
     }
 
     // Negotiate minimum of both sides
-    let ourLimits = Limits()
+    let ourLimits = writer.getLimits()
     let limits = Limits(
         maxFrame: min(ourLimits.maxFrame, theirMaxFrame),
         maxChunk: min(ourLimits.maxChunk, theirMaxChunk),
@@ -540,7 +539,7 @@ public func acceptHandshakeWithManifest(reader: FrameReader, writer: FrameWriter
     )
 
     // Send our HELLO with manifest and negotiated limits
-    let ourHello = Frame.helloWithManifest(limits: limits, manifest: manifest)
+    let ourHello = Frame.helloWithManifest(limits: ourLimits, manifest: manifest)
     try writer.write(ourHello)
 
     // Update both reader and writer with negotiated limits

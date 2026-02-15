@@ -13,16 +13,17 @@
     return matches.firstObject;
 }
 
-+ (NSArray<CSCapUrn *> *)findAllMatchesInCaps:(NSArray<CSCapUrn *> *)caps 
++ (NSArray<CSCapUrn *> *)findAllMatchesInCaps:(NSArray<CSCapUrn *> *)caps
                                                   forRequest:(CSCapUrn *)request {
     NSMutableArray<CSCapUrn *> *matches = [NSMutableArray array];
-    
+
+    // Request is pattern, cap is instance
     for (CSCapUrn *cap in caps) {
-        if ([cap accepts:request]) {
+        if ([request accepts:cap]) {
             [matches addObject:cap];
         }
     }
-    
+
     return [self sortCapsBySpecificity:matches];
 }
 
@@ -52,8 +53,8 @@
 + (BOOL)cap:(CSCapUrn *)cap
     acceptsRequest:(CSCapUrn *)request
          withContext:(nullable NSDictionary<NSString *, id> *)context {
-    // Basic cap matching
-    if (![cap accepts:request]) {
+    // Basic cap matching - request is pattern, cap is instance
+    if (![request accepts:cap]) {
         return NO;
     }
     

@@ -269,11 +269,11 @@
     XCTAssertNotNil(generalRequest);
     XCTAssertNotNil(wildcardRequest);
 
-    // Specific cap should handle general request
-    XCTAssertTrue([specificCap accepts:generalRequest]);
+    // General request (pattern) should accept specific cap (instance)
+    XCTAssertTrue([generalRequest accepts:specificCap]);
 
-    // Specific cap should handle wildcard request
-    XCTAssertTrue([specificCap accepts:wildcardRequest]);
+    // Wildcard request (pattern) should accept specific cap (instance)
+    XCTAssertTrue([wildcardRequest accepts:specificCap]);
 
     // Check specificity (includes in + out now)
     XCTAssertTrue([specificCap isMoreSpecificThan:generalRequest]);

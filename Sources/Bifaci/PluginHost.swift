@@ -390,7 +390,8 @@ public final class PluginHost: @unchecked Sendable {
         guard let requestUrn = try? CSCapUrn.fromString(capUrn) else { return nil }
         for (registeredCap, idx) in capTable {
             if let registeredUrn = try? CSCapUrn.fromString(registeredCap) {
-                if registeredUrn.accepts(requestUrn) { return idx }
+                // Request is pattern, registered cap is instance
+                if requestUrn.accepts(registeredUrn) { return idx }
             }
         }
 
