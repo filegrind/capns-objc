@@ -75,4 +75,12 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
     return [self toString];
 }
 
+- (BOOL)conformsTo:(CSMediaUrn *)pattern error:(NSError **)error {
+    return [self.inner conformsTo:pattern.inner error:error];
+}
+
+- (BOOL)accepts:(CSMediaUrn *)instance error:(NSError **)error {
+    return [self.inner accepts:instance.inner error:error];
+}
+
 @end

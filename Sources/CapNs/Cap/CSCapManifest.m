@@ -114,11 +114,11 @@
         return NO;
     }
 
-    // Check if any cap in the manifest IS CAP_IDENTITY
-    // Use object equality checking (isEqual:) for exact equivalence
+    // Check if any cap in the manifest accepts the identity URN
+    // identity_urn.conforms_to(&cap.urn) in Rust = cap.urn.accepts(identity_urn)
     BOOL hasIdentity = NO;
     for (CSCap *cap in self.caps) {
-        if ([cap.capUrn isEqual:identityUrn]) {
+        if ([identityUrn conformsTo:cap.capUrn]) {
             hasIdentity = YES;
             break;
         }
@@ -146,10 +146,10 @@
     }
 
     // Check if identity is already present
-    // Use object equality checking (isEqual:) for exact equivalence
+    // identity_urn.conforms_to(&cap.urn) in Rust = cap.urn.accepts(identity_urn)
     BOOL hasIdentity = NO;
     for (CSCap *cap in self.caps) {
-        if ([cap.capUrn isEqual:identityUrn]) {
+        if ([identityUrn conformsTo:cap.capUrn]) {
             hasIdentity = YES;
             break;
         }

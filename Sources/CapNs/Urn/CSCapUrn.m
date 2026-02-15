@@ -442,54 +442,76 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
         return YES;
     }
 
-    // Check direction (inSpec) using TaggedUrn matching
-    // "media:" is the wildcard (matches anything)
-    // Request's input (instance) must conform to cap's input (pattern)
-    if (![self.inSpec isEqualToString:@"media:"] &&
-        ![request.inSpec isEqualToString:@"media:"]) {
-        if (!CSMediaUrnInstanceConformsToPattern(request.inSpec, self.inSpec)) {
+    // Input direction: self.in_urn is pattern, request.in_urn is instance
+    // "media:" on the PATTERN side means "I accept any input" — skip check.
+    // "media:" on the INSTANCE side is just the least specific — still check.
+    if (![self.inSpec isEqualToString:@"media:"]) {
+        NSError *error = nil;
+        CSMediaUrn *capIn = [CSMediaUrn fromString:self.inSpec error:&error];
+        if (!capIn) {
+            NSAssert(NO, @"CU2: cap in_spec '%@' is not a valid MediaUrn: %@", self.inSpec, error.localizedDescription);
+            return NO;
+        }
+        CSMediaUrn *requestIn = [CSMediaUrn fromString:request.inSpec error:&error];
+        if (!requestIn) {
+            NSAssert(NO, @"CU2: request in_spec '%@' is not a valid MediaUrn: %@", request.inSpec, error.localizedDescription);
+            return NO;
+        }
+        if (![capIn accepts:requestIn error:&error]) {
+            NSAssert(error == nil, @"CU2: media URN prefix mismatch in direction spec matching");
             return NO;
         }
     }
 
-    // Check direction (outSpec) using TaggedUrn matching
-    // "media:" is the wildcard (matches anything)
-    // Cap's output (instance) must conform to request's output (pattern)
-    if (![self.outSpec isEqualToString:@"media:"] &&
-        ![request.outSpec isEqualToString:@"media:"]) {
-        if (!CSMediaUrnInstanceConformsToPattern(self.outSpec, request.outSpec)) {
+    // Output direction: self.out_urn is pattern, request.out_urn is instance
+    // "media:" on the PATTERN side means "I accept any output" — skip check.
+    // "media:" on the INSTANCE side is just the least specific — still check.
+    if (![self.outSpec isEqualToString:@"media:"]) {
+        NSError *error = nil;
+        CSMediaUrn *capOut = [CSMediaUrn fromString:self.outSpec error:&error];
+        if (!capOut) {
+            NSAssert(NO, @"CU2: cap out_spec '%@' is not a valid MediaUrn: %@", self.outSpec, error.localizedDescription);
+            return NO;
+        }
+        CSMediaUrn *requestOut = [CSMediaUrn fromString:request.outSpec error:&error];
+        if (!requestOut) {
+            NSAssert(NO, @"CU2: request out_spec '%@' is not a valid MediaUrn: %@", request.outSpec, error.localizedDescription);
+            return NO;
+        }
+        if (![capOut conformsTo:requestOut error:&error]) {
+            NSAssert(error == nil, @"CU2: media URN prefix mismatch in direction spec matching");
             return NO;
         }
     }
 
-    // Check all tags that the request specifies
-    for (NSString *requestKey in request.tags) {
-        NSString *requestValue = request.tags[requestKey];
-        NSString *capValue = self.mutableTags[requestKey];
+    // Check all tags that the pattern (self) requires.
+    // The instance (request param) must satisfy every pattern constraint.
+    // Missing tag in instance → instance doesn't satisfy constraint → reject.
+    for (NSString *selfKey in self.mutableTags) {
+        NSString *selfValue = self.mutableTags[selfKey];
+        NSString *reqValue = request.mutableTags[selfKey];
 
-        if (!capValue) {
-            // Missing tag in cap is treated as wildcard - accepts any value
+        if (!reqValue) {
+            // Instance missing a tag the pattern requires
+            return NO;
+        }
+
+        if ([selfValue isEqualToString:@"*"]) {
+            // Pattern accepts any value for this tag
             continue;
         }
 
-        if ([capValue isEqualToString:@"*"]) {
-            // Cap has wildcard - accepts any value
+        if ([reqValue isEqualToString:@"*"]) {
+            // Instance has wildcard for this tag
             continue;
         }
 
-        if ([requestValue isEqualToString:@"*"]) {
-            // Request accepts any value - cap's specific value matches
-            continue;
-        }
-
-        if (![capValue isEqualToString:requestValue]) {
-            // Cap has specific value that doesn't match request's specific value
+        if (![selfValue isEqualToString:reqValue]) {
+            // Values don't match
             return NO;
         }
     }
 
-    // If cap has additional specific tags that request doesn't specify, that's fine
-    // The cap is just more specific than needed
     return YES;
 }
 

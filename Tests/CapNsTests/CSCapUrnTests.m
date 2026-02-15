@@ -234,43 +234,50 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Tag Matching Tests
 
-// TEST017: Test tag matching: exact match, subset match, wildcard match, value mismatch
+// TEST017: Test tag matching: exact match, routing direction, wildcard match, value mismatch
 - (void)testTagMatching {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;target=thumbnail") error:&error];
     XCTAssertNotNil(cap);
 
-    // Exact match (same direction, same tags)
+    // Exact match — both directions accept
     CSCapUrn *request1 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;target=thumbnail") error:&error];
     XCTAssertTrue([cap accepts:request1]);
+    XCTAssertTrue([request1 accepts:cap]);
 
-    // Subset match (cap has more tags than request)
+    // Routing direction: request(op=generate) accepts cap(op,ext,target) — request only needs op
     CSCapUrn *request2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertTrue([cap accepts:request2]);
+    XCTAssertTrue([request2 accepts:cap]);
+    // Reverse: cap(op,ext,target) as pattern rejects request missing ext,target
+    XCTAssertFalse([cap accepts:request2]);
 
-    // Wildcard request should match specific cap
+    // Routing direction: request(ext=*) accepts cap(ext=pdf) — wildcard matches specific
     CSCapUrn *request3 = [CSCapUrn fromString:testUrn(@"ext=*") error:&error];
-    XCTAssertTrue([cap accepts:request3]);
+    XCTAssertTrue([request3 accepts:cap]);
 
-    // No match - conflicting value
+    // Conflicting value — neither direction accepts
     CSCapUrn *request4 = [CSCapUrn fromString:testUrn(@"op=extract") error:&error];
     XCTAssertFalse([cap accepts:request4]);
+    XCTAssertFalse([request4 accepts:cap]);
 }
 
-// TEST019: Test that missing tags are treated as wildcards (cap without tag matches any value for that tag)
+// TEST019: Missing tag in instance causes rejection — pattern's tags are constraints
 - (void)testMissingTagHandling {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertNotNil(cap);
-
-    // Request with tag should match cap without tag (treated as wildcard)
     CSCapUrn *request1 = [CSCapUrn fromString:testUrn(@"ext=pdf") error:&error];
-    XCTAssertTrue([cap accepts:request1]); // cap missing ext tag = wildcard, can handle any ext
 
-    // But cap with extra tags can match subset requests
+    // cap(op) as pattern: instance(ext) missing op → reject
+    XCTAssertFalse([cap accepts:request1]);
+    // request(ext) as pattern: instance(cap) missing ext → reject
+    XCTAssertFalse([request1 accepts:cap]);
+
+    // Routing: request(op) accepts cap(op,ext) — instance has op → match
     CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     CSCapUrn *request2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertTrue([cap2 accepts:request2]);
+    XCTAssertTrue([request2 accepts:cap2]);
+    // Reverse: cap(op,ext) as pattern rejects request missing ext
+    XCTAssertFalse([cap2 accepts:request2]);
 }
 
 // TEST020: Test specificity calculation (in/out base, wildcards don't count)
@@ -292,35 +299,31 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap2 isMoreSpecificThan:cap1]);
 }
 
-// TEST024: Test directional accepts (cap accepts request, op mismatch rejects, direction mismatch rejects)
+// TEST024: Directional accepts — pattern's tags are constraints, instance must satisfy
 - (void)testDirectionalAccepts {
     NSError *error;
-    // Cap with more tags accepts request with fewer tags (cap is more specific than needed)
-    CSCapUrn *general = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertNotNil(general);
-    CSCapUrn *specific = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
-    XCTAssertNotNil(specific);
-
-    XCTAssertTrue([general accepts:specific]); // general cap accepts specific request
-    XCTAssertTrue([specific accepts:general]); // specific cap accepts general request (extra ext not checked)
-
-    // Op mismatch: neither direction accepts
-    CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"op=extract;ext=pdf") error:&error];
-    XCTAssertNotNil(cap3);
-    XCTAssertFalse([specific accepts:cap3]); // op mismatch
-    XCTAssertFalse([cap3 accepts:specific]); // op mismatch
-
-    // Bidirectional accepts with wildcard tags
+    CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate;format=*") error:&error];
-    XCTAssertNotNil(cap2);
-    XCTAssertTrue([cap2 accepts:specific]); // op matches, cap's format=* not in request so fine
-    XCTAssertTrue([specific accepts:cap2]); // op matches, request's format=* accepted by cap's missing format
+    CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"type=image;op=extract") error:&error];
 
-    // Different direction is not accepted
-    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:form=map;textable\"" error:&error];
-    XCTAssertNotNil(cap5);
-    XCTAssertFalse([general accepts:cap5]); // different inSpec (void vs string)
-    XCTAssertFalse([cap5 accepts:general]); // different inSpec
+    // cap1(op,ext) as pattern: cap2 missing ext → reject
+    XCTAssertFalse([cap1 accepts:cap2]);
+    // cap2(op,format) as pattern: cap1 missing format → reject
+    XCTAssertFalse([cap2 accepts:cap1]);
+    // op mismatch: neither direction accepts
+    XCTAssertFalse([cap1 accepts:cap3]);
+    XCTAssertFalse([cap3 accepts:cap1]);
+
+    // Routing: general request(op) accepts specific cap(op,ext) — instance has op
+    CSCapUrn *cap4 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
+    XCTAssertTrue([cap4 accepts:cap1]); // cap4 only requires op, cap1 has it
+    // Reverse: specific cap(op,ext) rejects general request missing ext
+    XCTAssertFalse([cap1 accepts:cap4]);
+
+    // Different direction specs: neither accepts the other
+    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:bytes;op=generate;out=\"media:form=map;textable\"" error:&error];
+    XCTAssertFalse([cap1 accepts:cap5]);
+    XCTAssertFalse([cap5 accepts:cap1]);
 }
 
 #pragma mark - Convenience Methods Tests
@@ -806,17 +809,15 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([cap accepts:request], @"Test 2: Cap missing tag should match (implicit wildcard)");
 }
 
-// TEST042: Matching semantics - cap with extra tag matches
+// TEST042: Pattern rejects instance missing required tags
 - (void)testMatchingSemantics_Test3_CapHasExtraTag {
-    // Test 3: Cap has extra tag
     NSError *error = nil;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf;version=2") error:&error];
-    XCTAssertNotNil(cap);
-
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
-    XCTAssertNotNil(request);
-
-    XCTAssertTrue([cap accepts:request], @"Test 3: Cap with extra tag should match");
+    // cap(op,ext,version) as pattern rejects request missing version
+    XCTAssertFalse([cap accepts:request], @"Pattern rejects instance missing required tag");
+    // Routing: request(op,ext) accepts cap(op,ext,version) — instance has all request needs
+    XCTAssertTrue([request accepts:cap], @"Request pattern satisfied by more-specific cap");
 }
 
 // TEST043: Matching semantics - request wildcard matches specific cap value
@@ -885,17 +886,14 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([wildcardCap accepts:request], @"Test 8: Wildcard cap should match anything");
 }
 
-// TEST049: Matching semantics - cross-dimension independence
+// TEST049: Non-overlapping tags — neither direction accepts
 - (void)testMatchingSemantics_Test9_CrossDimensionIndependence {
-    // Test 9: Cross-dimension independence (with same direction)
     NSError *error = nil;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    XCTAssertNotNil(cap);
-
     CSCapUrn *request = [CSCapUrn fromString:testUrn(@"ext=pdf") error:&error];
-    XCTAssertNotNil(request);
-
-    XCTAssertTrue([cap accepts:request], @"Test 9: Cross-dimension independence should match");
+    // cap(op) rejects request missing op; request(ext) rejects cap missing ext
+    XCTAssertFalse([cap accepts:request], @"Pattern rejects instance missing required tag");
+    XCTAssertFalse([request accepts:cap], @"Reverse also rejects — non-overlapping tags");
 }
 
 // TEST050: Matching semantics - direction mismatch prevents matching

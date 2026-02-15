@@ -50,6 +50,16 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: impl Display for MediaUrn
 - (NSString *)toString;
 
+/// Check if this instance conforms to (can be handled by) the given pattern.
+/// Equivalent to `pattern.accepts(self)`.
+/// Mirrors Rust: pub fn conforms_to(&self, pattern: &MediaUrn) -> Result<bool, MediaUrnError>
+- (BOOL)conformsTo:(CSMediaUrn *)pattern error:(NSError **)error;
+
+/// Check if this pattern accepts the given instance.
+/// Equivalent to `instance.conformsTo(self)`.
+/// Mirrors Rust: pub fn accepts(&self, instance: &MediaUrn) -> Result<bool, MediaUrnError>
+- (BOOL)accepts:(CSMediaUrn *)instance error:(NSError **)error;
+
 @end
 
 NS_ASSUME_NONNULL_END
