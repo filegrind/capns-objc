@@ -55,7 +55,7 @@ public final class RelaySlave: @unchecked Sendable {
     ///
     /// Uses two concurrent threads for true bidirectional forwarding:
     /// - Thread 1 (socket -> local): ReorderBuffer validates seq, RelayState is stored (not forwarded); all other frames pass through
-    /// - Thread 2 (local -> socket): SeqAssigner assigns seq, RelayNotify/RelayState from local are silently dropped; all others pass through
+    /// - Thread 2 (local -> socket): ReorderBuffer validates seq, RelayNotify forwarded (cap updates), RelayState dropped; all others pass through
     ///
     /// When either direction closes, the other is shut down by closing the
     /// corresponding write handle, causing the blocked read to return EOF.
@@ -141,10 +141,12 @@ public final class RelaySlave: @unchecked Sendable {
         }
 
         // Thread 2: Local -> Socket (slave -> master direction)
-        // Uses SeqAssigner to assign seq to outgoing frames to master
+        // Uses ReorderBuffer to validate incoming seq from PluginHost
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let seqAssigner = SeqAssigner()
+            // Create reorder buffer for local -> socket direction
+            let maxReorderBuffer = initialNotify?.limits.maxReorderBuffer ?? DEFAULT_MAX_REORDER_BUFFER
+            let reorderBuffer = ReorderBuffer(maxBufferPerFlow: maxReorderBuffer)
 
             defer {
                 group.leave()
@@ -153,24 +155,26 @@ public final class RelaySlave: @unchecked Sendable {
             }
             while true {
                 do {
-                    guard var frame = try localReader.read() else {
+                    guard let frame = try localReader.read() else {
                         return // Local side closed (host shut down)
                     }
 
-                    // Relay frames from local side should not happen — ignore
-                    if frame.frameType == .relayNotify || frame.frameType == .relayState {
+                    // Forward all frames, including RelayNotify (capability updates from PluginHost)
+                    // RelayState from local is dropped (deprecated/unused)
+                    if frame.frameType == .relayState {
                         continue
                     }
 
-                    // Assign seq before sending
-                    seqAssigner.assign(&frame)
-
-                    // Cleanup seq tracking after terminal frames
-                    if frame.frameType == .end || frame.frameType == .err {
-                        seqAssigner.remove(frame.id)
+                    // Pass through reorder buffer to validate seq
+                    let readyFrames = try reorderBuffer.accept(frame)
+                    for readyFrame in readyFrames {
+                        // Cleanup flow state after terminal frames
+                        if readyFrame.frameType == .end || readyFrame.frameType == .err {
+                            let key = FlowKey.fromFrame(readyFrame)
+                            reorderBuffer.cleanupFlow(key)
+                        }
+                        try socketWriter.write(readyFrame)
                     }
-
-                    try socketWriter.write(frame)
                 } catch {
                     errorLock.lock()
                     if firstError == nil { firstError = error }
