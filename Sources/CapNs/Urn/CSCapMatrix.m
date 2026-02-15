@@ -3,8 +3,8 @@
 //  CapSet registry implementation
 //
 
-#import "include/CSCapMatrix.h"
-#import "include/CSCapUrn.h"
+#import "CSCapMatrix.h"
+#import "CSCapUrn.h"
 
 // Error domain for capability host registry
 static NSString * const CSCapMatrixErrorDomain = @"CSCapMatrixError";

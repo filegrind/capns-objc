@@ -5,9 +5,9 @@
 //  NOTE: Type validation now uses mediaSpec -> spec ID resolution.
 //
 
-#import "include/CSCapCaller.h"
-#import "include/CSMediaSpec.h"
-#import "include/CSStdinSource.h"
+#import "CSCapCaller.h"
+#import "CSMediaSpec.h"
+#import "CSStdinSource.h"
 
 @interface CSCapCaller ()
 @property (nonatomic, strong) NSString *cap;

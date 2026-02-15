@@ -1,5 +1,5 @@
 import XCTest
-@testable import CapNsCbor
+@testable import Bifaci
 
 @available(macOS 10.15.4, iOS 13.4, *)
 class CborRelayTests: XCTestCase {

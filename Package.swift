@@ -13,8 +13,8 @@ let package = Package(
             name: "CapNs",
             targets: ["CapNs"]),
         .library(
-            name: "CapNsCbor",
-            targets: ["CapNsCbor"]),
+            name: "Bifaci",
+            targets: ["Bifaci"]),
     ],
     dependencies: [
         .package(path: "../tagged-urn-objc"),
@@ -35,21 +35,21 @@ let package = Package(
             ]
         ),
         .target(
-            name: "CapNsCbor",
+            name: "Bifaci",
             dependencies: [
                 "CapNs",
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
                 .product(name: "Glob", package: "Glob"),
             ],
-            path: "Sources/CapNsCbor"
+            path: "Sources/Bifaci"
         ),
         .testTarget(
             name: "CapNsTests",
             dependencies: ["CapNs"]),
         .testTarget(
-            name: "CapNsCborTests",
+            name: "BifaciTests",
             dependencies: [
-                "CapNsCbor",
+                "Bifaci",
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
             ]),
     ]

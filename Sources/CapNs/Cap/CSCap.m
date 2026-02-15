@@ -5,8 +5,8 @@
 //  NOTE: All type information is conveyed via mediaSpec fields containing spec IDs.
 //
 
-#import "include/CSCap.h"
-#import "include/CSMediaSpec.h"
+#import "CSCap.h"
+#import "CSMediaSpec.h"
 
 #pragma mark - CSMediaValidation Implementation
 

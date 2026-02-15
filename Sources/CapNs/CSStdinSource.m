@@ -5,7 +5,7 @@
 //  Implementation of stdin source types.
 //
 
-#import "include/CSStdinSource.h"
+#import "CSStdinSource.h"
 
 @interface CSStdinSource ()
 @property (nonatomic, assign) CSStdinSourceKind kind;

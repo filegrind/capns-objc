@@ -5,10 +5,10 @@
 //  Composite registry implementation
 //
 
-#import "include/CSCapBlock.h"
-#import "include/CSCapUrn.h"
-#import "include/CSCapGraph.h"
-#import "include/CSStdinSource.h"
+#import "CSCapBlock.h"
+#import "CSCapUrn.h"
+#import "CSCapGraph.h"
+#import "CSStdinSource.h"
 
 // ============================================================================
 // CSBestCapSetMatch

@@ -15,7 +15,7 @@
 //
 
 import XCTest
-@testable import CapNsCbor
+@testable import Bifaci
 import CapNs
 import TaggedUrn
 @preconcurrency import SwiftCBOR

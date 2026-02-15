@@ -3,9 +3,9 @@
 //  MediaSpec parsing and handling
 //
 
-#import "include/CSMediaSpec.h"
-#import "include/CSCapUrn.h"
-#import "include/CSCap.h"
+#import "CSMediaSpec.h"
+#import "CSCapUrn.h"
+#import "CSCap.h"
 @import TaggedUrn;
 
 NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";

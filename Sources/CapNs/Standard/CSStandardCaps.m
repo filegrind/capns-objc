@@ -5,7 +5,7 @@
 //  Standard capability URN constants
 //
 
-#import "include/CSStandardCaps.h"
+#import "CSStandardCaps.h"
 
 // MARK: - Standard Cap URN Constants
 

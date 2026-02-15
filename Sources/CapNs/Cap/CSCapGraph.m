@@ -5,9 +5,9 @@
 //  Directed graph of capability conversions implementation.
 //
 
-#import "include/CSCapGraph.h"
-#import "include/CSCapUrn.h"
-#import "include/CSMediaSpec.h"
+#import "CSCapGraph.h"
+#import "CSCapUrn.h"
+#import "CSMediaSpec.h"
 @import TaggedUrn;
 
 // ============================================================================

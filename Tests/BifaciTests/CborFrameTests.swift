@@ -1,6 +1,6 @@
 import XCTest
 import SwiftCBOR
-@testable import CapNsCbor
+@testable import Bifaci
 
 // =============================================================================
 // CborFrame + CborIO Tests

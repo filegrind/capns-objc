@@ -1,7 +1,7 @@
 import XCTest
 import Foundation
 import SwiftCBOR
-@testable import CapNsCbor
+@testable import Bifaci
 
 // =============================================================================
 // CborPluginHost Multi-Plugin Runtime Tests

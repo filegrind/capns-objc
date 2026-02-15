@@ -5,8 +5,8 @@
 //  NOTE: Validation now uses mediaSpec -> spec ID resolution.
 //
 
-#import "include/CSResponseWrapper.h"
-#import "include/CSMediaSpec.h"
+#import "CSResponseWrapper.h"
+#import "CSMediaSpec.h"
 
 @interface CSResponseWrapper ()
 @property (nonatomic, strong) NSData *rawBytes;

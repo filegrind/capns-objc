@@ -6,9 +6,9 @@
 //  The old CSArgumentType and CSOutputType enums have been removed.
 //
 
-#import "include/CSCapValidator.h"
-#import "include/CSSchemaValidator.h"
-#import "include/CSMediaSpec.h"
+#import "CSCapValidator.h"
+#import "CSSchemaValidator.h"
+#import "CSMediaSpec.h"
 
 // Error domain
 NSErrorDomain const CSValidationErrorDomain = @"CSValidationErrorDomain";

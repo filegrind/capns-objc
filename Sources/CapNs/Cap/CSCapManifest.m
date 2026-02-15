@@ -5,10 +5,10 @@
 //  Unified cap-based manifest for components (providers and plugins)
 //
 
-#import "include/CSCapManifest.h"
-#import "include/CSCap.h"
-#import "include/CSCapUrn.h"
-#import "include/CSStandardCaps.h"
+#import "CSCapManifest.h"
+#import "CSCap.h"
+#import "CSCapUrn.h"
+#import "CSStandardCaps.h"
 
 @implementation CSCapManifest
 

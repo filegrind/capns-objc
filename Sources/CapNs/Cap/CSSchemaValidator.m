@@ -9,8 +9,8 @@
 //  Schemas are stored in the resolved MediaSpec's schema property.
 //
 
-#import "include/CSSchemaValidator.h"
-#import "include/CSMediaSpec.h"
+#import "CSSchemaValidator.h"
+#import "CSMediaSpec.h"
 
 // Error domain
 NSErrorDomain const CSSchemaValidationErrorDomain = @"CSSchemaValidationErrorDomain";

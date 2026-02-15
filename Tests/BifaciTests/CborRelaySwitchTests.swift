@@ -2,7 +2,7 @@
 
 import XCTest
 import Foundation
-@testable import CapNsCbor
+@testable import Bifaci
 import CapNs
 
 @available(macOS 10.15.4, iOS 13.4, *)
