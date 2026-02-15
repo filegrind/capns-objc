@@ -1211,25 +1211,30 @@ public final class PluginRuntime: @unchecked Sendable {
 
         // Register CAP_IDENTITY handler (MANDATORY)
         // Identity is the categorical identity morphism - passes input through unchanged
+        // Forwards all input chunks to output, preserving CBOR structure
         register(capUrn: CSCapIdentity) { input, output, _peer in
-            // Collect all input bytes across all streams
-            let allBytes = try input.collectAllBytes()
-
-            // Emit bytes as-is (identity transformation)
-            try output.write(allBytes)
-
-            // Close output stream
+            for streamResult in input {
+                let stream = try streamResult.get()
+                for chunkResult in stream {
+                    let chunk = try chunkResult.get()
+                    try output.emitCbor(chunk)
+                }
+            }
             try output.close()
         }
 
         // Register CAP_DISCARD handler (STANDARD, OPTIONAL)
         // Discard is the terminal morphism - consumes input, produces void
-        register(capUrn: CSCapDiscard) { input, _output, _peer in
-            // Consume all input (required to complete the request protocol)
-            _ = try input.collectAllBytes()
-
-            // No output needed - discard produces void
-            // OutputStream is automatically closed by the runtime after handler returns
+        register(capUrn: CSCapDiscard) { input, output, _peer in
+            // Drain all input (required to complete the request protocol)
+            for streamResult in input {
+                let stream = try streamResult.get()
+                for chunkResult in stream {
+                    _ = try chunkResult.get()
+                }
+            }
+            // No output chunks needed - discard produces void
+            try output.close()
         }
     }
 
