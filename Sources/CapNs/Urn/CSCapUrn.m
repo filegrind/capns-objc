@@ -80,6 +80,40 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
                            userInfo:@{NSLocalizedDescriptionKey: msg}];
 }
 
+/// Process a direction tag (in or out) with wildcard expansion
+/// - Missing tag → "media:" (wildcard)
+/// - tag=* → "media:" (wildcard)
+/// - tag= (empty) → error
+/// - tag=value → value (validated later)
++ (nullable NSString *)processDirectionTag:(CSTaggedUrn *)taggedUrn tagName:(NSString *)tagName error:(NSError **)error {
+    NSString *value = [taggedUrn getTag:tagName];
+
+    if (!value) {
+        // Missing tag - default to media: wildcard
+        return @"media:";
+    }
+
+    if ([value isEqualToString:@"*"]) {
+        // Replace * with media: wildcard
+        return @"media:";
+    }
+
+    if ([value length] == 0) {
+        // Empty value is not allowed (in= or out= with nothing after =)
+        if (error) {
+            NSString *errorMsg = [NSString stringWithFormat:@"Empty value for '%@' tag is not allowed", tagName];
+            NSInteger errorCode = [tagName isEqualToString:@"in"] ? CSCapUrnErrorInvalidInSpec : CSCapUrnErrorInvalidOutSpec;
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:errorCode
+                                     userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        }
+        return nil;
+    }
+
+    // Regular value - will be validated as MediaUrn later
+    return value;
+}
+
 + (nullable instancetype)fromString:(NSString *)string error:(NSError **)error {
     if (!string || string.length == 0) {
         if (error) {
@@ -120,30 +154,23 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
         return nil;
     }
 
-    // Extract required 'in' and 'out' tags
-    NSString *inSpecValue = [taggedUrn getTag:@"in"];
-    NSString *outSpecValue = [taggedUrn getTag:@"out"];
-
+    // Process in and out tags with wildcard expansion (exactly matching Rust behavior)
+    // - Missing tag → "media:" (wildcard)
+    // - tag=* → "media:" (wildcard)
+    // - tag= (empty) → error
+    // - tag=value → value (validated later)
+    NSString *inSpecValue = [self processDirectionTag:taggedUrn tagName:@"in" error:error];
     if (!inSpecValue) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorMissingInSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input media URN"}];
-        }
         return nil;
     }
+    NSString *outSpecValue = [self processDirectionTag:taggedUrn tagName:@"out" error:error];
     if (!outSpecValue) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorMissingOutSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output media URN"}];
-        }
         return nil;
     }
 
-    // Validate in/out are valid media URNs (or wildcard "*") - exactly like Rust
-    // If not "*", must parse as valid MediaUrn
-    if (![inSpecValue isEqualToString:@"*"]) {
+    // Validate that in and out specs are valid media URNs (or wildcard "media:")
+    // After processing, "media:" is the wildcard (not "*")
+    if (![inSpecValue isEqualToString:@"media:"]) {
         NSError *mediaError = nil;
         CSMediaUrn *inMediaUrn = [CSMediaUrn fromString:inSpecValue error:&mediaError];
         if (!inMediaUrn) {
@@ -156,7 +183,7 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
             return nil;
         }
     }
-    if (![outSpecValue isEqualToString:@"*"]) {
+    if (![outSpecValue isEqualToString:@"media:"]) {
         NSError *mediaError = nil;
         CSMediaUrn *outMediaUrn = [CSMediaUrn fromString:outSpecValue error:&mediaError];
         if (!outMediaUrn) {
@@ -194,30 +221,38 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
         normalizedTags[[key lowercaseString]] = value;
     }
 
-    // Extract required 'in' and 'out' tags
+    // Process in and out tags with wildcard expansion
+    // - Missing tag → "media:" (wildcard)
+    // - tag=* → "media:" (wildcard)
+    // - tag= (empty) → error
+    // - tag=value → value (validated later)
     NSString *inSpecValue = normalizedTags[@"in"];
+    if (!inSpecValue || [inSpecValue isEqualToString:@"*"]) {
+        inSpecValue = @"media:";
+    } else if ([inSpecValue length] == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidInSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Empty value for 'in' tag is not allowed"}];
+        }
+        return nil;
+    }
+
     NSString *outSpecValue = normalizedTags[@"out"];
-
-    if (!inSpecValue) {
+    if (!outSpecValue || [outSpecValue isEqualToString:@"*"]) {
+        outSpecValue = @"media:";
+    } else if ([outSpecValue length] == 0) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorMissingInSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'in' tag for input media URN"}];
-        }
-        return nil;
-    }
-    if (!outSpecValue) {
-        if (error) {
-            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
-                                         code:CSCapUrnErrorMissingOutSpec
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Cap URN requires 'out' tag for output media URN"}];
+                                         code:CSCapUrnErrorInvalidOutSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Empty value for 'out' tag is not allowed"}];
         }
         return nil;
     }
 
-    // Validate in/out are valid media URNs (or wildcard "*") - exactly like Rust
-    // If not "*", must parse as valid MediaUrn
-    if (![inSpecValue isEqualToString:@"*"]) {
+    // Validate that in and out specs are valid media URNs (or wildcard "media:")
+    // After processing, "media:" is the wildcard (not "*")
+    if (![inSpecValue isEqualToString:@"media:"]) {
         NSError *mediaError = nil;
         CSMediaUrn *inMediaUrn = [CSMediaUrn fromString:inSpecValue error:&mediaError];
         if (!inMediaUrn) {
@@ -230,7 +265,7 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
             return nil;
         }
     }
-    if (![outSpecValue isEqualToString:@"*"]) {
+    if (![outSpecValue isEqualToString:@"media:"]) {
         NSError *mediaError = nil;
         CSMediaUrn *outMediaUrn = [CSMediaUrn fromString:outSpecValue error:&mediaError];
         if (!outMediaUrn) {
@@ -259,9 +294,72 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
                             outSpec:(NSString *)outSpec
                                tags:(NSDictionary<NSString *, NSString *> *)tags
                               error:(NSError **)error {
+    // Apply wildcard expansion to in/out specs (exactly matching Rust behavior)
+    // - nil or "*" → "media:"
+    // - Empty string → error
+    // - Other value → validate as MediaUrn
+
+    // Process in spec
+    NSString *processedInSpec;
+    if (!inSpec || [inSpec isEqualToString:@"*"]) {
+        processedInSpec = @"media:";
+    } else if ([inSpec length] == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidInSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Empty value for 'in' spec is not allowed"}];
+        }
+        return nil;
+    } else {
+        processedInSpec = inSpec;
+    }
+
+    // Process out spec
+    NSString *processedOutSpec;
+    if (!outSpec || [outSpec isEqualToString:@"*"]) {
+        processedOutSpec = @"media:";
+    } else if ([outSpec length] == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                         code:CSCapUrnErrorInvalidOutSpec
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Empty value for 'out' spec is not allowed"}];
+        }
+        return nil;
+    } else {
+        processedOutSpec = outSpec;
+    }
+
+    // Validate that in and out specs are valid media URNs (or wildcard "media:")
+    if (![processedInSpec isEqualToString:@"media:"]) {
+        NSError *mediaError = nil;
+        CSMediaUrn *inMediaUrn = [CSMediaUrn fromString:processedInSpec error:&mediaError];
+        if (!inMediaUrn) {
+            if (error) {
+                NSString *errorMsg = mediaError ? mediaError.localizedDescription : @"Unknown error";
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorInvalidInSpec
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid media URN for in spec '%@': %@", processedInSpec, errorMsg]}];
+            }
+            return nil;
+        }
+    }
+    if (![processedOutSpec isEqualToString:@"media:"]) {
+        NSError *mediaError = nil;
+        CSMediaUrn *outMediaUrn = [CSMediaUrn fromString:processedOutSpec error:&mediaError];
+        if (!outMediaUrn) {
+            if (error) {
+                NSString *errorMsg = mediaError ? mediaError.localizedDescription : @"Unknown error";
+                *error = [NSError errorWithDomain:CSCapUrnErrorDomain
+                                             code:CSCapUrnErrorInvalidOutSpec
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Invalid media URN for out spec '%@': %@", processedOutSpec, errorMsg]}];
+            }
+            return nil;
+        }
+    }
+
     CSCapUrn *instance = [[CSCapUrn alloc] init];
-    instance.inSpec = inSpec;
-    instance.outSpec = outSpec;
+    instance.inSpec = processedInSpec;
+    instance.outSpec = processedOutSpec;
     instance.mutableTags = [tags mutableCopy];
     return instance;
 }
@@ -345,18 +443,20 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
     }
 
     // Check direction (inSpec) using TaggedUrn matching
+    // "media:" is the wildcard (matches anything)
     // Request's input (instance) must conform to cap's input (pattern)
-    if (![self.inSpec isEqualToString:@"*"] &&
-        ![request.inSpec isEqualToString:@"*"]) {
+    if (![self.inSpec isEqualToString:@"media:"] &&
+        ![request.inSpec isEqualToString:@"media:"]) {
         if (!CSMediaUrnInstanceConformsToPattern(request.inSpec, self.inSpec)) {
             return NO;
         }
     }
 
     // Check direction (outSpec) using TaggedUrn matching
+    // "media:" is the wildcard (matches anything)
     // Cap's output (instance) must conform to request's output (pattern)
-    if (![self.outSpec isEqualToString:@"*"] &&
-        ![request.outSpec isEqualToString:@"*"]) {
+    if (![self.outSpec isEqualToString:@"media:"] &&
+        ![request.outSpec isEqualToString:@"media:"]) {
         if (!CSMediaUrnInstanceConformsToPattern(self.outSpec, request.outSpec)) {
             return NO;
         }
@@ -401,13 +501,14 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
     NSUInteger count = 0;
 
     // Direction specs contribute their MediaUrn tag count (more tags = more specific)
-    if (![self.inSpec isEqualToString:@"*"]) {
+    // "media:" is the wildcard (contributes 0 to specificity)
+    if (![self.inSpec isEqualToString:@"media:"]) {
         NSError *error = nil;
         CSTaggedUrn *inUrn = [CSTaggedUrn fromString:self.inSpec error:&error];
         NSAssert(inUrn != nil, @"CU2: Failed to parse in media URN '%@': %@", self.inSpec, error.localizedDescription);
         count += inUrn.tags.count;
     }
-    if (![self.outSpec isEqualToString:@"*"]) {
+    if (![self.outSpec isEqualToString:@"media:"]) {
         NSError *error = nil;
         CSTaggedUrn *outUrn = [CSTaggedUrn fromString:self.outSpec error:&error];
         NSAssert(outUrn != nil, @"CU2: Failed to parse out media URN '%@': %@", self.outSpec, error.localizedDescription);

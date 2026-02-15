@@ -217,14 +217,15 @@
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
 
-    // Alphabetical order: ext, in, op, out, quality (wildcards serialized as value-less tags)
-    XCTAssertEqualObjects([cap toString], @"cap:ext;in;op=convert;out;quality");
-    XCTAssertEqual([cap specificity], 1); // Only op is specific
+    // Wildcards: in/out are "media:" now (not "*")
+    // Alphabetical order: ext, in, op, out, quality
+    XCTAssertEqualObjects([cap toString], @"cap:ext;in=media:;op=convert;out=media:;quality");
+    XCTAssertEqual([cap specificity], 1); // Only op is specific (media: wildcard contributes 0)
 
     XCTAssertEqualObjects([cap getTag:@"ext"], @"*");
     XCTAssertEqualObjects([cap getTag:@"quality"], @"*");
-    XCTAssertEqualObjects([cap getInSpec], @"*");
-    XCTAssertEqualObjects([cap getOutSpec], @"*");
+    XCTAssertEqualObjects([cap getInSpec], @"media:");  // Wildcard is media: now
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");  // Wildcard is media: now
 }
 
 - (void)testBuilderStaticFactory {

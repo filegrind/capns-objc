@@ -142,41 +142,46 @@ static NSString* testUrn(NSString *tags) {
 
 #pragma mark - Required Direction Tests
 
-// TEST002: Test that missing 'in' spec fails with MissingInSpec, missing 'out' fails with MissingOutSpec
-- (void)testMissingInSpecFails {
+// TEST002: Test that missing 'in' or 'out' defaults to media: wildcard
+- (void)testMissingInSpecDefaultsToWildcard {
     NSError *error = nil;
-    // Missing 'in' should fail
+    // Missing 'in' defaults to media:
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=\"media:form=map;textable\";op=generate" error:&error];
-    XCTAssertNil(capUrn);
-    XCTAssertNotNil(error);
-    XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
+    XCTAssertNotNil(capUrn, @"Missing in should default to media:");
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([capUrn getInSpec], @"media:");
+    XCTAssertEqualObjects([capUrn getOutSpec], @"media:form=map;textable");
 }
 
-// TEST002: Missing 'out' spec fails
-- (void)testMissingOutSpecFails {
+// TEST002: Missing 'out' defaults to media:
+- (void)testMissingOutSpecDefaultsToWildcard {
     NSError *error = nil;
-    // Missing 'out' should fail
+    // Missing 'out' defaults to media:
     CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=media:void;op=generate" error:&error];
-    XCTAssertNil(capUrn);
-    XCTAssertNotNil(error);
-    XCTAssertEqual(error.code, CSCapUrnErrorMissingOutSpec);
+    XCTAssertNotNil(capUrn, @"Missing out should default to media:");
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([capUrn getInSpec], @"media:void");
+    XCTAssertEqualObjects([capUrn getOutSpec], @"media:");
 }
 
-// TEST028: Test empty cap URN fails with MissingInSpec
-- (void)testEmptyCapUrnFailsWithMissingInSpec {
+// TEST028: Test empty cap URN defaults to media: wildcard
+- (void)testEmptyCapUrnDefaultsToWildcard {
     NSError *error = nil;
-    // Empty cap URN now fails because in/out are required
+    // Empty cap URN defaults to media: for both in and out
     CSCapUrn *empty = [CSCapUrn fromString:@"cap:" error:&error];
-    XCTAssertNil(empty);
-    XCTAssertNotNil(error);
-    XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec);
+    XCTAssertNotNil(empty, @"Empty cap should default to media: wildcard");
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([empty getInSpec], @"media:");
+    XCTAssertEqualObjects([empty getOutSpec], @"media:");
 
-    // cap:op=raw also fails - has tags but missing required in/out
+    // cap:op=raw also defaults - has tags but missing in/out defaults to media:
     error = nil;
     CSCapUrn *missingInOut = [CSCapUrn fromString:@"cap:op=raw" error:&error];
-    XCTAssertNil(missingInOut, @"cap:op=raw should fail - missing required in/out specs");
-    XCTAssertNotNil(error);
-    XCTAssertEqual(error.code, CSCapUrnErrorMissingInSpec, @"Should fail with MissingInSpec error");
+    XCTAssertNotNil(missingInOut, @"cap:op=raw should default in/out to media:");
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([missingInOut getInSpec], @"media:");
+    XCTAssertEqualObjects([missingInOut getOutSpec], @"media:");
+    XCTAssertEqualObjects([missingInOut getTag:@"op"], @"raw");
 }
 
 // TEST029: Test minimal valid cap URN has just in and out, empty tags
@@ -424,13 +429,13 @@ static NSString* testUrn(NSString *tags) {
     NSError *error;
     CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
 
-    // withWildcardTag for "in" should use withInSpec
+    // withWildcardTag for "in" should use withInSpec - wildcard is "media:" now
     CSCapUrn *wildcardIn = [cap withWildcardTag:@"in"];
-    XCTAssertEqualObjects([wildcardIn getInSpec], @"*");
+    XCTAssertEqualObjects([wildcardIn getInSpec], @"media:");
 
-    // withWildcardTag for "out" should use withOutSpec
+    // withWildcardTag for "out" should use withOutSpec - wildcard is "media:" now
     CSCapUrn *wildcardOut = [cap withWildcardTag:@"out"];
-    XCTAssertEqualObjects([wildcardOut getOutSpec], @"*");
+    XCTAssertEqualObjects([wildcardOut getOutSpec], @"media:");
 }
 
 // TEST026: Test merge combines tags from both caps, subset keeps only specified tags
@@ -972,5 +977,119 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertGreaterThan([specificCap specificity], [genericCap specificity],
         @"pdf;bytes cap must be more specific than bytes cap");
 }
+
+// TEST_WILDCARD_001: cap: (empty) defaults to in=media:;out=media:
+- (void)testWildcard001EmptyCapDefaultsToMediaWildcard {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:" error:&error];
+    XCTAssertNotNil(cap, @"Empty cap should default to media: wildcard");
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+    XCTAssertEqual(cap.tags.count, 0);
+}
+
+// TEST_WILDCARD_002: cap:in defaults out to media:
+- (void)testWildcard002InOnlyDefaultsOutToMedia {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in" error:&error];
+    XCTAssertNotNil(cap, @"in without out should default out to media:");
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+}
+
+// TEST_WILDCARD_003: cap:out defaults in to media:
+- (void)testWildcard003OutOnlyDefaultsInToMedia {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:out" error:&error];
+    XCTAssertNotNil(cap, @"out without in should default in to media:");
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+}
+
+// TEST_WILDCARD_004: cap:in;out both become media:
+- (void)testWildcard004InOutNoValuesBecomeMedia {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in;out" error:&error];
+    XCTAssertNotNil(cap, @"in;out should both become media:");
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+}
+
+// TEST_WILDCARD_005: cap:in=*;out=* becomes media:
+- (void)testWildcard005ExplicitAsteriskBecomesMedia {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=*;out=*" error:&error];
+    XCTAssertNotNil(cap, @"in=*;out=* should become media:");
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+}
+
+// TEST_WILDCARD_006: cap:in=media:bytes;out=* has specific in, wildcard out
+- (void)testWildcard006SpecificInWildcardOut {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:bytes;out=*" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects([cap getInSpec], @"media:bytes");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+}
+
+// TEST_WILDCARD_007: cap:in=*;out=media:text has wildcard in, specific out
+- (void)testWildcard007WildcardInSpecificOut {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=*;out=media:text" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:text");
+}
+
+// TEST_WILDCARD_008: cap:in=foo fails (invalid media URN)
+- (void)testWildcard008InvalidInSpecFails {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=foo;out=media:" error:&error];
+    XCTAssertNil(cap, @"Invalid in spec should fail");
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorInvalidInSpec);
+}
+
+// TEST_WILDCARD_009: cap:in=media:bytes;out=bar fails (invalid media URN)
+- (void)testWildcard009InvalidOutSpecFails {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:bytes;out=bar" error:&error];
+    XCTAssertNil(cap, @"Invalid out spec should fail");
+    XCTAssertNotNil(error);
+    XCTAssertEqual(error.code, CSCapUrnErrorInvalidOutSpec);
+}
+
+// TEST_WILDCARD_010: Wildcard in/out match specific caps
+- (void)testWildcard010WildcardAcceptsSpecific {
+    NSError *error = nil;
+    CSCapUrn *wildcard = [CSCapUrn fromString:@"cap:" error:&error];
+    CSCapUrn *specific = [CSCapUrn fromString:@"cap:in=media:bytes;out=media:text" error:&error];
+    
+    XCTAssertTrue([wildcard accepts:specific], @"Wildcard should accept specific cap");
+    XCTAssertTrue([specific conformsTo:wildcard], @"Specific should conform to wildcard");
+}
+
+// TEST_WILDCARD_011: Specificity - wildcard has 0, specific has tag count
+- (void)testWildcard011SpecificityScoring {
+    NSError *error = nil;
+    CSCapUrn *wildcard = [CSCapUrn fromString:@"cap:" error:&error];
+    CSCapUrn *specific = [CSCapUrn fromString:@"cap:in=media:bytes;out=media:text" error:&error];
+    
+    XCTAssertEqual([wildcard specificity], 0, @"Wildcard should have 0 specificity");
+    XCTAssertGreaterThan([specific specificity], 0, @"Specific cap should have non-zero specificity");
+}
+
+// TEST_WILDCARD_012: cap:in;out;op=test preserves other tags
+- (void)testWildcard012PreserveOtherTags {
+    NSError *error = nil;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in;out;op=test" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
+    XCTAssertEqualObjects([cap getTag:@"op"], @"test");
+}
+
 
 @end
