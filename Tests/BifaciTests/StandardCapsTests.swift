@@ -38,13 +38,12 @@ final class StandardCapsTests: XCTestCase {
 
     // TEST475: Manifest.validate() passes with CAP_IDENTITY present
     func testManifestValidatePassesWithIdentity() throws {
-        let identityCap = CSCap(try CSCapUrn.fromString(CSCapIdentity),
-                                          title: "Identity",
-                                          command: "identity")
-        let manifest = CSCapManifest("TestPlugin",
-                                                      version: "1.0.0",
-                                                      description: "Test",
-                                                      caps: [identityCap])
+        let identityUrn = try CSCapUrn.fromString(CSCapIdentity)
+        let identityCap = CSCap(urn: identityUrn, title: "Identity", command: "identity")
+        let manifest = CSCapManifest(name: "TestPlugin",
+                                     version: "1.0.0",
+                                     manifestDescription: "Test",
+                                     caps: [identityCap])
 
         var error: NSError?
         let result = manifest.validate(&error)
@@ -54,13 +53,12 @@ final class StandardCapsTests: XCTestCase {
 
     // TEST476: Manifest.validate() fails without CAP_IDENTITY
     func testManifestValidateFailsWithoutIdentity() throws {
-        let otherCap = CSCap(try CSCapUrn.fromString("cap:op=test;in=media:;out=media:"),
-                                       title: "Test",
-                                       command: "test")
-        let manifest = CSCapManifest("TestPlugin",
-                                                      version: "1.0.0",
-                                                      description: "Test",
-                                                      caps: [otherCap])
+        let otherUrn = try CSCapUrn.fromString("cap:op=test;in=media:;out=media:")
+        let otherCap = CSCap(urn: otherUrn, title: "Test", command: "test")
+        let manifest = CSCapManifest(name: "TestPlugin",
+                                     version: "1.0.0",
+                                     manifestDescription: "Test",
+                                     caps: [otherCap])
 
         var error: NSError?
         let result = manifest.validate(&error)
@@ -74,13 +72,12 @@ final class StandardCapsTests: XCTestCase {
     // TEST477: Manifest.ensureIdentity() adds if missing, idempotent if present
     func testManifestEnsureIdentityIdempotent() throws {
         // Test 1: Adding identity when missing
-        let cap1 = CSCap(try CSCapUrn.fromString("cap:op=test;in=media:;out=media:"),
-                                   title: "Test",
-                                   command: "test")
-        let manifestWithout = CSCapManifest("TestPlugin",
-                                                             version: "1.0.0",
-                                                             description: "Test",
-                                                             caps: [cap1])
+        let testUrn = try CSCapUrn.fromString("cap:op=test;in=media:;out=media:")
+        let cap1 = CSCap(urn: testUrn, title: "Test", command: "test")
+        let manifestWithout = CSCapManifest(name: "TestPlugin",
+                                            version: "1.0.0",
+                                            manifestDescription: "Test",
+                                            caps: [cap1])
 
         let withIdentity = manifestWithout.ensureIdentity()
         var error1: NSError?
@@ -121,27 +118,52 @@ final class StandardCapsTests: XCTestCase {
         let runtime = PluginRuntime(manifest: manifest)
         let handler = runtime.findHandler(capUrn: CSCapIdentity)!
 
-        // Create test input
+        // Create test input - pre-collected chunks
         let testData = "test data".data(using: .utf8)!
-        let (inputStream, inputContinuation) = AsyncStream<Result<Bifaci.InputStream, StreamError>>.makeStream()
+        let chunks: [Result<CBOR, StreamError>] = [.success(.byteString([UInt8](testData)))]
+        var chunkIndex = 0
+        let chunkIterator = AnyIterator<Result<CBOR, StreamError>> {
+            guard chunkIndex < chunks.count else { return nil }
+            let chunk = chunks[chunkIndex]
+            chunkIndex += 1
+            return chunk
+        }
 
-        // Create single input stream
-        let (chunkStream, chunkContinuation) = AsyncStream<Result<CBOR, StreamError>>.makeStream()
-        chunkContinuation.yield(.success(.byteString([UInt8](testData))))
-        chunkContinuation.finish()
+        let stream = Bifaci.InputStream(mediaUrn: "media:bytes", rx: chunkIterator)
+        let streams: [Result<Bifaci.InputStream, StreamError>] = [.success(stream)]
+        var streamIndex = 0
+        let streamIterator = AnyIterator<Result<Bifaci.InputStream, StreamError>> {
+            guard streamIndex < streams.count else { return nil }
+            let s = streams[streamIndex]
+            streamIndex += 1
+            return s
+        }
 
-        let stream = Bifaci.InputStream(mediaUrn: "media:bytes", rx: AnyIterator { chunkStream.makeAsyncIterator().next() })
-        inputContinuation.yield(.success(stream))
-        inputContinuation.finish()
+        let input = InputPackage(rx: streamIterator)
 
-        let input = InputPackage(rx: AnyIterator { inputStream.makeAsyncIterator().next() })
+        // Create output (mock) - use synchronized data collection
+        final class OutputCollector: @unchecked Sendable {
+            private var data = Data()
+            private let lock = NSLock()
 
-        // Create output (mock)
-        var outputData = Data()
+            func append(_ bytes: Data) {
+                lock.lock()
+                data.append(bytes)
+                lock.unlock()
+            }
+
+            func getData() -> Data {
+                lock.lock()
+                defer { lock.unlock() }
+                return data
+            }
+        }
+
+        let collector = OutputCollector()
         let mockSender = MockFrameSender { frame in
             if frame.frameType == .chunk, let payload = frame.payload {
                 if let cbor = try? CBOR.decode([UInt8](payload)), case .byteString(let bytes) = cbor {
-                    outputData.append(Data(bytes))
+                    collector.append(Data(bytes))
                 }
             }
         }
@@ -152,7 +174,7 @@ final class StandardCapsTests: XCTestCase {
 
         // Execute handler
         XCTAssertNoThrow(try handler(input, output, peer), "Identity handler must not throw")
-        XCTAssertEqual(outputData, testData, "Identity handler must echo input unchanged")
+        XCTAssertEqual(collector.getData(), testData, "Identity handler must echo input unchanged")
     }
 
     // TEST480: CAP_DISCARD handler consumes input and produces void
@@ -166,24 +188,50 @@ final class StandardCapsTests: XCTestCase {
         let runtime = PluginRuntime(manifest: manifest)
         let handler = runtime.findHandler(capUrn: CSCapDiscard)!
 
-        // Create test input
+        // Create test input - pre-collected chunks
         let testData = "discard me".data(using: .utf8)!
-        let (inputStream, inputContinuation) = AsyncStream<Result<Bifaci.InputStream, StreamError>>.makeStream()
+        let chunks: [Result<CBOR, StreamError>] = [.success(.byteString([UInt8](testData)))]
+        var chunkIndex = 0
+        let chunkIterator = AnyIterator<Result<CBOR, StreamError>> {
+            guard chunkIndex < chunks.count else { return nil }
+            let chunk = chunks[chunkIndex]
+            chunkIndex += 1
+            return chunk
+        }
 
-        let (chunkStream, chunkContinuation) = AsyncStream<Result<CBOR, StreamError>>.makeStream()
-        chunkContinuation.yield(.success(.byteString([UInt8](testData))))
-        chunkContinuation.finish()
+        let stream = Bifaci.InputStream(mediaUrn: "media:bytes", rx: chunkIterator)
+        let streams: [Result<Bifaci.InputStream, StreamError>] = [.success(stream)]
+        var streamIndex = 0
+        let streamIterator = AnyIterator<Result<Bifaci.InputStream, StreamError>> {
+            guard streamIndex < streams.count else { return nil }
+            let s = streams[streamIndex]
+            streamIndex += 1
+            return s
+        }
 
-        let stream = Bifaci.InputStream(mediaUrn: "media:bytes", rx: AnyIterator { chunkStream.makeAsyncIterator().next() })
-        inputContinuation.yield(.success(stream))
-        inputContinuation.finish()
+        let input = InputPackage(rx: streamIterator)
 
-        let input = InputPackage(rx: AnyIterator { inputStream.makeAsyncIterator().next() })
+        // Create output (mock) - synchronized flag
+        final class OutputChecker: @unchecked Sendable {
+            private var generated = false
+            private let lock = NSLock()
 
-        // Create output (mock)
-        var outputGenerated = false
+            func markGenerated() {
+                lock.lock()
+                generated = true
+                lock.unlock()
+            }
+
+            func wasGenerated() -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                return generated
+            }
+        }
+
+        let checker = OutputChecker()
         let mockSender = MockFrameSender { _ in
-            outputGenerated = true
+            checker.markGenerated()
         }
         let output = OutputStream(sender: mockSender, streamId: "test", mediaUrn: "media:void",
                                  requestId: .newUUID(), routingId: nil, maxChunk: 1000)
@@ -192,7 +240,8 @@ final class StandardCapsTests: XCTestCase {
 
         // Execute handler
         XCTAssertNoThrow(try handler(input, output, peer), "Discard handler must not throw")
-        // Discard produces void - no output expected (or minimal)
+        // Discard produces void - no CHUNK output expected
+        // (STREAM_START/STREAM_END might be sent, but no data chunks)
     }
 }
 

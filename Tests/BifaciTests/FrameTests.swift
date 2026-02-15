@@ -489,10 +489,12 @@ final class CborFrameTests: XCTestCase {
         XCTAssertFalse(decodedLater.isEof)
 
         // Final chunk with eof
+        let lastPayload = "last".data(using: .utf8)!
         let lastChunk = Frame.chunkWithOffset(
             reqId: reqId, streamId: streamId, seq: 5,
-            payload: "last".data(using: .utf8)!,
-            offset: 4000, totalLen: nil, isLast: true
+            payload: lastPayload,
+            offset: 4000, totalLen: nil, isLast: true,
+            chunkIndex: 5, checksum: Frame.computeChecksum(lastPayload)
         )
         let encodedLast = try encodeFrame(lastChunk)
         let decodedLast = try decodeFrame(encodedLast)
@@ -547,7 +549,8 @@ final class CborFrameTests: XCTestCase {
         let id3 = MessageId.newUUID()
 
         let f1 = Frame.req(id: id1, capUrn: "cap:op=first", payload: "one".data(using: .utf8)!, contentType: "text/plain")
-        let f2 = Frame.chunk(reqId: id2, streamId: "stream-001", seq: 0, payload: "two".data(using: .utf8)!)
+        let f2Payload = "two".data(using: .utf8)!
+        let f2 = Frame.chunk(reqId: id2, streamId: "stream-001", seq: 0, payload: f2Payload, chunkIndex: 0, checksum: Frame.computeChecksum(f2Payload))
         let f3 = Frame.end(id: id3, finalPayload: "three".data(using: .utf8)!)
 
         try writeFrame(f1, to: pipe.fileHandleForWriting, limits: limits)
@@ -884,11 +887,12 @@ final class CborFrameTests: XCTestCase {
 
     // Covers all frame types in a single loop for comprehensive roundtrip verification
     func testAllFrameTypesRoundtrip() throws {
+        let chunkPayload = "chunk".data(using: .utf8)!
         let testCases: [(Frame, String)] = [
-            (Frame.hello(maxFrame: 1_000_000, maxChunk: 100_000), "HELLO"),
+            (Frame.hello(limits: Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)), "HELLO"),
             (Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: "data".data(using: .utf8)!, contentType: "text/plain"), "REQ"),
             // RES removed - old single-response protocol no longer supported
-            (Frame.chunk(reqId: .newUUID(), streamId: "stream-all", seq: 5, payload: "chunk".data(using: .utf8)!), "CHUNK"),
+            (Frame.chunk(reqId: .newUUID(), streamId: "stream-all", seq: 5, payload: chunkPayload, chunkIndex: 5, checksum: Frame.computeChecksum(chunkPayload)), "CHUNK"),
             (Frame.end(id: .newUUID(), finalPayload: "final".data(using: .utf8)), "END"),
             (Frame.log(id: .newUUID(), level: "info", message: "test log"), "LOG"),
             (Frame.err(id: .newUUID(), code: "ERROR", message: "test error"), "ERR"),
@@ -1115,10 +1119,9 @@ final class CborFrameTests: XCTestCase {
     // TEST401: relay_notify factory stores manifest and limits, accessors extract them correctly
     func testRelayNotifyFactoryAndAccessors() {
         let manifest = "{\"caps\":[\"cap:op=test\"]}".data(using: .utf8)!
-        let maxFrame = 2_000_000
-        let maxChunk = 128_000
+        let limits = Limits(maxFrame: 2_000_000, maxChunk: 128_000, maxReorderBuffer: 64)
 
-        let frame = Frame.relayNotify(manifest: manifest, maxFrame: maxFrame, maxChunk: maxChunk)
+        let frame = Frame.relayNotify(manifest: manifest, limits: limits)
 
         XCTAssertEqual(frame.frameType, .relayNotify)
 
@@ -1157,10 +1160,9 @@ final class CborFrameTests: XCTestCase {
     // TEST399a: RelayNotify encode/decode roundtrip preserves manifest and limits
     func testRelayNotifyRoundtrip() throws {
         let manifest = "{\"caps\":[\"cap:op=relay-test\"]}".data(using: .utf8)!
-        let maxFrame = 2_000_000
-        let maxChunk = 128_000
+        let limits = Limits(maxFrame: 2_000_000, maxChunk: 128_000, maxReorderBuffer: 64)
 
-        let original = Frame.relayNotify(manifest: manifest, maxFrame: maxFrame, maxChunk: maxChunk)
+        let original = Frame.relayNotify(manifest: manifest, limits: limits)
         let encoded = try encodeFrame(original)
         let decoded = try decodeFrame(encoded)
 
