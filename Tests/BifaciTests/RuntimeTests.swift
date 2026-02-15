@@ -887,8 +887,9 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=die", payload: Data(), contentType: "text/plain"))
         try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: "hello".data(using: .utf8)!))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0"))
+        let chunkPayload = "hello".data(using: .utf8)!
+        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload)))
+        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1))
         try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
 
         // Should receive ERR with PLUGIN_DIED
@@ -958,14 +959,16 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         // Send both requests
         try engineWriter.write(Frame.req(id: id0, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
         try engineWriter.write(Frame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:bytes"))
-        try engineWriter.write(Frame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: Data()))
-        try engineWriter.write(Frame.streamEnd(reqId: id0, streamId: "a0"))
+        let payload0 = Data()
+        try engineWriter.write(Frame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: payload0, chunkIndex: 0, checksum: Frame.computeChecksum(payload0)))
+        try engineWriter.write(Frame.streamEnd(reqId: id0, streamId: "a0", chunkCount: 1))
         try engineWriter.write(Frame.end(id: id0, finalPayload: nil))
 
         try engineWriter.write(Frame.req(id: id1, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
         try engineWriter.write(Frame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:bytes"))
-        try engineWriter.write(Frame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: Data()))
-        try engineWriter.write(Frame.streamEnd(reqId: id1, streamId: "a1"))
+        let payload1 = Data()
+        try engineWriter.write(Frame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: payload1, chunkIndex: 0, checksum: Frame.computeChecksum(payload1)))
+        try engineWriter.write(Frame.streamEnd(reqId: id1, streamId: "a1", chunkCount: 1))
         try engineWriter.write(Frame.end(id: id1, finalPayload: nil))
 
         // Read both responses
