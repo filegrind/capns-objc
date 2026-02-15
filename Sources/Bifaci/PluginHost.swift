@@ -48,6 +48,7 @@ public enum PluginHostError: Error, LocalizedError, Sendable {
     case closed
     case noHandler(String)
     case pluginDied(String)
+    case peerInvokeNotSupported(String)
     // Protocol violation errors (per-request)
     case duplicateStreamId(String)
     case chunkAfterStreamEnd(String)
@@ -72,6 +73,7 @@ public enum PluginHostError: Error, LocalizedError, Sendable {
         case .unknownStreamId(let streamId): return "Unknown stream ID: \(streamId)"
         case .chunkMissingStreamId: return "Chunk missing stream ID"
         case .streamAfterRequestEnd: return "Stream after request end"
+        case .peerInvokeNotSupported(let cap): return "Peer invoke not supported for cap: \(cap)"
         }
     }
 }
