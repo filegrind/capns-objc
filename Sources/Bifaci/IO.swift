@@ -232,8 +232,18 @@ public func decodeFrame(_ data: Data) throws -> Frame {
         frame.chunkCount = chunkCount
     }
 
-    if let checksum = getUInt(.checksum) {
-        frame.checksum = checksum
+    // Checksum can be encoded as signed or unsigned (Rust uses signed i64 which may become negativeInt for large values)
+    if let value = map[.unsignedInt(FrameKey.checksum.rawValue)] {
+        switch value {
+        case .unsignedInt(let n):
+            frame.checksum = n
+        case .negativeInt(let n):
+            // Rust encodes checksum as i64, which becomes negativeInt for values > i64::MAX
+            // Convert back using two's complement: negativeInt(n) represents -(n+1)
+            frame.checksum = UInt64(bitPattern: Int64(-1 - Int64(n)))
+        default:
+            break
+        }
     }
 
     // Protocol v2 validation: CHUNK frames MUST have chunkIndex and checksum

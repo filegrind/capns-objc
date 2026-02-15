@@ -475,6 +475,18 @@ private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) th
                 chunks.append(.failure(.protocolError("CHUNK frame missing payload")))
                 break
             }
+
+            // Verify checksum (MANDATORY in protocol v2)
+            guard let expectedChecksum = frame.checksum else {
+                chunks.append(.failure(.protocolError("CHUNK frame missing required checksum field")))
+                continue
+            }
+            let actualChecksum = Frame.computeChecksum(payload)
+            if actualChecksum != expectedChecksum {
+                chunks.append(.failure(.protocolError("Checksum mismatch: expected=\(expectedChecksum), actual=\(actualChecksum) (payload \(payload.count) bytes)")))
+                continue
+            }
+
             do {
                 guard let value = try CBOR.decode([UInt8](payload)) else {
                     chunks.append(.failure(.decode("Failed to decode CBOR chunk - decode returned nil")))
@@ -552,6 +564,18 @@ internal func demuxMultiStream(frameIterator: AnyIterator<Frame>) -> InputPackag
                   let payload = frame.payload else {
                 continue
             }
+
+            // Verify checksum (MANDATORY in protocol v2)
+            guard let expectedChecksum = frame.checksum else {
+                state.chunks.append(.failure(.protocolError("CHUNK frame missing required checksum field")))
+                continue
+            }
+            let actualChecksum = Frame.computeChecksum(payload)
+            if actualChecksum != expectedChecksum {
+                state.chunks.append(.failure(.protocolError("Checksum mismatch: expected=\(expectedChecksum), actual=\(actualChecksum)")))
+                continue
+            }
+
             do {
                 guard let value = try CBOR.decode([UInt8](payload)) else {
                     state.chunks.append(.failure(.decode("Failed to decode CBOR chunk - decode returned nil")))
@@ -2064,6 +2088,11 @@ public final class PluginRuntime: @unchecked Sendable {
         let pendingPeerRequests = NSMutableDictionary()
         let pendingPeerRequestsLock = NSLock()
 
+        // Track pending heartbeats (plugin-initiated health probes)
+        // Prevents infinite ping-pong: only respond to heartbeats we didn't send
+        let pendingHeartbeats = NSMutableSet()
+        let pendingHeartbeatsLock = NSLock()
+
         // Track pending incoming requests (host invoking plugin caps)
         // Maps request ID to (capUrn, continuation) - forwards request frames to handler
         struct PendingIncomingRequest {
@@ -2112,13 +2141,8 @@ public final class PluginRuntime: @unchecked Sendable {
                     continue
                 }
 
-                // Find handler
-                let handler: CapHandler?
-                handlersLock.lock()
-                handler = handlers[capUrn]
-                handlersLock.unlock()
-
-                guard let handler = handler else {
+                // Find handler (using pattern matching to support wildcards)
+                guard let handler = findHandler(capUrn: capUrn) else {
                     let errFrame = Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)")
                     writerLock.lock()
                     try? frameWriter.write(errFrame)
@@ -2151,6 +2175,7 @@ public final class PluginRuntime: @unchecked Sendable {
 
                 // Spawn handler thread immediately (matches Rust: spawn on REQ, stream frames)
                 let requestId = frame.id
+                let routingId = frame.routingId  // Capture routing_id to include in responses
                 let outputMediaUrn = cap.getOutSpec()
 
                 Thread.detachNewThread {
@@ -2183,7 +2208,7 @@ public final class PluginRuntime: @unchecked Sendable {
                         streamId: responseStreamId,
                         mediaUrn: outputMediaUrn,
                         requestId: requestId,
-                        routingId: nil,
+                        routingId: routingId,  // Include routing_id from request
                         maxChunk: self.limits.maxChunk
                     )
 
@@ -2203,14 +2228,16 @@ public final class PluginRuntime: @unchecked Sendable {
                         // Close output stream (sends STREAM_END)
                         try outputStream.close()
 
-                        // Send END frame
+                        // Send END frame with routing_id
                         writerLock.lock()
-                        let endFrame = Frame.end(id: requestId, finalPayload: nil)
+                        var endFrame = Frame.end(id: requestId, finalPayload: nil)
+                        endFrame.routingId = routingId
                         try? frameWriter.write(endFrame)
                         writerLock.unlock()
 
                     } catch {
-                        let errFrame = Frame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
+                        var errFrame = Frame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
+                        errFrame.routingId = routingId
                         writerLock.lock()
                         try? frameWriter.write(errFrame)
                         writerLock.unlock()
@@ -2219,11 +2246,23 @@ public final class PluginRuntime: @unchecked Sendable {
                 continue
 
             case .heartbeat:
-                // Respond immediately - never blocked by handlers
-                let response = Frame.heartbeat(id: frame.id)
-                writerLock.lock()
-                try frameWriter.write(response)
-                writerLock.unlock()
+                // Check if this is a response to a heartbeat we sent
+                pendingHeartbeatsLock.lock()
+                let isOurProbe = pendingHeartbeats.contains(frame.id)
+                if isOurProbe {
+                    pendingHeartbeats.remove(frame.id)
+                }
+                pendingHeartbeatsLock.unlock()
+
+                if isOurProbe {
+                    // Response to our health probe - host is alive, no action needed
+                } else {
+                    // Host-initiated heartbeat - respond immediately
+                    let response = Frame.heartbeat(id: frame.id)
+                    writerLock.lock()
+                    try frameWriter.write(response)
+                    writerLock.unlock()
+                }
 
             case .hello:
                 // Unexpected HELLO after handshake - protocol error
