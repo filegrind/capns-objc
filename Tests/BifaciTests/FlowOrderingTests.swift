@@ -285,16 +285,16 @@ final class FlowOrderingTests: XCTestCase {
         let b0 = Frame.chunk(reqId: ridB, streamId: "b", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
         let b1 = Frame.chunk(reqId: ridB, streamId: "b", seq: 1, payload: Data(), chunkIndex: 1, checksum: 0)
 
-        let outA1 = try buffer.insert(flow: flowA, frame: a1)
+        let outA1 = try buffer.accept(a1)
         XCTAssertEqual(outA1.count, 0, "Flow A seq 1 buffered")
 
-        let outB0 = try buffer.insert(flow: flowB, frame: b0)
+        let outB0 = try buffer.accept(b0)
         XCTAssertEqual(outB0.count, 1, "Flow B seq 0 delivers immediately")
 
-        let outA0 = try buffer.insert(flow: flowA, frame: a0)
+        let outA0 = try buffer.accept(a0)
         XCTAssertEqual(outA0.count, 2, "Flow A seq 0 delivers 0+1")
 
-        let outB1 = try buffer.insert(flow: flowB, frame: b1)
+        let outB1 = try buffer.accept(b1)
         XCTAssertEqual(outB1.count, 1, "Flow B seq 1 delivers immediately")
     }
 
@@ -361,5 +361,71 @@ final class FlowOrderingTests: XCTestCase {
 
         XCTAssertEqual(outErr.count, 1, "ERR frame must flow through")
         XCTAssertEqual(outErr[0].frameType, FrameType.err)
+    }
+
+    // TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage
+    @available(macOS 10.15.4, iOS 13.4, *)
+    func testWriteChunkedSeqZero() throws {
+        let limits = Limits(maxFrame: 1_000_000, maxChunk: 5, maxReorderBuffer: 64)
+        let pipe = Pipe()
+        let writer = FrameWriter(handle: pipe.fileHandleForWriting, limits: limits)
+
+        let id = MessageId.newUUID()
+        let streamId = "s"
+        let data = "abcdefghij".data(using: .utf8)! // 10 bytes
+
+        try writer.writeChunked(id: id, streamId: streamId, contentType: "application/octet-stream", data: data)
+        pipe.fileHandleForWriting.closeFile()
+
+        // Read all frames back
+        let reader = FrameReader(handle: pipe.fileHandleForReading, limits: limits)
+        var frames: [Frame] = []
+        while let frame = try reader.read() {
+            frames.append(frame)
+            if frame.isEof { break }
+        }
+
+        // 10 bytes / 5 max_chunk = 2 chunks
+        XCTAssertEqual(frames.count, 2, "Must produce 2 chunks")
+        for (i, frame) in frames.enumerated() {
+            XCTAssertEqual(frame.seq, 0, "chunk \(i) must have seq=0 (SeqAssigner assigns at output stage)")
+            XCTAssertEqual(frame.chunkIndex, UInt64(i), "chunk \(i) must have chunk_index=\(i)")
+        }
+    }
+
+    // TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides)
+    @available(macOS 10.15.4, iOS 13.4, *)
+    func testHandshakeNegotiatesReorderBuffer() throws {
+        // Simulate plugin sending HELLO with max_reorder_buffer=32
+        let pluginLimits = Limits(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK, maxReorderBuffer: 32)
+        let manifestJSON = "{\"name\":\"test\",\"version\":\"1.0\",\"caps\":[]}"
+        let manifestData = manifestJSON.data(using: .utf8)!
+
+        // Write plugin's HELLO with manifest to a pipe
+        let pipe1 = Pipe()
+        let pluginHello = Frame.helloWithManifest(limits: pluginLimits, manifest: manifestData)
+        try writeFrame(pluginHello, to: pipe1.fileHandleForWriting, limits: pluginLimits)
+        pipe1.fileHandleForWriting.closeFile()
+
+        // Write host's HELLO to a pipe (default: max_reorder_buffer=64)
+        let pipe2 = Pipe()
+        let hostLimits = Limits() // Default has max_reorder_buffer=64
+        let hostHello = Frame.hello(limits: hostLimits)
+        try writeFrame(hostHello, to: pipe2.fileHandleForWriting, limits: hostLimits)
+        pipe2.fileHandleForWriting.closeFile()
+
+        // Host reads plugin's HELLO
+        let theirFrame = try readFrame(from: pipe1.fileHandleForReading, limits: Limits())
+        XCTAssertNotNil(theirFrame)
+        let theirReorder = theirFrame!.helloMaxReorderBuffer!
+        XCTAssertEqual(theirReorder, 32)
+        let negotiated = min(DEFAULT_MAX_REORDER_BUFFER, theirReorder)
+        XCTAssertEqual(negotiated, 32, "Must pick minimum (32 < 64)")
+
+        // Plugin reads host's HELLO
+        let hostFrame = try readFrame(from: pipe2.fileHandleForReading, limits: Limits())
+        XCTAssertNotNil(hostFrame)
+        let hostReorder = hostFrame!.helloMaxReorderBuffer!
+        XCTAssertEqual(hostReorder, DEFAULT_MAX_REORDER_BUFFER)
     }
 }

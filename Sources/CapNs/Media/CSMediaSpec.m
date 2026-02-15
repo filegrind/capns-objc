@@ -58,12 +58,6 @@ NSString * const CSMediaDecision = @"media:decision;bool;textable;form=scalar";
 NSString * const CSMediaDecisionArray = @"media:decision;bool;textable;form=list";
 
 // ============================================================================
-// STANDARD CAP URN CONSTANTS
-// ============================================================================
-
-NSString * const CSCapIdentity = @"cap:in=media:;out=media:";
-
-// ============================================================================
 // SCHEMA URL CONFIGURATION
 // ============================================================================
 

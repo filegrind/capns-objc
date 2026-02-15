@@ -43,10 +43,12 @@ NS_ASSUME_NONNULL_BEGIN
  * Validate that CAP_IDENTITY is declared in this manifest.
  * Fails if missing — identity is mandatory in every capset.
  *
+ * Swift automatically converts this to a throwing method.
+ *
  * @param error If validation fails, contains the error description
  * @return YES if manifest contains CAP_IDENTITY, NO otherwise
  */
-- (BOOL)validate:(NSError * _Nullable * _Nullable)error;
+- (BOOL)validate:(NSError **)error;
 
 /**
  * Ensure CAP_IDENTITY is present in this manifest. Adds it if missing.

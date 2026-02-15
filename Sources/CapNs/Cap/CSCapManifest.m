@@ -114,11 +114,11 @@
         return NO;
     }
 
-    // Check if any cap in the manifest matches CAP_IDENTITY (using accepts)
+    // Check if any cap in the manifest IS CAP_IDENTITY
+    // Use object equality checking (isEqual:) for exact equivalence
     BOOL hasIdentity = NO;
     for (CSCap *cap in self.caps) {
-        // identityUrn.accepts(cap.capUrn) — does identity pattern accept this cap instance?
-        if ([identityUrn accepts:cap.capUrn]) {
+        if ([cap.capUrn isEqual:identityUrn]) {
             hasIdentity = YES;
             break;
         }
@@ -146,9 +146,10 @@
     }
 
     // Check if identity is already present
+    // Use object equality checking (isEqual:) for exact equivalence
     BOOL hasIdentity = NO;
     for (CSCap *cap in self.caps) {
-        if ([identityUrn accepts:cap.capUrn]) {
+        if ([cap.capUrn isEqual:identityUrn]) {
             hasIdentity = YES;
             break;
         }
