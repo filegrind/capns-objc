@@ -212,10 +212,12 @@ final class CborFrameTests: XCTestCase {
         let streamId = "stream-456"
 
         // First chunk (seq=0) - should have len
+        let firstPayload = "first".data(using: .utf8)!
         let first = Frame.chunkWithOffset(
             reqId: reqId, streamId: streamId, seq: 0,
-            payload: "first".data(using: .utf8)!,
-            offset: 0, totalLen: 1000, isLast: false
+            payload: firstPayload,
+            offset: 0, totalLen: 1000, isLast: false,
+            chunkIndex: 0, checksum: Frame.computeChecksum(firstPayload)
         )
         XCTAssertEqual(first.streamId, streamId)
         XCTAssertEqual(first.seq, 0)
@@ -224,10 +226,12 @@ final class CborFrameTests: XCTestCase {
         XCTAssertFalse(first.isEof)
 
         // Later chunk (seq > 0) - should NOT have len
+        let laterPayload = "later".data(using: .utf8)!
         let later = Frame.chunkWithOffset(
             reqId: reqId, streamId: streamId, seq: 5,
-            payload: "later".data(using: .utf8)!,
-            offset: 900, totalLen: nil, isLast: false
+            payload: laterPayload,
+            offset: 900, totalLen: nil, isLast: false,
+            chunkIndex: 5, checksum: Frame.computeChecksum(laterPayload)
         )
         XCTAssertEqual(later.streamId, streamId)
         XCTAssertEqual(later.seq, 5)
@@ -236,10 +240,12 @@ final class CborFrameTests: XCTestCase {
         XCTAssertFalse(later.isEof)
 
         // Last chunk - should have eof
+        let lastPayload = "last".data(using: .utf8)!
         let last = Frame.chunkWithOffset(
             reqId: reqId, streamId: streamId, seq: 10,
-            payload: "last".data(using: .utf8)!,
-            offset: 950, totalLen: nil, isLast: true
+            payload: lastPayload,
+            offset: 950, totalLen: nil, isLast: true,
+            chunkIndex: 10, checksum: Frame.computeChecksum(lastPayload)
         )
         XCTAssertEqual(last.streamId, streamId)
         XCTAssertTrue(last.isEof)
@@ -337,7 +343,8 @@ final class CborFrameTests: XCTestCase {
         for i: UInt8 in 0..<128 {
             binaryManifest.append(i)
         }
-        let frame = Frame.hello(maxFrame: 1_000_000, maxChunk: 100_000, manifest: binaryManifest)
+        let limits = Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)
+        let frame = Frame.helloWithManifest(limits: limits, manifest: binaryManifest)
         XCTAssertEqual(frame.helloManifest, binaryManifest, "Binary manifest data must be preserved exactly")
     }
 
@@ -371,15 +378,17 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(decoded.contentType, original.contentType)
     }
 
-    // TEST206: HELLO frame encode/decode roundtrip preserves max_frame and max_chunk metadata
+    // TEST206: HELLO frame encode/decode roundtrip preserves max_frame, max_chunk, and max_reorder_buffer
     func testHelloFrameRoundtrip() throws {
-        let original = Frame.hello(maxFrame: 500_000, maxChunk: 50_000)
+        let limits = Limits(maxFrame: 500_000, maxChunk: 50_000, maxReorderBuffer: 64)
+        let original = Frame.hello(limits: limits)
         let encoded = try encodeFrame(original)
         let decoded = try decodeFrame(encoded)
 
         XCTAssertEqual(decoded.frameType, .hello)
         XCTAssertEqual(decoded.helloMaxFrame, 500_000)
         XCTAssertEqual(decoded.helloMaxChunk, 50_000)
+        XCTAssertEqual(decoded.helloMaxReorderBuffer, 64)
     }
 
     // TEST207: ERR frame encode/decode roundtrip preserves error code and message
@@ -427,13 +436,15 @@ final class CborFrameTests: XCTestCase {
         {"name":"TestPlugin","version":"1.0.0","description":"Test description","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
         """
         let manifestData = manifestJSON.data(using: .utf8)!
-        let original = Frame.hello(maxFrame: 500_000, maxChunk: 50_000, manifest: manifestData)
+        let limits = Limits(maxFrame: 500_000, maxChunk: 50_000, maxReorderBuffer: 64)
+        let original = Frame.helloWithManifest(limits: limits, manifest: manifestData)
         let encoded = try encodeFrame(original)
         let decoded = try decodeFrame(encoded)
 
         XCTAssertEqual(decoded.frameType, .hello)
         XCTAssertEqual(decoded.helloMaxFrame, 500_000)
         XCTAssertEqual(decoded.helloMaxChunk, 50_000)
+        XCTAssertEqual(decoded.helloMaxReorderBuffer, 64)
         XCTAssertNotNil(decoded.helloManifest, "Decoded HELLO must preserve manifest")
         XCTAssertEqual(decoded.helloManifest, manifestData, "Manifest data must be preserved exactly")
     }
@@ -444,10 +455,12 @@ final class CborFrameTests: XCTestCase {
         let streamId = "stream-789"
 
         // First chunk (seq=0) - should have len set
+        let firstPayload = "first".data(using: .utf8)!
         let firstChunk = Frame.chunkWithOffset(
             reqId: reqId, streamId: streamId, seq: 0,
-            payload: "first".data(using: .utf8)!,
-            offset: 0, totalLen: 5000, isLast: false
+            payload: firstPayload,
+            offset: 0, totalLen: 5000, isLast: false,
+            chunkIndex: 0, checksum: Frame.computeChecksum(firstPayload)
         )
         let encodedFirst = try encodeFrame(firstChunk)
         let decodedFirst = try decodeFrame(encodedFirst)
@@ -459,10 +472,12 @@ final class CborFrameTests: XCTestCase {
         XCTAssertFalse(decodedFirst.isEof)
 
         // Later chunk (seq > 0) - should NOT have len
+        let laterPayload = "later".data(using: .utf8)!
         let laterChunk = Frame.chunkWithOffset(
             reqId: reqId, streamId: streamId, seq: 3,
-            payload: "later".data(using: .utf8)!,
-            offset: 1000, totalLen: 5000, isLast: false
+            payload: laterPayload,
+            offset: 1000, totalLen: 5000, isLast: false,
+            chunkIndex: 3, checksum: Frame.computeChecksum(laterPayload)
         )
         let encodedLater = try encodeFrame(laterChunk)
         let decodedLater = try decodeFrame(encodedLater)
@@ -568,7 +583,7 @@ final class CborFrameTests: XCTestCase {
         let frame = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: largePayload, contentType: "application/octet-stream")
 
         XCTAssertThrowsError(try writeFrame(frame, to: pipe.fileHandleForWriting, limits: limits)) { error in
-            if case CborError.frameTooLarge = error {
+            if case FrameError.frameTooLarge = error {
                 // Expected
             } else {
                 XCTFail("Expected frameTooLarge error, got \(error)")
@@ -590,7 +605,7 @@ final class CborFrameTests: XCTestCase {
 
         // Try to read with strict limits
         XCTAssertThrowsError(try readFrame(from: pipe.fileHandleForReading, limits: readLimits)) { error in
-            if case CborError.frameTooLarge = error {
+            if case FrameError.frameTooLarge = error {
                 // Expected
             } else {
                 XCTFail("Expected frameTooLarge error, got \(error)")
@@ -712,9 +727,9 @@ final class CborFrameTests: XCTestCase {
 
         XCTAssertThrowsError(try readFrame(from: pipe.fileHandleForReading, limits: Limits())) { error in
             // Should produce an I/O or protocol error
-            if case CborError.ioError = error {
+            if case FrameError.ioError = error {
                 // Expected - truncated read
-            } else if case CborError.invalidFrame = error {
+            } else if case FrameError.invalidFrame = error {
                 // Also acceptable
             } else {
                 // Any error is acceptable for truncated data
@@ -738,9 +753,9 @@ final class CborFrameTests: XCTestCase {
 
         XCTAssertThrowsError(try readFrame(from: pipe.fileHandleForReading, limits: Limits())) { error in
             // Should error on truncated body
-            if case CborError.ioError = error {
+            if case FrameError.ioError = error {
                 // Expected
-            } else if case CborError.invalidFrame = error {
+            } else if case FrameError.invalidFrame = error {
                 // Also acceptable
             } else {
                 // Any error is acceptable
@@ -764,7 +779,7 @@ final class CborFrameTests: XCTestCase {
         let bytes = Data(arrayValue.encode())
 
         XCTAssertThrowsError(try decodeFrame(bytes)) { error in
-            if case CborError.invalidFrame = error {
+            if case FrameError.invalidFrame = error {
                 // Expected
             } else {
                 XCTFail("Expected invalidFrame error, got \(error)")
@@ -782,7 +797,7 @@ final class CborFrameTests: XCTestCase {
         let bytes = Data(map.encode())
 
         XCTAssertThrowsError(try decodeFrame(bytes)) { error in
-            if case CborError.invalidFrame = error {
+            if case FrameError.invalidFrame = error {
                 // Expected
             } else {
                 XCTFail("Expected invalidFrame error, got \(error)")
@@ -800,7 +815,7 @@ final class CborFrameTests: XCTestCase {
         let bytes = Data(map.encode())
 
         XCTAssertThrowsError(try decodeFrame(bytes)) { error in
-            if case CborError.invalidFrame = error {
+            if case FrameError.invalidFrame = error {
                 // Expected
             } else {
                 XCTFail("Expected invalidFrame error, got \(error)")
@@ -818,7 +833,7 @@ final class CborFrameTests: XCTestCase {
         let bytes = Data(map.encode())
 
         XCTAssertThrowsError(try decodeFrame(bytes)) { error in
-            if case CborError.invalidFrame = error {
+            if case FrameError.invalidFrame = error {
                 // Expected
             } else {
                 XCTFail("Expected invalidFrame error, got \(error)")
@@ -879,7 +894,7 @@ final class CborFrameTests: XCTestCase {
             (Frame.err(id: .newUUID(), code: "ERROR", message: "test error"), "ERR"),
             (Frame.heartbeat(id: .newUUID()), "HEARTBEAT"),
             (Frame.streamStart(reqId: .newUUID(), streamId: "stream-start-all", mediaUrn: "media:bytes"), "STREAM_START"),
-            (Frame.streamEnd(reqId: .newUUID(), streamId: "stream-end-all"), "STREAM_END"),
+            (Frame.streamEnd(reqId: .newUUID(), streamId: "stream-end-all", chunkCount: 1), "STREAM_END"),
         ]
 
         for (original, name) in testCases {
@@ -1014,11 +1029,12 @@ final class CborFrameTests: XCTestCase {
     func testStreamEndFrame() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-xyz-789"
-        let frame = Frame.streamEnd(reqId: reqId, streamId: streamId)
+        let frame = Frame.streamEnd(reqId: reqId, streamId: streamId, chunkCount: 1)
 
         XCTAssertEqual(frame.frameType, .streamEnd)
         XCTAssertEqual(frame.id, reqId)
         XCTAssertEqual(frame.streamId, streamId)
+        XCTAssertEqual(frame.chunkCount, 1)
         XCTAssertNil(frame.mediaUrn, "STREAM_END does not include mediaUrn")
     }
 
@@ -1067,13 +1083,14 @@ final class CborFrameTests: XCTestCase {
         let id = MessageId.newUUID()
         let streamId = "stream-xyz-789"
 
-        let frame = Frame.streamEnd(reqId: id, streamId: streamId)
+        let frame = Frame.streamEnd(reqId: id, streamId: streamId, chunkCount: 5)
         let encoded = try encodeFrame(frame)
         let decoded = try decodeFrame(encoded)
 
         XCTAssertEqual(decoded.frameType, .streamEnd)
         XCTAssertEqual(decoded.id, id)
         XCTAssertEqual(decoded.streamId, "stream-xyz-789")
+        XCTAssertEqual(decoded.chunkCount, 5)
         XCTAssertNil(decoded.mediaUrn, "StreamEnd should not have media_urn")
     }
 
