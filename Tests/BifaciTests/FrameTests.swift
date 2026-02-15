@@ -1133,8 +1133,8 @@ final class CborFrameTests: XCTestCase {
         // Test limits accessor
         let extractedLimits = frame.relayNotifyLimits
         XCTAssertNotNil(extractedLimits, "relayNotifyLimits must not be nil")
-        XCTAssertEqual(extractedLimits?.maxFrame, maxFrame)
-        XCTAssertEqual(extractedLimits?.maxChunk, maxChunk)
+        XCTAssertEqual(extractedLimits?.maxFrame, limits.maxFrame)
+        XCTAssertEqual(extractedLimits?.maxChunk, limits.maxChunk)
 
         // Test accessors on wrong frame type return nil
         let req = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
@@ -1174,8 +1174,8 @@ final class CborFrameTests: XCTestCase {
 
         let extractedLimits = decoded.relayNotifyLimits
         XCTAssertNotNil(extractedLimits, "limits must survive roundtrip")
-        XCTAssertEqual(extractedLimits?.maxFrame, maxFrame)
-        XCTAssertEqual(extractedLimits?.maxChunk, maxChunk)
+        XCTAssertEqual(extractedLimits?.maxFrame, limits.maxFrame)
+        XCTAssertEqual(extractedLimits?.maxChunk, limits.maxChunk)
     }
 
     // TEST400a: RelayState encode/decode roundtrip preserves resource payload

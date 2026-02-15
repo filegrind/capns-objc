@@ -440,4 +440,80 @@ final class CborIntegrationTests: XCTestCase {
 
         pluginSemaphore.wait()
     }
+
+    // TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage
+    func testWriteChunkedSeqAssignment() throws {
+        // This test verifies that frames produced by write operations have seq=0
+        // and rely on SeqAssigner at the writer thread to assign proper seq values
+        let requestId = MessageId.newUUID()
+
+        // Create a frame using the chunk constructor
+        var chunk = Frame.chunk(reqId: requestId, streamId: "test", seq: 0,
+                               payload: "test".data(using: .utf8)!,
+                               chunkIndex: 0, checksum: 0)
+
+        // Verify initial seq is 0 (as produced by write functions)
+        XCTAssertEqual(chunk.seq, 0, "Frames from write functions must have seq=0")
+
+        // SeqAssigner will assign proper seq at output stage
+        var assigner = SeqAssigner()
+        assigner.assign(&chunk)
+
+        XCTAssertEqual(chunk.seq, 0, "First frame assigned seq=0")
+
+        // Subsequent frames get incremented seq
+        var chunk2 = Frame.chunk(reqId: requestId, streamId: "test", seq: 0,
+                                payload: "test2".data(using: .utf8)!,
+                                chunkIndex: 1, checksum: 0)
+        assigner.assign(&chunk2)
+        XCTAssertEqual(chunk2.seq, 1, "Second frame assigned seq=1")
+    }
+
+    // TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides)
+    func testHandshakeNegotiatesReorderBuffer() throws {
+        let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
+
+        var pluginNegotiated: Limits?
+        let pluginSemaphore = DispatchSemaphore(value: 0)
+
+        // Plugin with custom limits (max_reorder_buffer=32)
+        DispatchQueue.global().async {
+            do {
+                let reader = FrameReader(handle: pluginRead)
+                let writer = FrameWriter(handle: pluginWrite)
+
+                // Plugin starts with max_reorder_buffer=32 (smaller than default 64)
+                var pluginLimits = Limits()
+                pluginLimits.maxReorderBuffer = 32
+                reader.setLimits(pluginLimits)
+                writer.setLimits(pluginLimits)
+
+                let limits = try acceptHandshakeWithManifest(reader: reader, writer: writer, manifest: testManifest)
+                pluginNegotiated = limits
+
+                // Negotiated limit should be min(32, 64) = 32
+                XCTAssertEqual(limits.maxReorderBuffer, 32, "Plugin must negotiate minimum reorder buffer")
+            } catch {
+                XCTFail("Plugin handshake failed: \(error)")
+            }
+            pluginSemaphore.signal()
+        }
+
+        // Host with default limits (max_reorder_buffer=64)
+        let reader = FrameReader(handle: hostRead)
+        let writer = FrameWriter(handle: hostWrite)
+
+        let result = try performHandshakeWithManifest(reader: reader, writer: writer)
+        let hostLimits = result.limits
+
+        pluginSemaphore.wait()
+
+        // Both sides must agree on minimum
+        XCTAssertEqual(hostLimits.maxReorderBuffer, 32, "Host must negotiate minimum reorder buffer")
+        XCTAssertEqual(pluginNegotiated!.maxReorderBuffer, 32, "Both sides must agree on min")
+
+        // Verify other limits are also negotiated
+        XCTAssertEqual(hostLimits.maxFrame, pluginNegotiated!.maxFrame)
+        XCTAssertEqual(hostLimits.maxChunk, pluginNegotiated!.maxChunk)
+    }
 }

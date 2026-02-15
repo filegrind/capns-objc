@@ -1953,9 +1953,9 @@ final class CborFilePathConversionTests: XCTestCase {
         let args = [CborCapArgumentValue(mediaUrn: "media:pdf;bytes", value: pdfContent)]
         var payloadBytes = Data()
         let cborArgs: [CBOR] = args.map { arg in
-            .map([
-                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
-                .utf8String("value"): .byteString([UInt8](arg.value))
+            CBOR.map([
+                CBOR.utf8String("media_urn"): CBOR.utf8String(arg.mediaUrn),
+                CBOR.utf8String("value"): CBOR.byteString([UInt8](arg.value))
             ])
         }
         payloadBytes = Data(CBOR.array(cborArgs).encode())
@@ -2009,9 +2009,9 @@ final class CborFilePathConversionTests: XCTestCase {
             value: Data(testFile.path.utf8)
         )]
         let cborArgs: [CBOR] = args.map { arg in
-            .map([
-                .utf8String("media_urn"): .utf8String(arg.mediaUrn),
-                .utf8String("value"): .byteString([UInt8](arg.value))
+            CBOR.map([
+                CBOR.utf8String("media_urn"): CBOR.utf8String(arg.mediaUrn),
+                CBOR.utf8String("value"): CBOR.byteString([UInt8](arg.value))
             ])
         }
         let payload = Data(CBOR.array(cborArgs).encode())

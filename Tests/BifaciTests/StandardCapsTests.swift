@@ -46,8 +46,9 @@ final class StandardCapsTests: XCTestCase {
                                      caps: [identityCap])
 
         var error: NSError?
-        let result = manifest.validate()
+        let result = manifest.validate(&error)
         XCTAssertTrue(result, "Manifest with CAP_IDENTITY must validate successfully")
+        XCTAssertNil(error, "No error should be set when validation passes")
     }
 
     // TEST476: Manifest.validate() fails without CAP_IDENTITY
@@ -59,9 +60,11 @@ final class StandardCapsTests: XCTestCase {
                                      manifestDescription: "Test",
                                      caps: [otherCap])
 
-        let result = manifest.validate()
+        var error: NSError?
+        let result = manifest.validate(&error)
 
         XCTAssertFalse(result, "Manifest without CAP_IDENTITY must fail validation")
+        XCTAssertNotNil(error, "Error should be set when validation fails")
     }
 
     // TEST477: Manifest.ensureIdentity() adds if missing, idempotent if present
@@ -76,8 +79,9 @@ final class StandardCapsTests: XCTestCase {
 
         let withIdentity = manifestWithout.ensureIdentity()
         var error1: NSError?
-        XCTAssertTrue(withIdentity.validate(&error1), "ensureIdentity() must add CAP_IDENTITY")
-        XCTAssertNil(error1)
+        let isValid = withIdentity.validate(&error1)
+        XCTAssertTrue(isValid, "ensureIdentity() must add CAP_IDENTITY")
+        XCTAssertNil(error1, "No error should be set after ensureIdentity")
         XCTAssertEqual(withIdentity.caps.count, 2, "ensureIdentity() must add identity cap")
 
         // Test 2: Idempotent when already present
