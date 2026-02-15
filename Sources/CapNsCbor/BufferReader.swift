@@ -3,10 +3,10 @@ import Foundation
 
 /// Incremental CBOR buffer reader for streaming data
 /// Handles partial reads and reassembly of chunked data
-public class CborBufferReader: @unchecked Sendable {
+public class BufferReader: @unchecked Sendable {
     private var buffer = Data()
     private let bufferLock = NSLock()
-    private var limits: CborLimits
+    private var limits: Limits
 
     /// Temporary file for large payloads (stream-to-disk)
     private var tempFileHandle: FileHandle?
@@ -14,7 +14,7 @@ public class CborBufferReader: @unchecked Sendable {
     private var expectedLength: UInt64?
     private var receivedLength: UInt64 = 0
 
-    public init(limits: CborLimits = CborLimits()) {
+    public init(limits: Limits = Limits()) {
         self.limits = limits
     }
 
@@ -23,7 +23,7 @@ public class CborBufferReader: @unchecked Sendable {
     }
 
     /// Update limits
-    public func setLimits(_ limits: CborLimits) {
+    public func setLimits(_ limits: Limits) {
         bufferLock.lock()
         defer { bufferLock.unlock() }
         self.limits = limits
@@ -38,7 +38,7 @@ public class CborBufferReader: @unchecked Sendable {
 
     /// Try to extract the next complete frame from the buffer
     /// Returns nil if no complete frame is available yet
-    public func extractFrame() throws -> CborFrame? {
+    public func extractFrame() throws -> Frame? {
         bufferLock.lock()
         defer { bufferLock.unlock() }
 
@@ -53,7 +53,7 @@ public class CborBufferReader: @unchecked Sendable {
 
         // Validate length
         if length > limits.maxFrame || length > MAX_FRAME_HARD_LIMIT {
-            throw CborError.frameTooLarge(size: length, max: min(limits.maxFrame, MAX_FRAME_HARD_LIMIT))
+            throw FrameError.frameTooLarge(size: length, max: min(limits.maxFrame, MAX_FRAME_HARD_LIMIT))
         }
 
         // Check if we have the full payload
@@ -189,34 +189,34 @@ public class CborBufferReader: @unchecked Sendable {
 /// Assembles chunks into complete payloads
 /// Tracks multiple concurrent streams by message ID
 @available(macOS 10.15.4, iOS 13.4, *)
-public class CborChunkAssembler: @unchecked Sendable {
-    private var streams: [CborMessageId: ChunkStream] = [:]
+public class ChunkAssembler: @unchecked Sendable {
+    private var streams: [MessageId: ChunkStream] = [:]
     private let streamsLock = NSLock()
-    private let limits: CborLimits
+    private let limits: Limits
 
     private struct ChunkStream {
-        var buffer: CborBufferReader
+        var buffer: BufferReader
         var expectedLength: UInt64?
         var receivedChunks: Set<UInt64> = []
         var contentType: String?
         var isComplete: Bool = false
     }
 
-    public init(limits: CborLimits = CborLimits()) {
+    public init(limits: Limits = Limits()) {
         self.limits = limits
     }
 
     /// Process a CHUNK frame and return complete data if assembly is done
-    public func processChunk(_ frame: CborFrame) throws -> Data? {
+    public func processChunk(_ frame: Frame) throws -> Data? {
         guard frame.frameType == .chunk else {
-            throw CborError.invalidFrame("Expected CHUNK frame")
+            throw FrameError.invalidFrame("Expected CHUNK frame")
         }
 
         streamsLock.lock()
         defer { streamsLock.unlock() }
 
         // Get or create stream
-        var stream = streams[frame.id] ?? ChunkStream(buffer: CborBufferReader(limits: limits))
+        var stream = streams[frame.id] ?? ChunkStream(buffer: BufferReader(limits: limits))
 
         // First chunk - start assembly
         if frame.seq == 0 {
@@ -252,14 +252,14 @@ public class CborChunkAssembler: @unchecked Sendable {
     }
 
     /// Check if we have pending data for a message ID
-    public func hasPendingStream(id: CborMessageId) -> Bool {
+    public func hasPendingStream(id: MessageId) -> Bool {
         streamsLock.lock()
         defer { streamsLock.unlock() }
         return streams[id] != nil
     }
 
     /// Cancel and cleanup a stream
-    public func cancelStream(id: CborMessageId) {
+    public func cancelStream(id: MessageId) {
         streamsLock.lock()
         defer { streamsLock.unlock() }
         streams.removeValue(forKey: id)

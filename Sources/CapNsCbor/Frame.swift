@@ -11,11 +11,14 @@ public let DEFAULT_MAX_FRAME: Int = 3_670_016
 /// Default maximum chunk size (256 KB)
 public let DEFAULT_MAX_CHUNK: Int = 262_144
 
+/// Default maximum reorder buffer size (per-flow frame count)
+public let DEFAULT_MAX_REORDER_BUFFER: Int = 64
+
 /// Hard limit for frame size (16 MB) - prevents memory exhaustion
 public let MAX_FRAME_HARD_LIMIT: Int = 16 * 1024 * 1024
 
 /// Frame type discriminator
-public enum CborFrameType: UInt8, Sendable {
+public enum FrameType: UInt8, Sendable {
     /// Handshake frame for negotiating limits
     case hello = 0
     /// Request to invoke a cap
@@ -42,12 +45,12 @@ public enum CborFrameType: UInt8, Sendable {
 }
 
 /// Message ID - either a 16-byte UUID or a simple integer
-public enum CborMessageId: Equatable, Hashable, Sendable {
+public enum MessageId: Equatable, Hashable, Sendable {
     case uuid(Data)
     case uint(UInt64)
 
     /// Create a new random UUID message ID
-    public static func newUUID() -> CborMessageId {
+    public static func newUUID() -> MessageId {
         return .uuid(UUID().data)
     }
 
@@ -79,39 +82,49 @@ public enum CborMessageId: Equatable, Hashable, Sendable {
 }
 
 /// Negotiated protocol limits
-public struct CborLimits: Sendable {
+public struct Limits: Sendable {
     /// Maximum frame size in bytes
     public var maxFrame: Int
     /// Maximum chunk payload size in bytes
     public var maxChunk: Int
+    /// Maximum reorder buffer size per flow (frame count)
+    public var maxReorderBuffer: Int
 
-    public init(maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK) {
+    public init(maxFrame: Int = DEFAULT_MAX_FRAME, maxChunk: Int = DEFAULT_MAX_CHUNK, maxReorderBuffer: Int = DEFAULT_MAX_REORDER_BUFFER) {
         self.maxFrame = maxFrame
         self.maxChunk = maxChunk
+        self.maxReorderBuffer = maxReorderBuffer
     }
 
     /// Negotiate minimum of both limits
-    public func negotiate(with other: CborLimits) -> CborLimits {
-        return CborLimits(
+    public func negotiate(with other: Limits) -> Limits {
+        return Limits(
             maxFrame: min(self.maxFrame, other.maxFrame),
-            maxChunk: min(self.maxChunk, other.maxChunk)
+            maxChunk: min(self.maxChunk, other.maxChunk),
+            maxReorderBuffer: min(self.maxReorderBuffer, other.maxReorderBuffer)
         )
     }
 }
 
 /// A CBOR protocol frame
-public struct CborFrame: @unchecked Sendable {
+public struct Frame: @unchecked Sendable {
     /// Protocol version (always 2)
     public var version: UInt8 = CBOR_PROTOCOL_VERSION
     /// Frame type
-    public var frameType: CborFrameType
+    public var frameType: FrameType
     /// Message ID for correlation (request ID)
-    public var id: CborMessageId
+    public var id: MessageId
+    /// Routing ID assigned by RelaySwitch for routing decisions
+    /// Separates logical request ID (id) from routing concerns
+    /// RelaySwitch assigns this when REQ arrives, all response frames carry it
+    public var routingId: MessageId?
     /// Stream ID for multiplexed streams (used in STREAM_START, CHUNK, STREAM_END)
     public var streamId: String?
     /// Media URN for stream type identification (used in STREAM_START)
     public var mediaUrn: String?
-    /// Sequence number within a stream
+    /// Sequence number within a flow (per request ID).
+    /// Assigned centrally by SeqAssigner at the output stage (writer thread).
+    /// Monotonically increasing for all frame types within the same RID.
     public var seq: UInt64 = 0
     /// Content type of payload (MIME-like)
     public var contentType: String?
@@ -127,8 +140,14 @@ public struct CborFrame: @unchecked Sendable {
     public var eof: Bool?
     /// Cap URN (for requests)
     public var cap: String?
+    /// Chunk sequence index within stream (CHUNK frames only, starts at 0)
+    public var chunkIndex: UInt64?
+    /// Total chunk count (STREAM_END frames only, by source's reckoning)
+    public var chunkCount: UInt64?
+    /// FNV-1a checksum of payload (CHUNK frames only)
+    public var checksum: UInt64?
 
-    public init(frameType: CborFrameType, id: CborMessageId) {
+    public init(frameType: FrameType, id: MessageId) {
         self.frameType = frameType
         self.id = id
     }
@@ -136,11 +155,12 @@ public struct CborFrame: @unchecked Sendable {
     // MARK: - Factory Methods
 
     /// Create a HELLO frame for handshake (host side - no manifest)
-    public static func hello(maxFrame: Int, maxChunk: Int) -> CborFrame {
-        var frame = CborFrame(frameType: .hello, id: .uint(0))
+    public static func hello(limits: Limits) -> Frame {
+        var frame = Frame(frameType: .hello, id: .uint(0))
         frame.meta = [
-            "max_frame": .unsignedInt(UInt64(maxFrame)),
-            "max_chunk": .unsignedInt(UInt64(maxChunk)),
+            "max_frame": .unsignedInt(UInt64(limits.maxFrame)),
+            "max_chunk": .unsignedInt(UInt64(limits.maxChunk)),
+            "max_reorder_buffer": .unsignedInt(UInt64(limits.maxReorderBuffer)),
             "version": .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION))
         ]
         return frame
@@ -149,11 +169,12 @@ public struct CborFrame: @unchecked Sendable {
     /// Create a HELLO frame for handshake with manifest (plugin side)
     /// The manifest is JSON-encoded plugin metadata including name, version, and caps.
     /// This is the ONLY way for plugins to communicate their capabilities.
-    public static func hello(maxFrame: Int, maxChunk: Int, manifest: Data) -> CborFrame {
-        var frame = CborFrame(frameType: .hello, id: .uint(0))
+    public static func helloWithManifest(limits: Limits, manifest: Data) -> Frame {
+        var frame = Frame(frameType: .hello, id: .uint(0))
         frame.meta = [
-            "max_frame": .unsignedInt(UInt64(maxFrame)),
-            "max_chunk": .unsignedInt(UInt64(maxChunk)),
+            "max_frame": .unsignedInt(UInt64(limits.maxFrame)),
+            "max_chunk": .unsignedInt(UInt64(limits.maxChunk)),
+            "max_reorder_buffer": .unsignedInt(UInt64(limits.maxReorderBuffer)),
             "version": .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION)),
             "manifest": .byteString([UInt8](manifest))
         ]
@@ -161,8 +182,8 @@ public struct CborFrame: @unchecked Sendable {
     }
 
     /// Create a REQ frame for invoking a cap
-    public static func req(id: CborMessageId, capUrn: String, payload: Data, contentType: String) -> CborFrame {
-        var frame = CborFrame(frameType: .req, id: id)
+    public static func req(id: MessageId, capUrn: String, payload: Data, contentType: String) -> Frame {
+        var frame = Frame(frameType: .req, id: id)
         frame.cap = capUrn
         frame.payload = payload
         frame.contentType = contentType
@@ -180,31 +201,39 @@ public struct CborFrame: @unchecked Sendable {
     ///   - streamId: The stream ID this chunk belongs to
     ///   - seq: Sequence number within the stream
     ///   - payload: Chunk data
-    public static func chunk(reqId: CborMessageId, streamId: String, seq: UInt64, payload: Data) -> CborFrame {
-        var frame = CborFrame(frameType: .chunk, id: reqId)
+    ///   - chunkIndex: Chunk sequence index (starts at 0)
+    ///   - checksum: FNV-1a checksum of payload
+    public static func chunk(reqId: MessageId, streamId: String, seq: UInt64, payload: Data, chunkIndex: UInt64, checksum: UInt64) -> Frame {
+        var frame = Frame(frameType: .chunk, id: reqId)
         frame.streamId = streamId
         frame.seq = seq
         frame.payload = payload
+        frame.chunkIndex = chunkIndex
+        frame.checksum = checksum
         return frame
     }
 
     /// Create a CHUNK frame with offset info (for large binary transfers).
     /// Used for multiplexed streaming with offset tracking.
     public static func chunkWithOffset(
-        reqId: CborMessageId,
+        reqId: MessageId,
         streamId: String,
         seq: UInt64,
         payload: Data,
         offset: UInt64,
         totalLen: UInt64?,
-        isLast: Bool
-    ) -> CborFrame {
-        var frame = CborFrame(frameType: .chunk, id: reqId)
+        isLast: Bool,
+        chunkIndex: UInt64,
+        checksum: UInt64
+    ) -> Frame {
+        var frame = Frame(frameType: .chunk, id: reqId)
         frame.streamId = streamId
         frame.seq = seq
         frame.payload = payload
         frame.offset = offset
-        if seq == 0 {
+        frame.chunkIndex = chunkIndex
+        frame.checksum = checksum
+        if chunkIndex == 0 {
             frame.len = totalLen
         }
         if isLast {
@@ -214,16 +243,16 @@ public struct CborFrame: @unchecked Sendable {
     }
 
     /// Create an END frame to mark stream completion
-    public static func end(id: CborMessageId, finalPayload: Data? = nil) -> CborFrame {
-        var frame = CborFrame(frameType: .end, id: id)
+    public static func end(id: MessageId, finalPayload: Data? = nil) -> Frame {
+        var frame = Frame(frameType: .end, id: id)
         frame.payload = finalPayload
         frame.eof = true
         return frame
     }
 
     /// Create a LOG frame for progress/status
-    public static func log(id: CborMessageId, level: String, message: String) -> CborFrame {
-        var frame = CborFrame(frameType: .log, id: id)
+    public static func log(id: MessageId, level: String, message: String) -> Frame {
+        var frame = Frame(frameType: .log, id: id)
         frame.meta = [
             "level": .utf8String(level),
             "message": .utf8String(message)
@@ -232,8 +261,8 @@ public struct CborFrame: @unchecked Sendable {
     }
 
     /// Create an ERR frame
-    public static func err(id: CborMessageId, code: String, message: String) -> CborFrame {
-        var frame = CborFrame(frameType: .err, id: id)
+    public static func err(id: MessageId, code: String, message: String) -> Frame {
+        var frame = Frame(frameType: .err, id: id)
         frame.meta = [
             "code": .utf8String(code),
             "message": .utf8String(message)
@@ -243,8 +272,8 @@ public struct CborFrame: @unchecked Sendable {
 
     /// Create a HEARTBEAT frame for health monitoring.
     /// Either side can send; receiver must respond with HEARTBEAT using the same ID.
-    public static func heartbeat(id: CborMessageId) -> CborFrame {
-        return CborFrame(frameType: .heartbeat, id: id)
+    public static func heartbeat(id: MessageId) -> Frame {
+        return Frame(frameType: .heartbeat, id: id)
     }
 
     /// Create a STREAM_START frame to announce a new stream within a request.
@@ -254,8 +283,8 @@ public struct CborFrame: @unchecked Sendable {
     ///   - reqId: The request ID this stream belongs to
     ///   - streamId: Unique ID for this stream (UUID generated by sender)
     ///   - mediaUrn: Media URN identifying the stream's data type
-    public static func streamStart(reqId: CborMessageId, streamId: String, mediaUrn: String) -> CborFrame {
-        var frame = CborFrame(frameType: .streamStart, id: reqId)
+    public static func streamStart(reqId: MessageId, streamId: String, mediaUrn: String) -> Frame {
+        var frame = Frame(frameType: .streamStart, id: reqId)
         frame.streamId = streamId
         frame.mediaUrn = mediaUrn
         return frame
@@ -267,28 +296,31 @@ public struct CborFrame: @unchecked Sendable {
     /// - Parameters:
     ///   - reqId: The request ID this stream belongs to
     ///   - streamId: The stream being ended
-    public static func streamEnd(reqId: CborMessageId, streamId: String) -> CborFrame {
-        var frame = CborFrame(frameType: .streamEnd, id: reqId)
+    ///   - chunkCount: Total number of chunks sent in this stream (by source's reckoning)
+    public static func streamEnd(reqId: MessageId, streamId: String, chunkCount: UInt64) -> Frame {
+        var frame = Frame(frameType: .streamEnd, id: reqId)
         frame.streamId = streamId
+        frame.chunkCount = chunkCount
         return frame
     }
 
     /// Create a RELAY_NOTIFY frame for capability advertisement (slave → master).
     /// Carries the aggregate manifest and negotiated limits.
-    public static func relayNotify(manifest: Data, maxFrame: Int, maxChunk: Int) -> CborFrame {
-        var frame = CborFrame(frameType: .relayNotify, id: .uint(0))
+    public static func relayNotify(manifest: Data, limits: Limits) -> Frame {
+        var frame = Frame(frameType: .relayNotify, id: .uint(0))
         frame.meta = [
             "manifest": CBOR.byteString([UInt8](manifest)),
-            "max_frame": CBOR.unsignedInt(UInt64(maxFrame)),
-            "max_chunk": CBOR.unsignedInt(UInt64(maxChunk)),
+            "max_frame": CBOR.unsignedInt(UInt64(limits.maxFrame)),
+            "max_chunk": CBOR.unsignedInt(UInt64(limits.maxChunk)),
+            "max_reorder_buffer": CBOR.unsignedInt(UInt64(limits.maxReorderBuffer)),
         ]
         return frame
     }
 
     /// Create a RELAY_STATE frame for host system resources + cap demands (master → slave).
     /// Carries an opaque resource payload.
-    public static func relayState(resources: Data) -> CborFrame {
-        var frame = CborFrame(frameType: .relayState, id: .uint(0))
+    public static func relayState(resources: Data) -> Frame {
+        var frame = Frame(frameType: .relayState, id: .uint(0))
         frame.payload = resources
         return frame
     }
@@ -341,13 +373,15 @@ public struct CborFrame: @unchecked Sendable {
     }
 
     /// Extract limits from RELAY_NOTIFY metadata
-    public var relayNotifyLimits: CborLimits? {
+    /// Returns nil if any required field is missing (protocol violation in v2)
+    public var relayNotifyLimits: Limits? {
         guard frameType == .relayNotify, let meta = meta,
               case .unsignedInt(let maxFrame) = meta["max_frame"],
-              case .unsignedInt(let maxChunk) = meta["max_chunk"] else {
+              case .unsignedInt(let maxChunk) = meta["max_chunk"],
+              case .unsignedInt(let maxReorderBuffer) = meta["max_reorder_buffer"] else {
             return nil
         }
-        return CborLimits(maxFrame: Int(maxFrame), maxChunk: Int(maxChunk))
+        return Limits(maxFrame: Int(maxFrame), maxChunk: Int(maxChunk), maxReorderBuffer: Int(maxReorderBuffer))
     }
 
     /// Extract max_frame from HELLO metadata
@@ -366,6 +400,15 @@ public struct CborFrame: @unchecked Sendable {
         return Int(n)
     }
 
+    /// Extract max_reorder_buffer from HELLO metadata
+    /// Returns nil if missing (protocol violation in v2)
+    public var helloMaxReorderBuffer: Int? {
+        guard frameType == .hello, let meta = meta, case .unsignedInt(let n) = meta["max_reorder_buffer"] else {
+            return nil
+        }
+        return Int(n)
+    }
+
     /// Extract manifest from HELLO metadata (plugin side sends this)
     /// Returns nil if no manifest present (host HELLO) or not a HELLO frame.
     /// The manifest is JSON-encoded plugin metadata.
@@ -374,6 +417,34 @@ public struct CborFrame: @unchecked Sendable {
             return nil
         }
         return Data(bytes)
+    }
+
+    // MARK: - Checksum and Flow Control
+
+    /// Compute FNV-1a 64-bit checksum of bytes.
+    /// This is a simple, fast hash function suitable for detecting transmission errors.
+    public static func computeChecksum(_ data: Data) -> UInt64 {
+        let FNV_OFFSET_BASIS: UInt64 = 0xcbf29ce484222325
+        let FNV_PRIME: UInt64 = 0x100000001b3
+
+        var hash = FNV_OFFSET_BASIS
+        for byte in data {
+            hash ^= UInt64(byte)
+            hash = hash &* FNV_PRIME  // wrapping multiply
+        }
+        return hash
+    }
+
+    /// Returns true if this frame type participates in flow ordering (seq tracking).
+    /// Non-flow frames (Hello, Heartbeat, RelayNotify, RelayState) bypass seq assignment
+    /// and reorder buffers entirely.
+    public func isFlowFrame() -> Bool {
+        switch frameType {
+        case .hello, .heartbeat, .relayNotify, .relayState:
+            return false
+        default:
+            return true
+        }
     }
 }
 
@@ -398,7 +469,7 @@ extension UUID {
 }
 
 /// Integer keys for CBOR map fields (must match Rust side)
-public enum CborFrameKey: UInt64 {
+public enum FrameKey: UInt64 {
     case version = 0
     case frameType = 1
     case id = 2
@@ -412,4 +483,8 @@ public enum CborFrameKey: UInt64 {
     case cap = 10
     case streamId = 11
     case mediaUrn = 12
+    case routingId = 13
+    case chunkIndex = 14
+    case chunkCount = 15
+    case checksum = 16
 }

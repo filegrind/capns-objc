@@ -1,10 +1,10 @@
 //
-//  CborPluginHost.swift
+//  PluginHost.swift
 //  CapNsCbor
 //
 //  Multi-plugin host runtime — manages N plugin binaries with frame routing.
 //
-//  The CborPluginHost sits between the relay connection (to the engine) and
+//  The PluginHost sits between the relay connection (to the engine) and
 //  individual plugin processes. It handles:
 //
 //  - HELLO handshake and limit negotiation per plugin
@@ -15,7 +15,7 @@
 //
 //  Architecture:
 //
-//    Relay (engine) <-> CborPluginHost <-> Plugin A (stdin/stdout)
+//    Relay (engine) <-> PluginHost <-> Plugin A (stdin/stdout)
 //                                      <-> Plugin B (stdin/stdout)
 //                                      <-> Plugin C (stdin/stdout)
 //
@@ -37,12 +37,12 @@ import CapNs
 // MARK: - Error Types
 
 /// Errors that can occur in the plugin host
-public enum CborPluginHostError: Error, LocalizedError, Sendable {
+public enum PluginHostError: Error, LocalizedError, Sendable {
     case handshakeFailed(String)
     case sendFailed(String)
     case receiveFailed(String)
     case pluginError(code: String, message: String)
-    case unexpectedFrameType(CborFrameType)
+    case unexpectedFrameType(FrameType)
     case protocolError(String)
     case processExited
     case closed
@@ -77,7 +77,7 @@ public enum CborPluginHostError: Error, LocalizedError, Sendable {
 }
 
 /// A response chunk from a plugin
-public struct CborResponseChunk: Sendable {
+public struct ResponseChunk: Sendable {
     public let payload: Data
     public let seq: UInt64
     public let offset: UInt64?
@@ -94,9 +94,9 @@ public struct CborResponseChunk: Sendable {
 }
 
 /// Response from a plugin request (for convenience call() method)
-public enum CborPluginResponse: Sendable {
+public enum PluginResponse: Sendable {
     case single(Data)
-    case streaming([CborResponseChunk])
+    case streaming([ResponseChunk])
 
     public var finalPayload: Data? {
         switch self {
@@ -122,9 +122,9 @@ public enum CborPluginResponse: Sendable {
 
 /// Events from reader threads, delivered to the main run() loop.
 private enum PluginEvent {
-    case frame(pluginIdx: Int, frame: CborFrame)
+    case frame(pluginIdx: Int, frame: Frame)
     case death(pluginIdx: Int)
-    case relayFrame(CborFrame)
+    case relayFrame(Frame)
     case relayClosed
 }
 
@@ -142,21 +142,21 @@ private class ManagedPlugin {
     var stdinHandle: FileHandle?
     var stdoutHandle: FileHandle?
     var stderrHandle: FileHandle?
-    var writer: CborFrameWriter?
+    var writer: FrameWriter?
     let writerLock = NSLock()
     var manifest: Data
-    var limits: CborLimits
+    var limits: Limits
     var caps: [String]
     var knownCaps: [String]
     var running: Bool
     var helloFailed: Bool
     var readerThread: Thread?
-    var pendingHeartbeats: [CborMessageId: Date]
+    var pendingHeartbeats: [MessageId: Date]
 
     init(path: String, knownCaps: [String]) {
         self.path = path
         self.manifest = Data()
-        self.limits = CborLimits()
+        self.limits = Limits()
         self.caps = []
         self.knownCaps = knownCaps
         self.running = false
@@ -164,7 +164,7 @@ private class ManagedPlugin {
         self.pendingHeartbeats = [:]
     }
 
-    static func attached(manifest: Data, limits: CborLimits, caps: [String]) -> ManagedPlugin {
+    static func attached(manifest: Data, limits: Limits, caps: [String]) -> ManagedPlugin {
         let plugin = ManagedPlugin(path: "", knownCaps: caps)
         plugin.manifest = manifest
         plugin.limits = limits
@@ -194,7 +194,7 @@ private class ManagedPlugin {
     /// Write a frame to this plugin's stdin (thread-safe).
     /// Returns false if the plugin is dead or write fails.
     @discardableResult
-    func writeFrame(_ frame: CborFrame) -> Bool {
+    func writeFrame(_ frame: Frame) -> Bool {
         writerLock.lock()
         defer { writerLock.unlock() }
         guard let w = writer else { return false }
@@ -207,7 +207,7 @@ private class ManagedPlugin {
     }
 }
 
-// MARK: - CborPluginHost
+// MARK: - PluginHost
 
 /// Multi-plugin host runtime managing N plugin processes.
 ///
@@ -217,12 +217,12 @@ private class ManagedPlugin {
 ///
 /// Usage:
 /// ```swift
-/// let host = CborPluginHost()
+/// let host = PluginHost()
 /// try host.attachPlugin(stdinHandle: pluginStdin, stdoutHandle: pluginStdout)
 /// try host.run(relayRead: relayReadHandle, relayWrite: relayWriteHandle) { Data() }
 /// ```
 @available(macOS 10.15.4, iOS 13.4, *)
-public final class CborPluginHost: @unchecked Sendable {
+public final class PluginHost: @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -233,12 +233,12 @@ public final class CborPluginHost: @unchecked Sendable {
     private var capTable: [(String, Int)] = []
 
     /// Routing: req_id -> plugin index (for in-flight request frame correlation).
-    private var requestRouting: [CborMessageId: Int] = [:]
+    private var requestRouting: [MessageId: Int] = [:]
 
     /// Request IDs initiated by plugins (peer invokes).
     /// Plugin's END is the end of the outgoing request body, NOT the final response.
     /// Routing survives until the relay sends back the response (END/ERR).
-    private var peerRequests: Set<CborMessageId> = []
+    private var peerRequests: Set<MessageId> = []
 
     /// Aggregate capabilities (serialized JSON manifest of all plugin caps).
     private var _capabilities: Data = Data()
@@ -247,7 +247,7 @@ public final class CborPluginHost: @unchecked Sendable {
     private let stateLock = NSLock()
 
     /// Outbound writer — writes frames to the relay (toward engine).
-    private var outboundWriter: CborFrameWriter?
+    private var outboundWriter: FrameWriter?
     private let outboundLock = NSLock()
 
     /// Plugin events from reader threads.
@@ -296,31 +296,42 @@ public final class CborPluginHost: @unchecked Sendable {
     ///   - stdinHandle: FileHandle to write to the plugin's stdin
     ///   - stdoutHandle: FileHandle to read from the plugin's stdout
     /// - Returns: Plugin index
-    /// - Throws: CborPluginHostError if handshake fails
+    /// - Throws: PluginHostError if handshake fails
     @discardableResult
     public func attachPlugin(stdinHandle: FileHandle, stdoutHandle: FileHandle) throws -> Int {
-        let reader = CborFrameReader(handle: stdoutHandle)
-        let writer = CborFrameWriter(handle: stdinHandle)
+        let reader = FrameReader(handle: stdoutHandle)
+        let writer = FrameWriter(handle: stdinHandle)
 
         // Perform HELLO handshake
-        let ourHello = CborFrame.hello(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK)
+        let ourLimits = Limits()
+        let ourHello = Frame.hello(limits: ourLimits)
         try writer.write(ourHello)
 
         guard let theirHello = try reader.read() else {
-            throw CborPluginHostError.handshakeFailed("Plugin closed connection before HELLO")
+            throw PluginHostError.handshakeFailed("Plugin closed connection before HELLO")
         }
         guard theirHello.frameType == .hello else {
-            throw CborPluginHostError.handshakeFailed("Expected HELLO, got \(theirHello.frameType)")
+            throw PluginHostError.handshakeFailed("Expected HELLO, got \(theirHello.frameType)")
         }
         guard let manifest = theirHello.helloManifest else {
-            throw CborPluginHostError.handshakeFailed("Plugin HELLO missing required manifest")
+            throw PluginHostError.handshakeFailed("Plugin HELLO missing required manifest")
         }
 
-        let theirMaxFrame = theirHello.helloMaxFrame ?? DEFAULT_MAX_FRAME
-        let theirMaxChunk = theirHello.helloMaxChunk ?? DEFAULT_MAX_CHUNK
-        let negotiatedLimits = CborLimits(
-            maxFrame: min(DEFAULT_MAX_FRAME, theirMaxFrame),
-            maxChunk: min(DEFAULT_MAX_CHUNK, theirMaxChunk)
+        // Protocol v2: All three limit fields are REQUIRED
+        guard let theirMaxFrame = theirHello.helloMaxFrame else {
+            throw PluginHostError.handshakeFailed("Protocol violation: HELLO missing max_frame")
+        }
+        guard let theirMaxChunk = theirHello.helloMaxChunk else {
+            throw PluginHostError.handshakeFailed("Protocol violation: HELLO missing max_chunk")
+        }
+        guard let theirMaxReorderBuffer = theirHello.helloMaxReorderBuffer else {
+            throw PluginHostError.handshakeFailed("Protocol violation: HELLO missing max_reorder_buffer (required in protocol v2)")
+        }
+
+        let negotiatedLimits = Limits(
+            maxFrame: min(ourLimits.maxFrame, theirMaxFrame),
+            maxChunk: min(ourLimits.maxChunk, theirMaxChunk),
+            maxReorderBuffer: min(ourLimits.maxReorderBuffer, theirMaxReorderBuffer)
         )
         writer.setLimits(negotiatedLimits)
         reader.setLimits(negotiatedLimits)
@@ -397,18 +408,18 @@ public final class CborPluginHost: @unchecked Sendable {
     ///   - relayRead: FileHandle to read frames from (relay/engine side)
     ///   - relayWrite: FileHandle to write frames to (relay/engine side)
     ///   - resourceFn: Callback to get current system resource state
-    /// - Throws: CborPluginHostError on fatal errors
+    /// - Throws: PluginHostError on fatal errors
     public func run(
         relayRead: FileHandle,
         relayWrite: FileHandle,
         resourceFn: @escaping () -> Data
     ) throws {
         outboundLock.lock()
-        outboundWriter = CborFrameWriter(handle: relayWrite)
+        outboundWriter = FrameWriter(handle: relayWrite)
         outboundLock.unlock()
 
         // Start relay reader thread — feeds into the same event queue as plugin readers
-        let relayReader = CborFrameReader(handle: relayRead)
+        let relayReader = FrameReader(handle: relayRead)
         let relayThread = Thread { [weak self] in
             while true {
                 do {
@@ -423,7 +434,7 @@ public final class CborPluginHost: @unchecked Sendable {
                 }
             }
         }
-        relayThread.name = "CborPluginHost.relay"
+        relayThread.name = "PluginHost.relay"
         relayThread.start()
 
         // Main loop: wait for events from any source (relay or plugins)
@@ -458,19 +469,19 @@ public final class CborPluginHost: @unchecked Sendable {
     // MARK: - Relay Frame Handling (Engine -> Plugin)
 
     /// Handle a frame received from the relay (engine side).
-    private func handleRelayFrame(_ frame: CborFrame) {
+    private func handleRelayFrame(_ frame: Frame) {
         switch frame.frameType {
         case .req:
             // Route by cap_urn to the appropriate plugin
             guard let capUrn = frame.cap else {
-                sendToRelay(CborFrame.err(id: frame.id, code: "INVALID_REQUEST", message: "REQ missing cap URN"))
+                sendToRelay(Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "REQ missing cap URN"))
                 return
             }
 
             stateLock.lock()
             guard let pluginIdx = findPluginForCapLocked(capUrn) else {
                 stateLock.unlock()
-                sendToRelay(CborFrame.err(id: frame.id, code: "NO_HANDLER", message: "No plugin handles cap: \(capUrn)"))
+                sendToRelay(Frame.err(id: frame.id, code: "NO_HANDLER", message: "No plugin handles cap: \(capUrn)"))
                 return
             }
             let needsSpawn = !plugins[pluginIdx].running && !plugins[pluginIdx].helloFailed
@@ -481,7 +492,7 @@ public final class CborPluginHost: @unchecked Sendable {
                 do {
                     try spawnPlugin(at: pluginIdx)
                 } catch {
-                    sendToRelay(CborFrame.err(id: frame.id, code: "SPAWN_FAILED", message: "Failed to spawn plugin: \(error.localizedDescription)"))
+                    sendToRelay(Frame.err(id: frame.id, code: "SPAWN_FAILED", message: "Failed to spawn plugin: \(error.localizedDescription)"))
                     return
                 }
             }
@@ -493,7 +504,7 @@ public final class CborPluginHost: @unchecked Sendable {
 
             if !plugin.writeFrame(frame) {
                 // Plugin is dead — send ERR and clean up
-                sendToRelay(CborFrame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+                sendToRelay(Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
                 stateLock.lock()
                 requestRouting.removeValue(forKey: frame.id)
                 stateLock.unlock()
@@ -515,7 +526,7 @@ public final class CborPluginHost: @unchecked Sendable {
 
             // If the plugin is dead, send ERR to engine and clean up routing
             if !plugin.writeFrame(frame) {
-                sendToRelay(CborFrame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+                sendToRelay(Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
                 stateLock.lock()
                 requestRouting.removeValue(forKey: frame.id)
                 peerRequests.remove(frame.id)
@@ -536,22 +547,22 @@ public final class CborPluginHost: @unchecked Sendable {
 
         case .hello, .heartbeat, .log:
             // These should never arrive from the engine through the relay
-            fputs("[CborPluginHost] Protocol error: \(frame.frameType) from relay\n", stderr)
+            fputs("[PluginHost] Protocol error: \(frame.frameType) from relay\n", stderr)
 
         case .relayNotify, .relayState:
             // Relay frames should be intercepted by the relay layer, never reach here
-            fputs("[CborPluginHost] Protocol error: relay frame \(frame.frameType) reached host\n", stderr)
+            fputs("[PluginHost] Protocol error: relay frame \(frame.frameType) reached host\n", stderr)
         }
     }
 
     // MARK: - Plugin Frame Handling (Plugin -> Engine)
 
     /// Handle a frame received from a plugin.
-    private func handlePluginFrame(pluginIdx: Int, frame: CborFrame) {
+    private func handlePluginFrame(pluginIdx: Int, frame: Frame) {
         switch frame.frameType {
         case .hello:
             // HELLO should be consumed during handshake, never during run
-            fputs("[CborPluginHost] Protocol error: HELLO from plugin \(pluginIdx) during run\n", stderr)
+            fputs("[PluginHost] Protocol error: HELLO from plugin \(pluginIdx) during run\n", stderr)
 
         case .heartbeat:
             // Handle heartbeat locally, never forward
@@ -562,12 +573,12 @@ public final class CborPluginHost: @unchecked Sendable {
 
             if !wasOurs {
                 // Plugin-initiated heartbeat — respond
-                plugin.writeFrame(CborFrame.heartbeat(id: frame.id))
+                plugin.writeFrame(Frame.heartbeat(id: frame.id))
             }
 
         case .relayNotify, .relayState:
             // Plugins must never send relay frames
-            fputs("[CborPluginHost] Protocol error: relay frame \(frame.frameType) from plugin \(pluginIdx)\n", stderr)
+            fputs("[PluginHost] Protocol error: relay frame \(frame.frameType) from plugin \(pluginIdx)\n", stderr)
 
         case .req:
             // Plugin peer invoke — register routing and forward to relay
@@ -614,7 +625,7 @@ public final class CborPluginHost: @unchecked Sendable {
         }
 
         // Send ERR for all requests routed to this plugin
-        var requestsToClean: [CborMessageId] = []
+        var requestsToClean: [MessageId] = []
         for (reqId, idx) in requestRouting {
             if idx == pluginIdx {
                 requestsToClean.append(reqId)
@@ -632,14 +643,14 @@ public final class CborPluginHost: @unchecked Sendable {
 
         // Send ERR frames outside the lock
         for reqId in requestsToClean {
-            sendToRelay(CborFrame.err(id: reqId, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+            sendToRelay(Frame.err(id: reqId, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
         }
     }
 
     // MARK: - Plugin Reader Thread
 
     /// Start a background reader thread for a plugin.
-    private func startPluginReaderThread(pluginIdx: Int, reader: CborFrameReader) {
+    private func startPluginReaderThread(pluginIdx: Int, reader: FrameReader) {
         let thread = Thread { [weak self] in
             while true {
                 do {
@@ -656,7 +667,7 @@ public final class CborPluginHost: @unchecked Sendable {
                 }
             }
         }
-        thread.name = "CborPluginHost.plugin[\(pluginIdx)]"
+        thread.name = "PluginHost.plugin[\(pluginIdx)]"
 
         stateLock.lock()
         plugins[pluginIdx].readerThread = thread
@@ -699,7 +710,7 @@ public final class CborPluginHost: @unchecked Sendable {
     // MARK: - Outbound Writing
 
     /// Write a frame to the relay (toward engine). Thread-safe.
-    private func sendToRelay(_ frame: CborFrame) {
+    private func sendToRelay(_ frame: Frame) {
         outboundLock.lock()
         defer { outboundLock.unlock() }
         guard let w = outboundWriter else { return }
@@ -745,7 +756,7 @@ public final class CborPluginHost: @unchecked Sendable {
     /// Does NOT hold stateLock during blocking operations (handshake).
     ///
     /// - Parameter idx: Plugin index in the plugins array
-    /// - Throws: CborPluginHostError if spawn or handshake fails
+    /// - Throws: PluginHostError if spawn or handshake fails
     private func spawnPlugin(at idx: Int) throws {
         // Read plugin info without holding lock during blocking ops
         stateLock.lock()
@@ -755,11 +766,11 @@ public final class CborPluginHost: @unchecked Sendable {
         stateLock.unlock()
 
         guard !path.isEmpty else {
-            throw CborPluginHostError.handshakeFailed("No binary path for plugin \(idx)")
+            throw PluginHostError.handshakeFailed("No binary path for plugin \(idx)")
         }
         guard !alreadyRunning else { return }
         guard !alreadyFailed else {
-            throw CborPluginHostError.handshakeFailed("Plugin previously failed HELLO — permanently removed")
+            throw PluginHostError.handshakeFailed("Plugin previously failed HELLO — permanently removed")
         }
 
         // Setup pipes
@@ -794,7 +805,7 @@ public final class CborPluginHost: @unchecked Sendable {
         let spawnResult = posix_spawn(&pid, path, &fileActions, nil, argv, nil)
         guard spawnResult == 0 else {
             let desc = String(cString: strerror(spawnResult))
-            throw CborPluginHostError.handshakeFailed("posix_spawn failed for \(path): \(desc)")
+            throw PluginHostError.handshakeFailed("posix_spawn failed for \(path): \(desc)")
         }
 
         // Close child's ends in parent
@@ -807,8 +818,8 @@ public final class CborPluginHost: @unchecked Sendable {
         let stderrHandle = errorPipe.fileHandleForReading
 
         // HELLO handshake (blocking — stateLock NOT held)
-        let reader = CborFrameReader(handle: stdoutHandle)
-        let writer = CborFrameWriter(handle: stdinHandle)
+        let reader = FrameReader(handle: stdoutHandle)
+        let writer = FrameWriter(handle: stdinHandle)
 
         let handshakeResult: HandshakeResult
         do {
@@ -827,7 +838,7 @@ public final class CborPluginHost: @unchecked Sendable {
             rebuildCapabilities()
             stateLock.unlock()
 
-            throw CborPluginHostError.handshakeFailed("HELLO failed for \(path): \(error.localizedDescription)")
+            throw PluginHostError.handshakeFailed("HELLO failed for \(path): \(error.localizedDescription)")
         }
 
         let caps = Self.extractCaps(from: handshakeResult.manifest ?? Data())

@@ -39,6 +39,23 @@ NS_ASSUME_NONNULL_BEGIN
 - (CSCapManifest *)withAuthor:(NSString *)author;
 - (CSCapManifest *)withPageUrl:(NSString *)pageUrl;
 
+/**
+ * Validate that CAP_IDENTITY is declared in this manifest.
+ * Fails if missing — identity is mandatory in every capset.
+ *
+ * @param error If validation fails, contains the error description
+ * @return YES if manifest contains CAP_IDENTITY, NO otherwise
+ */
+- (BOOL)validate:(NSError * _Nullable * _Nullable)error;
+
+/**
+ * Ensure CAP_IDENTITY is present in this manifest. Adds it if missing.
+ * This method is idempotent — if identity is already present, returns self unchanged.
+ *
+ * @return A new manifest with CAP_IDENTITY guaranteed to be present
+ */
+- (CSCapManifest *)ensureIdentity;
+
 @end
 
 NS_ASSUME_NONNULL_END

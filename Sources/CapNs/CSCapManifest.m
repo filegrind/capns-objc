@@ -7,6 +7,8 @@
 
 #import "include/CSCapManifest.h"
 #import "include/CSCap.h"
+#import "include/CSCapUrn.h"
+#import "include/CSStandardCaps.h"
 
 @implementation CSCapManifest
 
@@ -96,6 +98,78 @@
 - (CSCapManifest *)withPageUrl:(NSString *)pageUrl {
     self.pageUrl = [pageUrl copy];
     return self;
+}
+
+- (BOOL)validate:(NSError **)error {
+    // Parse CAP_IDENTITY URN
+    NSError *parseError = nil;
+    CSCapUrn *identityUrn = [CSCapUrn fromString:CSCapIdentity error:&parseError];
+    if (!identityUrn) {
+        // This should never happen - CSCapIdentity is a constant and should always be valid
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapManifestError"
+                                         code:1009
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"BUG: CAP_IDENTITY constant is invalid: %@", parseError.localizedDescription]}];
+        }
+        return NO;
+    }
+
+    // Check if any cap in the manifest matches CAP_IDENTITY (using accepts)
+    BOOL hasIdentity = NO;
+    for (CSCap *cap in self.caps) {
+        // identityUrn.accepts(cap.capUrn) — does identity pattern accept this cap instance?
+        if ([identityUrn accepts:cap.capUrn]) {
+            hasIdentity = YES;
+            break;
+        }
+    }
+
+    if (!hasIdentity) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSCapManifestError"
+                                         code:1010
+                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Manifest missing required CAP_IDENTITY (%@)", CSCapIdentity]}];
+        }
+        return NO;
+    }
+
+    return YES;
+}
+
+- (CSCapManifest *)ensureIdentity {
+    // Parse CAP_IDENTITY URN
+    CSCapUrn *identityUrn = [CSCapUrn fromString:CSCapIdentity error:nil];
+    if (!identityUrn) {
+        // This should never happen - CSCapIdentity is a constant
+        NSAssert(NO, @"BUG: CAP_IDENTITY constant is invalid");
+        return self;
+    }
+
+    // Check if identity is already present
+    BOOL hasIdentity = NO;
+    for (CSCap *cap in self.caps) {
+        if ([identityUrn accepts:cap.capUrn]) {
+            hasIdentity = YES;
+            break;
+        }
+    }
+
+    if (hasIdentity) {
+        return self;  // Already present, return unchanged
+    }
+
+    // Add identity cap using minimal constructor
+    CSCap *identityCap = [CSCap capWithUrn:identityUrn
+                                     title:@"Identity"
+                                   command:@"identity"];
+    NSMutableArray *newCaps = [self.caps mutableCopy];
+    [newCaps addObject:identityCap];
+
+    // Return new manifest with identity added
+    return [CSCapManifest manifestWithName:self.name
+                                   version:self.version
+                               description:self.manifestDescription
+                                      caps:[newCaps copy]];
 }
 
 @end

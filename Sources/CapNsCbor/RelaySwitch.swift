@@ -1,8 +1,8 @@
-/// CborRelaySwitch — Cap-aware routing multiplexer for multiple RelayMasters.
+/// RelaySwitch — Cap-aware routing multiplexer for multiple RelayMasters.
 ///
 /// The RelaySwitch sits above multiple RelayMasters and provides deterministic
 /// request routing based on cap URN matching. It plays the same role for RelayMasters
-/// that CborPluginHost plays for plugins.
+/// that PluginHost plays for plugins.
 ///
 /// ## Architecture
 ///
@@ -12,7 +12,7 @@
 /// └──────────────┬──────────────┘
 ///                │
 /// ┌──────────────▼──────────────┐
-/// │       CborRelaySwitch        │
+/// │       RelaySwitch        │
 /// │  • Aggregates capabilities   │
 /// │  • Routes REQ by cap URN     │
 /// │  • Routes frames by req_id   │
@@ -32,7 +32,7 @@ import CapNs
 
 // MARK: - Helper Extensions
 
-extension CborMessageId {
+extension MessageId {
     /// Convert message ID to string for use as dictionary key
     func toString() -> String {
         switch self {
@@ -47,7 +47,7 @@ extension CborMessageId {
 // MARK: - Error Types
 
 /// Errors specific to RelaySwitch operations
-public enum CborRelaySwitchError: Error, LocalizedError, Sendable {
+public enum RelaySwitchError: Error, LocalizedError, Sendable {
     case noHandler(String)
     case unknownRequest(String)
     case protocolError(String)
@@ -66,7 +66,7 @@ public enum CborRelaySwitchError: Error, LocalizedError, Sendable {
 // MARK: - Data Structures
 
 /// Socket pair for master connection
-public struct CborSocketPair: Sendable {
+public struct SocketPair: Sendable {
     public let read: FileHandle
     public let write: FileHandle
 
@@ -85,7 +85,7 @@ private struct RoutingEntry: Sendable {
 /// Frame received from a master
 private struct MasterFrame: Sendable {
     let masterIdx: Int
-    let frame: CborFrame?
+    let frame: Frame?
     let error: Error?
 }
 
@@ -97,20 +97,26 @@ private let ENGINE_SOURCE = Int.max
 /// Connection to a single RelayMaster
 @available(macOS 10.15.4, iOS 13.4, *)
 private final class MasterConnection: @unchecked Sendable {
-    let socketWriter: CborFrameWriter
+    let socketWriter: FrameWriter
     var manifest: Data
-    var limits: CborLimits
+    var limits: Limits
     var caps: [String]
     var healthy: Bool
     let readerQueue: DispatchQueue
+    /// SeqAssigner for outbound frames to this master
+    let seqAssigner: SeqAssigner
+    /// ReorderBuffer for inbound frames from this master
+    let reorderBuffer: ReorderBuffer
 
-    init(socketWriter: CborFrameWriter, manifest: Data, limits: CborLimits, caps: [String], healthy: Bool, readerQueue: DispatchQueue) {
+    init(socketWriter: FrameWriter, manifest: Data, limits: Limits, caps: [String], healthy: Bool, readerQueue: DispatchQueue) {
         self.socketWriter = socketWriter
         self.manifest = manifest
         self.limits = limits
         self.caps = caps
         self.healthy = healthy
         self.readerQueue = readerQueue
+        self.seqAssigner = SeqAssigner()
+        self.reorderBuffer = ReorderBuffer(maxBufferPerFlow: limits.maxReorderBuffer)
     }
 }
 
@@ -120,44 +126,44 @@ private final class MasterConnection: @unchecked Sendable {
 ///
 /// Routes requests based on cap URN matching and tracks bidirectional request/response flows.
 @available(macOS 10.15.4, iOS 13.4, *)
-public final class CborRelaySwitch: @unchecked Sendable {
+public final class RelaySwitch: @unchecked Sendable {
     private var masters: [MasterConnection] = []
     private var capTable: [(capUrn: String, masterIdx: Int)] = []
     private var requestRouting: [String: RoutingEntry] = [:]
     private var peerRequests: Set<String> = Set()
     private var aggregateCapabilities: Data = Data()
-    private var negotiatedLimits: CborLimits = CborLimits()
+    private var negotiatedLimits: Limits = Limits()
     private let lock = NSLock()
     private let frameQueue = DispatchQueue(label: "com.capns.relayswitch.frames", qos: .userInitiated)
-    private var frameChannel: [(masterIdx: Int, frame: CborFrame?, error: Error?)] = []
+    private var frameChannel: [(masterIdx: Int, frame: Frame?, error: Error?)] = []
     private let frameSemaphore = DispatchSemaphore(value: 0)
 
     /// Create a RelaySwitch from socket pairs.
     ///
     /// - Parameter sockets: Array of socket pairs (one per master)
-    /// - Throws: CborRelaySwitchError if construction fails
-    public init(sockets: [CborSocketPair]) throws {
+    /// - Throws: RelaySwitchError if construction fails
+    public init(sockets: [SocketPair]) throws {
         guard !sockets.isEmpty else {
-            throw CborRelaySwitchError.protocolError("RelaySwitch requires at least one master")
+            throw RelaySwitchError.protocolError("RelaySwitch requires at least one master")
         }
 
         // Connect to all masters
         for (masterIdx, sockPair) in sockets.enumerated() {
-            var reader = CborFrameReader(handle: sockPair.read)
-            let writer = CborFrameWriter(handle: sockPair.write)
+            var reader = FrameReader(handle: sockPair.read)
+            let writer = FrameWriter(handle: sockPair.write)
 
             // Perform handshake (read initial RelayNotify)
             guard let frame = try reader.read() else {
-                throw CborRelaySwitchError.protocolError("Expected RelayNotify during handshake")
+                throw RelaySwitchError.protocolError("Expected RelayNotify during handshake")
             }
 
             guard frame.frameType == .relayNotify else {
-                throw CborRelaySwitchError.protocolError("Expected RelayNotify during handshake")
+                throw RelaySwitchError.protocolError("Expected RelayNotify during handshake")
             }
 
             guard let manifest = frame.relayNotifyManifest,
                   let limits = frame.relayNotifyLimits else {
-                throw CborRelaySwitchError.protocolError("RelayNotify missing manifest or limits")
+                throw RelaySwitchError.protocolError("RelayNotify missing manifest or limits")
             }
 
             let caps = try Self.parseCapabilitiesFromManifest(manifest)
@@ -187,8 +193,8 @@ public final class CborRelaySwitch: @unchecked Sendable {
 
     // MARK: - Reader Loop
 
-    private func readerLoop(masterIdx: Int, reader: CborFrameReader) {
-        var mutableReader = reader  // CborFrameReader.read() mutates state
+    private func readerLoop(masterIdx: Int, reader: FrameReader) {
+        var mutableReader = reader  // FrameReader.read() mutates state
         while true {
             do {
                 guard let frame = try mutableReader.read() else {
@@ -214,7 +220,22 @@ public final class CborRelaySwitch: @unchecked Sendable {
                     continue
                 }
 
-                enqueueFrame(masterIdx: masterIdx, frame: frame, error: nil)
+                // Pass through reorder buffer
+                lock.lock()
+                let reorderBuffer = masters[masterIdx].reorderBuffer
+                lock.unlock()
+
+                let readyFrames = try reorderBuffer.accept(frame)
+
+                // Enqueue all ready frames
+                for readyFrame in readyFrames {
+                    // Cleanup flow state after terminal frames
+                    if readyFrame.frameType == .end || readyFrame.frameType == .err {
+                        let key = FlowKey.fromFrame(readyFrame)
+                        reorderBuffer.cleanupFlow(key)
+                    }
+                    enqueueFrame(masterIdx: masterIdx, frame: readyFrame, error: nil)
+                }
             } catch {
                 enqueueFrame(masterIdx: masterIdx, frame: nil, error: error)
                 return
@@ -222,7 +243,7 @@ public final class CborRelaySwitch: @unchecked Sendable {
         }
     }
 
-    private func enqueueFrame(masterIdx: Int, frame: CborFrame?, error: Error?) {
+    private func enqueueFrame(masterIdx: Int, frame: Frame?, error: Error?) {
         lock.lock()
         frameChannel.append((masterIdx: masterIdx, frame: frame, error: error))
         lock.unlock()
@@ -239,7 +260,7 @@ public final class CborRelaySwitch: @unchecked Sendable {
     }
 
     /// Get negotiated limits (minimum across all masters)
-    public func limits() -> CborLimits {
+    public func limits() -> Limits {
         lock.lock()
         defer { lock.unlock() }
         return negotiatedLimits
@@ -248,18 +269,21 @@ public final class CborRelaySwitch: @unchecked Sendable {
     /// Send a frame to the appropriate master (engine → plugin direction)
     ///
     /// Routes REQ by cap URN. Routes continuation frames by request ID.
+    /// Assigns seq using master's SeqAssigner before sending.
     ///
     /// - Parameter frame: Frame to send
-    /// - Throws: CborRelaySwitchError if routing fails
-    public func sendToMaster(_ frame: CborFrame) throws {
+    /// - Throws: RelaySwitchError if routing fails
+    public func sendToMaster(_ frame: Frame) throws {
         lock.lock()
         defer { lock.unlock() }
+
+        var mutableFrame = frame
 
         switch frame.frameType {
         case .req:
             // Find master for this cap
             guard let cap = frame.cap, let destIdx = findMasterForCap(cap) else {
-                throw CborRelaySwitchError.noHandler(frame.cap ?? "nil")
+                throw RelaySwitchError.noHandler(frame.cap ?? "nil")
             }
 
             // Register routing (source = engine)
@@ -268,28 +292,39 @@ public final class CborRelaySwitch: @unchecked Sendable {
                 destinationMasterIdx: destIdx
             )
 
-            try masters[destIdx].socketWriter.write(frame)
+            // Assign seq before sending
+            masters[destIdx].seqAssigner.assign(&mutableFrame)
+            try masters[destIdx].socketWriter.write(mutableFrame)
 
         case .streamStart, .chunk, .streamEnd, .end, .err:
             // Continuation frames route by request ID
             guard let entry = requestRouting[frame.id.toString()] else {
-                throw CborRelaySwitchError.unknownRequest(frame.id.toString())
+                throw RelaySwitchError.unknownRequest(frame.id.toString())
             }
 
             let destIdx = entry.destinationMasterIdx
-            try masters[destIdx].socketWriter.write(frame)
 
-            // Cleanup on terminal frames for peer responses
+            // Assign seq before sending
+            masters[destIdx].seqAssigner.assign(&mutableFrame)
+            try masters[destIdx].socketWriter.write(mutableFrame)
+
+            // Cleanup seq tracking and routing on terminal frames
             let isTerminal = frame.frameType == .end || frame.frameType == .err
-            if isTerminal && peerRequests.contains(frame.id.toString()) {
-                requestRouting.removeValue(forKey: frame.id.toString())
-                peerRequests.remove(frame.id.toString())
+            if isTerminal {
+                masters[destIdx].seqAssigner.remove(frame.id)
+
+                // Only remove routing for peer responses
+                if peerRequests.contains(frame.id.toString()) {
+                    requestRouting.removeValue(forKey: frame.id.toString())
+                    peerRequests.remove(frame.id.toString())
+                }
             }
 
         default:
             // Other frame types pass through to first master (or error)
             if !masters.isEmpty {
-                try masters[0].socketWriter.write(frame)
+                masters[0].seqAssigner.assign(&mutableFrame)
+                try masters[0].socketWriter.write(mutableFrame)
             }
         }
     }
@@ -300,8 +335,8 @@ public final class CborRelaySwitch: @unchecked Sendable {
     /// Peer requests (plugin → plugin) are handled internally and not returned.
     ///
     /// - Returns: Frame if available, nil if all masters closed
-    /// - Throws: CborRelaySwitchError on errors
-    public func readFromMasters() throws -> CborFrame? {
+    /// - Throws: RelaySwitchError on errors
+    public func readFromMasters() throws -> Frame? {
         while true {
             // Block on semaphore - reader threads signal when frames arrive
             frameSemaphore.wait()
@@ -370,15 +405,17 @@ public final class CborRelaySwitch: @unchecked Sendable {
         return nil
     }
 
-    private func handleMasterFrame(sourceIdx: Int, frame: CborFrame) throws -> CborFrame? {
+    private func handleMasterFrame(sourceIdx: Int, frame: Frame) throws -> Frame? {
         lock.lock()
         defer { lock.unlock() }
+
+        var mutableFrame = frame
 
         switch frame.frameType {
         case .req:
             // Peer request: plugin → plugin via switch
             guard let cap = frame.cap, let destIdx = findMasterForCap(cap) else {
-                throw CborRelaySwitchError.noHandler(frame.cap ?? "nil")
+                throw RelaySwitchError.noHandler(frame.cap ?? "nil")
             }
 
             // Register routing (source = plugin's master)
@@ -388,7 +425,9 @@ public final class CborRelaySwitch: @unchecked Sendable {
             )
             peerRequests.insert(frame.id.toString())
 
-            try masters[destIdx].socketWriter.write(frame)
+            // Assign seq before forwarding to destination master
+            masters[destIdx].seqAssigner.assign(&mutableFrame)
+            try masters[destIdx].socketWriter.write(mutableFrame)
 
             // Do NOT return to engine (internal routing)
             return nil
@@ -404,10 +443,18 @@ public final class CborRelaySwitch: @unchecked Sendable {
                 let destIdx = entry.sourceMasterIdx
                 let isTerminal = frame.frameType == .end || frame.frameType == .err
 
-                try masters[destIdx].socketWriter.write(frame)
+                // Assign seq before forwarding response
+                masters[destIdx].seqAssigner.assign(&mutableFrame)
+                try masters[destIdx].socketWriter.write(mutableFrame)
 
-                if isTerminal && !peerRequests.contains(frame.id.toString()) {
-                    requestRouting.removeValue(forKey: frame.id.toString())
+                if isTerminal {
+                    // Cleanup seq tracking
+                    masters[destIdx].seqAssigner.remove(frame.id)
+
+                    // Only remove routing for engine-initiated requests routed through peer
+                    if !peerRequests.contains(frame.id.toString()) {
+                        requestRouting.removeValue(forKey: frame.id.toString())
+                    }
                 }
 
                 return nil
@@ -507,7 +554,7 @@ public final class CborRelaySwitch: @unchecked Sendable {
             minChunk = DEFAULT_MAX_CHUNK
         }
 
-        negotiatedLimits = CborLimits(maxFrame: minFrame, maxChunk: minChunk)
+        negotiatedLimits = Limits(maxFrame: minFrame, maxChunk: minChunk)
     }
 
     // MARK: - Helper Functions
@@ -515,7 +562,7 @@ public final class CborRelaySwitch: @unchecked Sendable {
     private static func parseCapabilitiesFromManifest(_ manifest: Data) throws -> [String] {
         guard let parsed = try? JSONSerialization.jsonObject(with: manifest) as? [String: Any],
               let capsArray = parsed["capabilities"] as? [String] else {
-            throw CborRelaySwitchError.protocolError("Manifest capabilities must be array")
+            throw RelaySwitchError.protocolError("Manifest capabilities must be array")
         }
         return capsArray
     }

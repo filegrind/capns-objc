@@ -1,5 +1,5 @@
 //
-//  CborPluginRuntime.swift
+//  PluginRuntime.swift
 //  CapNsCbor
 //
 //  Plugin-side runtime for CBOR-based plugin communication.
@@ -15,7 +15,7 @@
 //
 //  Usage:
 //  ```swift
-//  let runtime = CborPluginRuntime(manifest: manifestData)
+//  let runtime = PluginRuntime(manifest: manifestData)
 //  runtime.register(capUrn: "cap:op=my_op") { payload, emitter, peer in
 //      emitter.emitStatus(operation: "processing", details: "Working...")
 //      // Optionally invoke host caps via peer.invoke()
@@ -34,7 +34,7 @@ import Glob
 // MARK: - Error Types
 
 /// Errors specific to PluginRuntime operations
-public enum CborPluginRuntimeError: Error, LocalizedError, @unchecked Sendable {
+public enum PluginRuntimeError: Error, LocalizedError, @unchecked Sendable {
     case handshakeFailed(String)
     case noHandler(String)
     case handlerError(String)
@@ -70,13 +70,525 @@ public enum CborPluginRuntimeError: Error, LocalizedError, @unchecked Sendable {
     }
 }
 
+// MARK: - Stream Abstractions
+// Stream abstractions hide the frame protocol from handlers.
+// Handlers work with streams of CBOR values, not raw frames.
+
+/// Errors that can occur during stream operations.
+public enum StreamError: Error {
+    case remoteError(code: String, message: String)
+    case closed
+    case decode(String)
+    case io(String)
+    case protocolError(String)
+}
+
+/// Allows sending frames directly through the output channel.
+/// Internal to the runtime — handlers never see this.
+protocol FrameSender: Sendable {
+    func send(_ frame: Frame) throws
+}
+
+/// A single input stream — yields decoded CBOR values from CHUNK frames.
+/// Handler never sees Frame, STREAM_START, STREAM_END, checksum, seq, or index.
+public final class InputStream: Sequence, @unchecked Sendable {
+    private let _mediaUrn: String
+    private let rx: UnsafeTransfer<AnyIterator<Result<CBOR, StreamError>>>
+
+    init(mediaUrn: String, rx: AnyIterator<Result<CBOR, StreamError>>) {
+        self._mediaUrn = mediaUrn
+        self.rx = UnsafeTransfer(rx)
+    }
+
+    /// Media URN of this stream (from STREAM_START).
+    public var mediaUrn: String {
+        _mediaUrn
+    }
+
+    /// Collect all chunks into a single byte vector.
+    /// Extracts inner bytes from .byteString/.utf8String and concatenates.
+    public func collectBytes() throws -> Data {
+        var result = Data()
+        for itemResult in self {
+            let item = try itemResult.get()
+            switch item {
+            case .byteString(let bytes):
+                result.append(contentsOf: bytes)
+            case .utf8String(let str):
+                result.append(str.data(using: .utf8) ?? Data())
+            default:
+                // For non-byte types, CBOR-encode them
+                let encoded = Data(item.encode())
+                result.append(encoded)
+            }
+        }
+        return result
+    }
+
+    /// Collect a single CBOR value (expects exactly one chunk).
+    public func collectValue() throws -> CBOR {
+        guard let first = rx.value.next() else {
+            throw StreamError.closed
+        }
+        return try first.get()
+    }
+
+    public func makeIterator() -> AnyIterator<Result<CBOR, StreamError>> {
+        rx.value
+    }
+}
+
+/// The bundle of all input arg streams for one request.
+/// Yields InputStream objects as STREAM_START frames arrive from the wire.
+/// Returns nil after END frame (all args delivered).
+public final class InputPackage: Sequence, @unchecked Sendable {
+    private let rx: UnsafeTransfer<AnyIterator<Result<InputStream, StreamError>>>
+
+    init(rx: AnyIterator<Result<InputStream, StreamError>>) {
+        self.rx = UnsafeTransfer(rx)
+    }
+
+    /// Get the next input stream. Returns nil when all streams delivered (after END).
+    public func nextStream() -> Result<InputStream, StreamError>? {
+        rx.value.next()
+    }
+
+    /// Collect all streams' bytes into a single Data.
+    public func collectAllBytes() throws -> Data {
+        var all = Data()
+        for streamResult in self {
+            let stream = try streamResult.get()
+            all.append(try stream.collectBytes())
+        }
+        return all
+    }
+
+    public func makeIterator() -> AnyIterator<Result<InputStream, StreamError>> {
+        rx.value
+    }
+}
+
+/// Writable stream handle for handler output or peer call arguments.
+/// Manages STREAM_START/CHUNK/STREAM_END framing automatically.
+public final class OutputStream: @unchecked Sendable {
+    private let sender: any FrameSender
+    private let streamId: String
+    private let _mediaUrn: String
+    private let requestId: MessageId
+    private let routingId: MessageId?
+    private let maxChunk: Int
+
+    private let streamStartedLock = NSLock()
+    private var _streamStarted = false
+
+    private let chunkStateLock = NSLock()
+    private var _chunkIndex: UInt64 = 0
+    private var _chunkCount: UInt64 = 0
+
+    private let closedLock = NSLock()
+    private var _closed = false
+
+    init(
+        sender: any FrameSender,
+        streamId: String,
+        mediaUrn: String,
+        requestId: MessageId,
+        routingId: MessageId?,
+        maxChunk: Int
+    ) {
+        self.sender = sender
+        self.streamId = streamId
+        self._mediaUrn = mediaUrn
+        self.requestId = requestId
+        self.routingId = routingId
+        self.maxChunk = maxChunk
+    }
+
+    /// Media URN of this stream.
+    public var mediaUrn: String {
+        _mediaUrn
+    }
+
+    private func ensureStarted() throws {
+        streamStartedLock.lock()
+        let alreadyStarted = _streamStarted
+        if !alreadyStarted {
+            _streamStarted = true
+        }
+        streamStartedLock.unlock()
+
+        if !alreadyStarted {
+            var startFrame = Frame.streamStart(
+                reqId: requestId,
+                streamId: streamId,
+                mediaUrn: _mediaUrn
+            )
+            startFrame.routingId = routingId
+            try sender.send(startFrame)
+        }
+    }
+
+    private func sendChunk(_ value: CBOR) throws {
+        let cborPayload = Data(value.encode())
+
+        chunkStateLock.lock()
+        let currentChunkIndex = _chunkIndex
+        _chunkIndex += 1
+        _chunkCount += 1
+        chunkStateLock.unlock()
+
+        let checksum = Frame.computeChecksum(cborPayload)
+        var frame = Frame.chunk(
+            reqId: requestId,
+            streamId: streamId,
+            seq: 0, // seq assigned by writer thread SeqAssigner
+            payload: cborPayload,
+            chunkIndex: currentChunkIndex,
+            checksum: checksum
+        )
+        frame.routingId = routingId
+        try sender.send(frame)
+    }
+
+    /// Write raw bytes. Splits into maxChunk pieces, each wrapped as CBOR byteString.
+    /// Auto-sends STREAM_START before first chunk.
+    public func write(_ data: Data) throws {
+        try ensureStarted()
+        if data.isEmpty {
+            return
+        }
+        var offset = 0
+        while offset < data.count {
+            let chunkSize = min(data.count - offset, maxChunk)
+            let chunkBytes = data.subdata(in: offset..<(offset + chunkSize))
+            try sendChunk(.byteString([UInt8](chunkBytes)))
+            offset += chunkSize
+        }
+    }
+
+    /// Emit a CBOR value. Handles byteString/utf8String/array/map chunking.
+    public func emitCbor(_ value: CBOR) throws {
+        try ensureStarted()
+        switch value {
+        case .byteString(let bytes):
+            var offset = 0
+            while offset < bytes.count {
+                let chunkSize = min(bytes.count - offset, maxChunk)
+                let chunkBytes = Array(bytes[offset..<(offset + chunkSize)])
+                try sendChunk(.byteString(chunkBytes))
+                offset += chunkSize
+            }
+
+        case .utf8String(let text):
+            let textBytes = Data(text.utf8)
+            var offset = 0
+            while offset < textBytes.count {
+                var chunkSize = min(textBytes.count - offset, maxChunk)
+                // Ensure we don't split UTF-8 mid-character
+                while chunkSize > 0 {
+                    let chunkData = textBytes.subdata(in: offset..<(offset + chunkSize))
+                    if String(data: chunkData, encoding: .utf8) != nil {
+                        break
+                    }
+                    chunkSize -= 1
+                }
+                if chunkSize == 0 {
+                    throw PluginRuntimeError.handlerError("Cannot split text on character boundary")
+                }
+                let chunkData = textBytes.subdata(in: offset..<(offset + chunkSize))
+                let chunkText = String(data: chunkData, encoding: .utf8)!
+                try sendChunk(.utf8String(chunkText))
+                offset += chunkSize
+            }
+
+        case .array(let elements):
+            for element in elements {
+                try sendChunk(element)
+            }
+
+        case .map(let entries):
+            for (key, val) in entries {
+                let entry = CBOR.array([key, val])
+                try sendChunk(entry)
+            }
+
+        default:
+            // Other types (int, float, bool, null): send as single chunk
+            try sendChunk(value)
+        }
+    }
+
+    /// Emit a log message.
+    public func log(level: String, message: String) {
+        var frame = Frame.log(id: requestId, level: level, message: message)
+        frame.routingId = routingId
+        try? sender.send(frame)
+    }
+
+    /// Close the output stream (sends STREAM_END). Idempotent.
+    /// If stream was never started, sends STREAM_START first.
+    public func close() throws {
+        closedLock.lock()
+        let alreadyClosed = _closed
+        if !alreadyClosed {
+            _closed = true
+        }
+        closedLock.unlock()
+
+        if alreadyClosed {
+            return
+        }
+
+        try ensureStarted()
+
+        chunkStateLock.lock()
+        let finalChunkCount = _chunkCount
+        chunkStateLock.unlock()
+
+        var frame = Frame.streamEnd(
+            reqId: requestId,
+            streamId: streamId,
+            chunkCount: finalChunkCount
+        )
+        frame.routingId = routingId
+        try sender.send(frame)
+    }
+}
+
+/// Handle for an in-progress peer invocation.
+/// Handler creates arg streams with `arg()`, writes data, then calls `finish()`
+/// to get the single response InputStream.
+public final class PeerCall: @unchecked Sendable {
+    private let sender: any FrameSender
+    private let requestId: MessageId
+    private let maxChunk: Int
+    private var responseRx: AnyIterator<Frame>?
+    private let lock = NSLock()
+
+    init(sender: any FrameSender, requestId: MessageId, maxChunk: Int, responseRx: AnyIterator<Frame>) {
+        self.sender = sender
+        self.requestId = requestId
+        self.maxChunk = maxChunk
+        self.responseRx = responseRx
+    }
+
+    /// Create a new arg OutputStream for this peer call.
+    /// Each arg is an independent stream (own stream_id, no routing_id).
+    public func arg(mediaUrn: String) -> OutputStream {
+        let streamId = UUID().uuidString
+        return OutputStream(
+            sender: sender,
+            streamId: streamId,
+            mediaUrn: mediaUrn,
+            requestId: requestId,
+            routingId: nil, // No routing_id for peer requests
+            maxChunk: maxChunk
+        )
+    }
+
+    /// Finish sending args and get the response stream.
+    /// Sends END for the peer request, spawns Demux on response channel.
+    public func finish() throws -> InputStream {
+        // Send END frame for the peer request
+        let endFrame = Frame.end(id: requestId, finalPayload: nil)
+        try sender.send(endFrame)
+
+        // Take the response receiver
+        lock.lock()
+        guard let rx = responseRx else {
+            lock.unlock()
+            throw PluginRuntimeError.peerRequestError("PeerCall already finished")
+        }
+        responseRx = nil
+        lock.unlock()
+
+        // Spawn single-stream Demux for the response
+        let inputStream = try demuxSingleStream(responseRx: rx, maxChunk: maxChunk)
+        return inputStream
+    }
+}
+
+/// Wrapper to transfer non-Sendable types across concurrency boundaries.
+/// Use with extreme caution — ensures external synchronization.
+private final class UnsafeTransfer<T>: @unchecked Sendable {
+    var value: T
+    init(_ value: T) {
+        self.value = value
+    }
+}
+
+/// Demux a single response stream from frame channel.
+/// Used by PeerCall.finish() to convert response frames into InputStream.
+private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) throws -> InputStream {
+    // Create a channel for decoded CBOR values
+    var chunks: [Result<CBOR, StreamError>] = []
+    var mediaUrn = "media:bytes" // Default, updated by STREAM_START
+
+    // Drain the response channel and decode CHUNKs
+    for frame in responseRx {
+        switch frame.frameType {
+        case .streamStart:
+            if let urn = frame.mediaUrn {
+                mediaUrn = urn
+            }
+
+        case .chunk:
+            // Decode CBOR payload
+            guard let payload = frame.payload else {
+                chunks.append(.failure(.protocolError("CHUNK frame missing payload")))
+                break
+            }
+            do {
+                guard let value = try CBOR.decode([UInt8](payload)) else {
+                    chunks.append(.failure(.decode("Failed to decode CBOR chunk - decode returned nil")))
+                    continue
+                }
+                chunks.append(.success(value))
+            } catch {
+                chunks.append(.failure(.decode("Failed to decode CBOR chunk: \(error)")))
+            }
+
+        case .streamEnd:
+            // Stream ended normally
+            break
+
+        case .end:
+            // Response END — stream should have ended already
+            break
+
+        case .err:
+            let code = frame.errorCode ?? "UNKNOWN"
+            let message = frame.errorMessage ?? "Unknown error"
+            chunks.append(.failure(.remoteError(code: code, message: message)))
+            break
+
+        default:
+            // Unexpected frame type
+            chunks.append(.failure(.protocolError("Unexpected frame type in response: \(frame.frameType)")))
+            break
+        }
+    }
+
+    // Create iterator from collected chunks
+    var index = 0
+    let iterator = AnyIterator<Result<CBOR, StreamError>> {
+        guard index < chunks.count else { return nil }
+        let item = chunks[index]
+        index += 1
+        return item
+    }
+
+    return InputStream(mediaUrn: mediaUrn, rx: iterator)
+}
+
+/// Demux multiple input streams from frame iterator into InputPackage.
+/// Groups frames by stream_id, yields InputStream for each stream.
+/// Used for incoming requests (plugin receiving from host).
+private func demuxMultiStream(frameIterator: AnyIterator<Frame>) -> InputPackage {
+    // Track per-stream state
+    class StreamState {
+        var mediaUrn: String = "media:bytes"
+        var chunks: [Result<CBOR, StreamError>] = []
+        var ended = false
+    }
+
+    var streams: [String: StreamState] = [:]
+    var streamOrder: [String] = [] // Track order of STREAM_START arrivals
+
+    // Drain all frames and organize by stream_id
+    for frame in frameIterator {
+        switch frame.frameType {
+        case .streamStart:
+            guard let streamId = frame.streamId else {
+                continue
+            }
+            let state = StreamState()
+            if let urn = frame.mediaUrn {
+                state.mediaUrn = urn
+            }
+            streams[streamId] = state
+            streamOrder.append(streamId)
+
+        case .chunk:
+            guard let streamId = frame.streamId,
+                  let state = streams[streamId],
+                  let payload = frame.payload else {
+                continue
+            }
+            do {
+                guard let value = try CBOR.decode([UInt8](payload)) else {
+                    state.chunks.append(.failure(.decode("Failed to decode CBOR chunk - decode returned nil")))
+                    continue
+                }
+                state.chunks.append(.success(value))
+            } catch {
+                state.chunks.append(.failure(.decode("Failed to decode CBOR chunk: \(error)")))
+            }
+
+        case .streamEnd:
+            guard let streamId = frame.streamId,
+                  let state = streams[streamId] else {
+                continue
+            }
+            state.ended = true
+
+        case .end:
+            break
+
+        case .err:
+            // Error frame - propagate to all streams
+            let code = frame.errorCode ?? "UNKNOWN"
+            let message = frame.errorMessage ?? "Unknown error"
+            let error = StreamError.remoteError(code: code, message: message)
+            for state in streams.values {
+                state.chunks.append(.failure(error))
+            }
+            break
+
+        default:
+            break
+        }
+    }
+
+    // Build InputStream for each stream in arrival order
+    var inputStreams: [Result<InputStream, StreamError>] = []
+    for streamId in streamOrder {
+        guard let state = streams[streamId] else {
+            continue
+        }
+
+        var chunkIndex = 0
+        let chunksCopy = state.chunks
+        let iterator = AnyIterator<Result<CBOR, StreamError>> {
+            guard chunkIndex < chunksCopy.count else { return nil }
+            let item = chunksCopy[chunkIndex]
+            chunkIndex += 1
+            return item
+        }
+
+        let inputStream = InputStream(mediaUrn: state.mediaUrn, rx: iterator)
+        inputStreams.append(.success(inputStream))
+    }
+
+    // Create InputPackage iterator
+    var streamIndex = 0
+    let streamsIterator = AnyIterator<Result<InputStream, StreamError>> {
+        guard streamIndex < inputStreams.count else { return nil }
+        let item = inputStreams[streamIndex]
+        streamIndex += 1
+        return item
+    }
+
+    return InputPackage(rx: streamsIterator)
+}
+
 // MARK: - Stream Chunk Type - REMOVED
-// StreamChunk wrapper removed - handlers now receive bare CborFrame objects directly
+// StreamChunk wrapper removed - handlers now receive bare Frame objects directly
 
 // MARK: - Argument Types
 
 /// Unified argument for cap invocation - arguments are identified by media_urn.
-public struct CborCapArgumentValue: Sendable {
+public struct CapArgumentValue: Sendable {
     /// Semantic identifier, e.g., "media:model-spec;textable;form=scalar"
     public let mediaUrn: String
     /// Value bytes (UTF-8 for text, raw for binary)
@@ -88,111 +600,89 @@ public struct CborCapArgumentValue: Sendable {
     }
 
     /// Create from a string value
-    public static func fromString(mediaUrn: String, value: String) -> CborCapArgumentValue {
+    public static func fromString(mediaUrn: String, value: String) -> CapArgumentValue {
         guard let data = value.data(using: .utf8) else {
             fatalError("Failed to encode string as UTF-8: \(value)")
         }
-        return CborCapArgumentValue(mediaUrn: mediaUrn, value: data)
+        return CapArgumentValue(mediaUrn: mediaUrn, value: data)
     }
 
     /// Get the value as a UTF-8 string (fails for binary data)
     public func valueAsString() throws -> String {
         guard let str = String(data: value, encoding: .utf8) else {
-            throw CborPluginRuntimeError.deserializationError("Value is not valid UTF-8")
+            throw PluginRuntimeError.deserializationError("Value is not valid UTF-8")
         }
         return str
     }
 }
 
-// MARK: - StreamEmitter Protocol
-
-/// Protocol for streaming output from handlers.
-/// Thread-safe for use in concurrent handlers.
-///
-/// IMPORTANT: Handlers MUST emit CBOR values, not raw bytes.
-/// The emitter handles protocol framing (STREAM_START + CHUNK + STREAM_END).
-public protocol CborStreamEmitter: Sendable {
-    /// Emit a CBOR value as output.
-    /// The value is CBOR-encoded once and sent as raw CBOR bytes in CHUNK frames.
-    /// No double-encoding: one CBOR layer from handler to consumer.
-    /// Large values are automatically split into multiple chunks.
-    ///
-    /// Handlers construct CBOR values using SwiftCBOR's CBOR enum:
-    /// - .byteString([UInt8]) for binary data
-    /// - .utf8String(String) for text
-    /// - .array([CBOR]) for arrays
-    /// - .map([CBOR: CBOR]) for structured data
-    func emitCbor(_ value: CBOR) throws
-
-    /// Emit a log message at the given level (sent as LOG frame, side-channel)
-    func emitLog(level: String, message: String)
-}
 
 // MARK: - PeerInvoker Protocol
 
 /// Allows handlers to invoke caps on the peer (host).
 ///
 /// This protocol enables bidirectional communication where a plugin handler can
-/// invoke caps on the host while processing a request. This is essential for
-/// sandboxed plugins that need to delegate certain operations (like model
-/// downloading) to the host.
+/// invoke caps on the host while processing a request.
 ///
-/// The `invoke` method sends a REQ frame to the host and spawns a thread that
-/// receives response frames, yielding bare CBOR Frame objects as they arrive.
-public protocol CborPeerInvoker: Sendable {
-    /// Invoke a cap on the host with arguments.
-    ///
-    /// Sends a REQ frame (empty payload) + STREAM_START + CHUNK + STREAM_END + END
-    /// for each argument. Spawns a dedicated thread that forwards response frames
-    /// to an AsyncStream. Returns bare CBOR Frame objects (STREAM_START, CHUNK,
-    /// STREAM_END, END, ERR) as they arrive from the host. The consumer processes
-    /// frames directly - no decoding, no wrapper types.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN to invoke on the host
-    ///   - arguments: Arguments identified by media_urn
-    /// - Returns: AsyncStream yielding bare CborFrame objects
-    func invoke(capUrn: String, arguments: [CborCapArgumentValue]) throws -> AsyncStream<CborFrame>
+/// The `call` method starts a peer invocation and returns a `PeerCall`.
+/// The handler creates arg streams with `call.arg()`, writes data, then
+/// calls `call.finish()` to get the single response `InputStream`.
+public protocol PeerInvoker: Sendable {
+    /// Start a peer call. Sends REQ, registers response channel.
+    func call(capUrn: String) throws -> PeerCall
+
+    /// Convenience: open call, write each arg's bytes, finish, return response.
+    func callWithBytes(capUrn: String, args: [(mediaUrn: String, data: Data)]) throws -> InputStream
+}
+
+// Default implementation of callWithBytes
+extension PeerInvoker {
+    public func callWithBytes(capUrn: String, args: [(mediaUrn: String, data: Data)]) throws -> InputStream {
+        let call = try self.call(capUrn: capUrn)
+        for (mediaUrn, data) in args {
+            let arg = call.arg(mediaUrn: mediaUrn)
+            try arg.write(data)
+            try arg.close()
+        }
+        return try call.finish()
+    }
 }
 
 /// A no-op PeerInvoker that always returns an error.
-/// Used when peer invocation is not supported (CLI mode).
-public struct NoCborPeerInvoker: CborPeerInvoker {
+/// Used when peer invocation is not supported (e.g., CLI mode).
+public struct NoPeerInvoker: PeerInvoker {
     public init() {}
 
-    public func invoke(capUrn: String, arguments: [CborCapArgumentValue]) throws -> AsyncStream<CborFrame> {
-        throw CborPluginRuntimeError.peerRequestError("Peer invocation not supported in CLI mode")
+    public func call(capUrn: String) throws -> PeerCall {
+        throw PluginRuntimeError.peerRequestError("Peer invocation not supported in this context")
     }
 }
 
-// MARK: - CliStreamEmitter
+// MARK: - CliFrameSender
 
-/// CLI-mode emitter that writes directly to stdout.
-/// Extracts raw bytes/text from CBOR values for CLI output.
-public final class CliStreamEmitter: CborStreamEmitter, @unchecked Sendable {
-    /// Whether to add newlines after each emit (NDJSON style)
-    let ndjson: Bool
+/// CLI-mode frame sender that extracts and writes raw content to stdout.
+/// Used by OutputStream in CLI mode.
+final class CliFrameSender: FrameSender, @unchecked Sendable {
     private let stdoutHandle: FileHandle
 
-    /// Create a new CLI emitter with NDJSON formatting (newline after each emit)
-    public init() {
-        self.ndjson = true
+    init() {
         self.stdoutHandle = FileHandle.standardOutput
     }
 
-    /// Create a CLI emitter without NDJSON formatting
-    public init(ndjson: Bool) {
-        self.ndjson = ndjson
-        self.stdoutHandle = FileHandle.standardOutput
-    }
-
-    public func emitCbor(_ value: CBOR) throws {
-        // Extract raw bytes/text from CBOR and emit to stdout
-        extractAndWrite(value, to: stdoutHandle)
-
-        if ndjson {
-            stdoutHandle.write(Data("\n".utf8))
+    func send(_ frame: Frame) throws {
+        // In CLI mode, only handle CHUNK frames with payload
+        // STREAM_START, STREAM_END are ignored
+        guard frame.frameType == .chunk, let payload = frame.payload else {
+            return
         }
+
+        // Decode CBOR value from payload
+        guard let value = try CBOR.decode([UInt8](payload)) else {
+            throw PluginRuntimeError.protocolError("Failed to decode CBOR chunk payload")
+        }
+
+        // Extract and write raw content
+        extractAndWrite(value, to: stdoutHandle)
     }
 
     /// Recursively extract and write raw content from CBOR values
@@ -211,26 +701,20 @@ public final class CliStreamEmitter: CborStreamEmitter, @unchecked Sendable {
             }
 
         case .map(let m):
-            // Extract "value" field if present, otherwise fail
+            // Extract "value" field if present
             if let val = m[.utf8String("value")] {
                 extractAndWrite(val, to: handle)
             } else {
-                // No value field - this is a protocol error
-                fatalError("CLI emitter received CBOR map without 'value' field. Handler must emit raw data types.")
+                // No value field - write nothing (map structures are metadata)
             }
 
         default:
-            // Unsupported CBOR type for CLI output
-            fatalError("CLI emitter received unsupported CBOR type: \(value). Handler must emit byteString, utf8String, or array.")
+            // Other types - encode as CBOR bytes
+            handle.write(Data(value.encode()))
         }
     }
-
-    public func emitLog(level: String, message: String) {
-        // In CLI mode, logs go to stderr
-        let logLine = "[\(level.uppercased())] \(message)\n"
-        FileHandle.standardError.write(Data(logLine.utf8))
-    }
 }
+
 
 // MARK: - Payload Extraction
 
@@ -247,7 +731,7 @@ public final class CliStreamEmitter: CborStreamEmitter, @unchecked Sendable {
 ///   - contentType: Content-Type header from the REQ frame
 ///   - capUrn: The cap URN being invoked (used to determine expected input type)
 /// - Returns: The effective payload bytes
-/// - Throws: CborPluginRuntimeError if parsing fails or no matching argument found
+/// - Throws: PluginRuntimeError if parsing fails or no matching argument found
 func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String) throws -> Data {
     // Check if this is CBOR arguments
     guard contentType == "application/cbor" else {
@@ -260,7 +744,7 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
     do {
         parsedUrn = try CSCapUrn.fromString(capUrn)
     } catch {
-        throw CborPluginRuntimeError.capUrnError("Failed to parse cap URN '\(capUrn)': \(error.localizedDescription)")
+        throw PluginRuntimeError.capUrnError("Failed to parse cap URN '\(capUrn)': \(error.localizedDescription)")
     }
     let expectedInput = parsedUrn.getInSpec()
 
@@ -268,16 +752,16 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
     let cborValue: CBOR
     do {
         guard let decoded = try CBOR.decode([UInt8](payload)) else {
-            throw CborPluginRuntimeError.deserializationError("Failed to decode CBOR payload")
+            throw PluginRuntimeError.deserializationError("Failed to decode CBOR payload")
         }
         cborValue = decoded
     } catch {
-        throw CborPluginRuntimeError.deserializationError("Failed to parse CBOR arguments: \(error)")
+        throw PluginRuntimeError.deserializationError("Failed to parse CBOR arguments: \(error)")
     }
 
     // Must be an array
     guard case .array(let arguments) = cborValue else {
-        throw CborPluginRuntimeError.deserializationError("CBOR arguments must be an array")
+        throw PluginRuntimeError.deserializationError("CBOR arguments must be an array")
     }
 
     // Parse the expected input as a tagged URN for proper matching
@@ -324,7 +808,7 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
     }
 
     // No matching argument found - this is an error, no fallbacks
-    throw CborPluginRuntimeError.deserializationError(
+    throw PluginRuntimeError.deserializationError(
         "No argument found matching expected input media type '\(expectedInput)' in CBOR arguments"
     )
 }
@@ -342,288 +826,63 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
 /// Peer response frames: STREAM_START, CHUNK, STREAM_END, END, ERR (from PeerInvoker)
 ///
 /// Handler processes frames and emits output via CborStreamEmitter.
-/// The runtime sends STREAM_END + END frames after handler completes.
+/// Handler signature for cap invocations.
 ///
-/// The `CborPeerInvoker` allows the handler to invoke caps on the host (peer) during
-/// request processing. This enables bidirectional communication for operations
-/// like model downloading that sandboxed plugins cannot perform directly.
-public typealias CborCapHandler = @Sendable (
-    AsyncStream<CborFrame>,
-    CborStreamEmitter,
-    CborPeerInvoker
-) async throws -> Void
+/// Receives:
+/// - `InputPackage`: Bundle of input arg streams (iterate to get InputStream for each arg)
+/// - `OutputStream`: Output stream for handler results (use emitCbor/write/log/close)
+/// - `PeerInvoker`: Allows handler to invoke caps on the host (peer) during processing
+///
+/// The handler processes input streams, emits output via OutputStream, and the
+/// runtime automatically sends STREAM_END + END frames after handler completes.
+/// Handler must close() the output stream before returning.
+public typealias CapHandler = @Sendable (
+    InputPackage,
+    OutputStream,
+    PeerInvoker
+) throws -> Void
 
 // MARK: - Internal: Pending Peer Request
 
 /// Internal struct to track pending peer requests (plugin invoking host caps).
 /// Now uses AsyncStream continuation to forward frames instead of condition variables.
 private struct PendingPeerRequest {
-    let continuation: AsyncStream<CborFrame>.Continuation
+    let continuation: AsyncStream<Frame>.Continuation
     var isComplete: Bool
-}
-
-// MARK: - Internal: ThreadSafeStreamEmitter
-
-/// Thread-safe emitter implementation that writes CBOR frames with stream multiplexing.
-/// Sends STREAM_START before first emission, then CHUNK frames, caller must send STREAM_END + END.
-@available(macOS 10.15.4, iOS 13.4, *)
-final class ThreadSafeStreamEmitter: CborStreamEmitter, @unchecked Sendable {
-    private let writer: CborFrameWriter
-    private let writerLock: NSLock
-    private let requestId: CborMessageId
-    private let streamId: String  // Unique stream ID for this response
-    private let mediaUrn: String  // Response media type
-    private let maxChunk: Int     // Negotiated max chunk size
-    private var seq: UInt64 = 0
-    private let seqLock = NSLock()
-    private var streamStarted: Bool = false
-    private let streamLock = NSLock()
-
-    /// Whether STREAM_START was actually sent (used by callers to guard STREAM_END)
-    var didStartStream: Bool {
-        streamLock.lock()
-        defer { streamLock.unlock() }
-        return streamStarted
-    }
-
-    init(writer: CborFrameWriter, writerLock: NSLock, requestId: CborMessageId, streamId: String, mediaUrn: String, maxChunk: Int) {
-        self.writer = writer
-        self.writerLock = writerLock
-        self.requestId = requestId
-        self.streamId = streamId
-        self.mediaUrn = mediaUrn
-        self.maxChunk = maxChunk
-    }
-
-    func emitCbor(_ value: CBOR) throws {
-        // CHUNK payloads = complete, independently decodable CBOR values
-        //
-        // Streams might never end (logs, video, real-time data), so each CHUNK must be
-        // processable immediately without waiting for END frame.
-        //
-        // For byteString/utf8String: split raw data, encode each chunk as complete value
-        // For other types: encode once (typically small)
-        //
-        // Each CHUNK payload can be decoded independently
-
-        // Send STREAM_START if this is the first emission
-        streamLock.lock()
-        if !streamStarted {
-            streamStarted = true
-            streamLock.unlock()
-
-            let startFrame = CborFrame.streamStart(
-                reqId: requestId,
-                streamId: streamId,
-                mediaUrn: mediaUrn
-            )
-            writerLock.lock()
-            do {
-                try writer.write(startFrame)
-            } catch {
-                writerLock.unlock()
-                throw CborPluginRuntimeError.ioError("Failed to write STREAM_START: \(error)")
-            }
-            writerLock.unlock()
-        } else {
-            streamLock.unlock()
-        }
-
-        // Split large byte/text data, encode each chunk as complete CBOR value
-        switch value {
-        case .byteString(let bytes):
-            // Split bytes BEFORE encoding, encode each chunk as CBOR.byteString
-            let bytesData = Data(bytes)
-            var offset = 0
-            while offset < bytesData.count {
-                let chunkSize = min(maxChunk, bytesData.count - offset)
-                let chunkBytes = Array(bytesData.subdata(in: offset..<offset+chunkSize))
-
-                // Encode as complete CBOR.byteString - independently decodable
-                let chunkValue = CBOR.byteString(chunkBytes)
-                let cborPayload = Data(chunkValue.encode())
-
-                seqLock.lock()
-                let currentSeq = seq
-                seq += 1
-                seqLock.unlock()
-
-                let frame = CborFrame.chunk(
-                    reqId: requestId,
-                    streamId: streamId,
-                    seq: currentSeq,
-                    payload: cborPayload
-                )
-
-                writerLock.lock()
-                do {
-                    try writer.write(frame)
-                } catch {
-                    writerLock.unlock()
-                    throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
-                }
-                writerLock.unlock()
-
-                offset += chunkSize
-            }
-
-        case .utf8String(let text):
-            // Split string BEFORE encoding, encode each chunk as CBOR.utf8String
-            let textData = text.data(using: .utf8)!
-            var offset = 0
-            while offset < textData.count {
-                var chunkSize = min(maxChunk, textData.count - offset)
-                // Ensure we split on UTF-8 character boundaries
-                while chunkSize > 0 {
-                    let chunkData = textData.subdata(in: offset..<offset+chunkSize)
-                    if let chunkText = String(data: chunkData, encoding: .utf8) {
-                        // Valid UTF-8 boundary
-
-                        // Encode as complete CBOR.utf8String - independently decodable
-                        let chunkValue = CBOR.utf8String(chunkText)
-                        let cborPayload = Data(chunkValue.encode())
-
-                        seqLock.lock()
-                        let currentSeq = seq
-                        seq += 1
-                        seqLock.unlock()
-
-                        let frame = CborFrame.chunk(
-                            reqId: requestId,
-                            streamId: streamId,
-                            seq: currentSeq,
-                            payload: cborPayload
-                        )
-
-                        writerLock.lock()
-                        do {
-                            try writer.write(frame)
-                        } catch {
-                            writerLock.unlock()
-                            throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
-                        }
-                        writerLock.unlock()
-
-                        offset += chunkSize
-                        break
-                    } else {
-                        chunkSize -= 1
-                    }
-                }
-                if chunkSize == 0 {
-                    throw CborPluginRuntimeError.handlerError("Cannot split string on character boundary")
-                }
-            }
-
-        case .array(let elements):
-            // Array: send each element as independent CBOR chunk
-            // Allows receiver to reconstruct elements without waiting for entire array
-            for element in elements {
-                // Encode each element as complete CBOR value
-                let cborPayload = Data(element.encode())
-
-                seqLock.lock()
-                let currentSeq = seq
-                seq += 1
-                seqLock.unlock()
-
-                let frame = CborFrame.chunk(
-                    reqId: requestId,
-                    streamId: streamId,
-                    seq: currentSeq,
-                    payload: cborPayload
-                )
-
-                writerLock.lock()
-                do {
-                    try writer.write(frame)
-                } catch {
-                    writerLock.unlock()
-                    throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
-                }
-                writerLock.unlock()
-            }
-
-        case .map(let entries):
-            // Map: send each entry as independent CBOR chunk
-            // Receiver must wait for all entries before reconstructing map
-            for (key, val) in entries {
-                // Encode each key-value pair as a 2-element array: [key, value]
-                let entry = CBOR.array([key, val])
-                let cborPayload = Data(entry.encode())
-
-                seqLock.lock()
-                let currentSeq = seq
-                seq += 1
-                seqLock.unlock()
-
-                let frame = CborFrame.chunk(
-                    reqId: requestId,
-                    streamId: streamId,
-                    seq: currentSeq,
-                    payload: cborPayload
-                )
-
-                writerLock.lock()
-                do {
-                    try writer.write(frame)
-                } catch {
-                    writerLock.unlock()
-                    throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
-                }
-                writerLock.unlock()
-            }
-
-        default:
-            // For other types (int, float, bool, null): encode as single chunk
-            // These have single-value semantics and are typically small
-            let cborPayload = Data(value.encode())
-
-            seqLock.lock()
-            let currentSeq = seq
-            seq += 1
-            seqLock.unlock()
-
-            let frame = CborFrame.chunk(
-                reqId: requestId,
-                streamId: streamId,
-                seq: currentSeq,
-                payload: cborPayload
-            )
-
-            writerLock.lock()
-            do {
-                try writer.write(frame)
-            } catch {
-                writerLock.unlock()
-                throw CborPluginRuntimeError.ioError("Failed to write CHUNK: \(error)")
-            }
-            writerLock.unlock()
-        }
-    }
-
-    func emitLog(level: String, message: String) {
-        let frame = CborFrame.log(id: requestId, level: level, message: message)
-
-        writerLock.lock()
-        defer { writerLock.unlock() }
-        try? writer.write(frame)  // Best effort - log failures are not fatal
-    }
 }
 
 // MARK: - Internal: PeerInvokerImpl
 
 /// Implementation of PeerInvoker that sends REQ frames to the host.
-/// Spawns a thread that forwards response frames to an AsyncStream.
+/// Spawns a background task that forwards response frames via FrameQueue.
 @available(macOS 10.15.4, iOS 13.4, *)
-final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
-    private let writer: CborFrameWriter
+/// ChannelFrameSender implementation for sending frames from PeerInvokerImpl
+@available(macOS 10.15.4, iOS 13.4, *)
+private final class ChannelFrameSender: FrameSender, @unchecked Sendable {
+    private let writer: FrameWriter
     private let writerLock: NSLock
-    private let pendingRequests: NSMutableDictionary // [CborMessageId: PendingPeerRequest]
+
+    init(writer: FrameWriter, writerLock: NSLock) {
+        self.writer = writer
+        self.writerLock = writerLock
+    }
+
+    func send(_ frame: Frame) throws {
+        writerLock.lock()
+        defer { writerLock.unlock() }
+        try writer.write(frame)
+    }
+}
+
+@available(macOS 10.15.4, iOS 13.4, *)
+final class PeerInvokerImpl: PeerInvoker, @unchecked Sendable {
+    private let writer: FrameWriter
+    private let writerLock: NSLock
+    private let pendingRequests: NSMutableDictionary // [MessageId: PendingPeerRequest]
     private let pendingRequestsLock: NSLock
     private let maxChunk: Int
 
-    init(writer: CborFrameWriter, writerLock: NSLock, pendingRequests: NSMutableDictionary, pendingRequestsLock: NSLock, maxChunk: Int) {
+    init(writer: FrameWriter, writerLock: NSLock, pendingRequests: NSMutableDictionary, pendingRequestsLock: NSLock, maxChunk: Int) {
         self.writer = writer
         self.writerLock = writerLock
         self.pendingRequests = pendingRequests
@@ -631,12 +890,12 @@ final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
         self.maxChunk = maxChunk
     }
 
-    func invoke(capUrn: String, arguments: [CborCapArgumentValue]) throws -> AsyncStream<CborFrame> {
+    func call(capUrn: String) throws -> PeerCall {
         // Generate a new message ID for this request
-        let requestId = CborMessageId.newUUID()
+        let requestId = MessageId.newUUID()
 
         // Create AsyncStream and continuation for response frames
-        let (stream, continuation) = AsyncStream<CborFrame>.makeStream()
+        let (stream, continuation) = AsyncStream<Frame>.makeStream()
 
         // Create pending request tracking
         let pending = PendingPeerRequest(
@@ -644,71 +903,94 @@ final class PeerInvokerImpl: CborPeerInvoker, @unchecked Sendable {
             isComplete: false
         )
 
-        // Register the pending request before sending
+        // Register the pending request before sending REQ
         pendingRequestsLock.lock()
         pendingRequests[requestId] = pending
         pendingRequestsLock.unlock()
 
-        // Protocol v2: REQ(empty) + STREAM_START + CHUNK(s) + STREAM_END + END per argument
+        // Send REQ with empty payload
         writerLock.lock()
         do {
-            // 1. REQ with empty payload
-            let reqFrame = CborFrame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
+            let reqFrame = Frame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
             try writer.write(reqFrame)
-
-            // 2. Each argument as an independent stream
-            for arg in arguments {
-                let streamId = UUID().uuidString
-
-                // STREAM_START
-                let startFrame = CborFrame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: arg.mediaUrn)
-                try writer.write(startFrame)
-
-                // CHUNK(s): Send argument data as CBOR-encoded chunks
-                // Each CHUNK payload MUST be independently decodable CBOR
-                var offset = 0
-                var seq: UInt64 = 0
-                while offset < arg.value.count {
-                    let chunkSize = min(arg.value.count - offset, maxChunk)
-                    let chunkBytes = Array(arg.value.subdata(in: offset..<(offset + chunkSize)))
-
-                    // CBOR-encode chunk as byteString - independently decodable
-                    let chunkValue = CBOR.byteString(chunkBytes)
-                    let cborPayload = Data(chunkValue.encode())
-
-                    let chunkFrame = CborFrame.chunk(reqId: requestId, streamId: streamId, seq: seq, payload: cborPayload)
-                    try writer.write(chunkFrame)
-                    offset += chunkSize
-                    seq += 1
-                }
-
-                // STREAM_END
-                let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: streamId)
-                try writer.write(streamEndFrame)
-            }
-
-            // 3. END
-            let endFrame = CborFrame.end(id: requestId)
-            try writer.write(endFrame)
         } catch {
             writerLock.unlock()
             pendingRequestsLock.lock()
             pendingRequests.removeObject(forKey: requestId)
             pendingRequestsLock.unlock()
             continuation.finish()
-            throw CborPluginRuntimeError.peerRequestError("Failed to send peer request frames: \(error)")
+            throw PluginRuntimeError.peerRequestError("Failed to send peer REQ: \(error)")
         }
         writerLock.unlock()
 
-        // Return the AsyncStream - frames will be forwarded by reader loop
-        return stream
+        // Convert AsyncStream to AnyIterator for PeerCall
+        // Use thread-safe queue with @unchecked Sendable wrappers to bridge async→sync
+        final class FrameQueue: @unchecked Sendable {
+            private var frames: [Frame] = []
+            private let lock = NSLock()
+            private let semaphore = DispatchSemaphore(value: 0)
+            private var completed = false
+
+            func add(_ frame: Frame) {
+                lock.lock()
+                frames.append(frame)
+                lock.unlock()
+                semaphore.signal()
+            }
+
+            func complete() {
+                lock.lock()
+                completed = true
+                lock.unlock()
+                semaphore.signal()
+            }
+
+            func next() -> Frame? {
+                semaphore.wait()
+                lock.lock()
+                defer { lock.unlock() }
+
+                if !frames.isEmpty {
+                    return frames.removeFirst()
+                } else if completed {
+                    return nil
+                } else {
+                    return nil // Should not happen
+                }
+            }
+        }
+
+        let queue = FrameQueue()
+
+        // Spawn background task to drain AsyncStream
+        Task.detached {
+            for await frame in stream {
+                queue.add(frame)
+            }
+            queue.complete()
+        }
+
+        let frameIterator = AnyIterator<Frame> {
+            queue.next()
+        }
+
+        // Create ChannelFrameSender for arg streams
+        let sender = ChannelFrameSender(writer: writer, writerLock: writerLock)
+
+        // Return PeerCall with response iterator
+        return PeerCall(
+            sender: sender,
+            requestId: requestId,
+            maxChunk: maxChunk,
+            responseRx: frameIterator
+        )
     }
 }
 
 // MARK: - Manifest Types (for CLI mode)
 
 /// Source for extracting argument values in CLI mode.
-public enum CborArgSource: Codable, Sendable {
+public enum ArgSource: Codable, Sendable {
     case cliFlag(String)
     case positional(Int)
     case stdin(String)  // Media URN for stdin input
@@ -751,10 +1033,10 @@ public enum CborArgSource: Codable, Sendable {
 }
 
 /// Argument definition in a cap.
-public struct CborCapArg: Codable, Sendable {
+public struct CapArg: Codable, Sendable {
     public let mediaUrn: String
     public let required: Bool
-    public let sources: [CborArgSource]
+    public let sources: [ArgSource]
     public let argDescription: String?
     public let defaultValue: String?
 
@@ -766,7 +1048,7 @@ public struct CborCapArg: Codable, Sendable {
         case defaultValue = "default"
     }
 
-    public init(mediaUrn: String, required: Bool, sources: [CborArgSource], argDescription: String? = nil, defaultValue: String? = nil) {
+    public init(mediaUrn: String, required: Bool, sources: [ArgSource], argDescription: String? = nil, defaultValue: String? = nil) {
         self.mediaUrn = mediaUrn
         self.required = required
         self.sources = sources
@@ -778,19 +1060,19 @@ public struct CborCapArg: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         mediaUrn = try container.decode(String.self, forKey: .mediaUrn)
         required = try container.decodeIfPresent(Bool.self, forKey: .required) ?? false
-        sources = try container.decodeIfPresent([CborArgSource].self, forKey: .sources) ?? []
+        sources = try container.decodeIfPresent([ArgSource].self, forKey: .sources) ?? []
         argDescription = try container.decodeIfPresent(String.self, forKey: .argDescription)
         defaultValue = try container.decodeIfPresent(String.self, forKey: .defaultValue)
     }
 }
 
 /// Cap definition in the manifest.
-public struct CborCapDefinition: Codable, Sendable {
+public struct CapDefinition: Codable, Sendable {
     public let urn: String
     public let title: String
     public let command: String
     public let capDescription: String?
-    public let args: [CborCapArg]
+    public let args: [CapArg]
 
     enum CodingKeys: String, CodingKey {
         case urn
@@ -800,7 +1082,7 @@ public struct CborCapDefinition: Codable, Sendable {
         case args
     }
 
-    public init(urn: String, title: String, command: String, capDescription: String? = nil, args: [CborCapArg] = []) {
+    public init(urn: String, title: String, command: String, capDescription: String? = nil, args: [CapArg] = []) {
         self.urn = urn
         self.title = title
         self.command = command
@@ -814,7 +1096,7 @@ public struct CborCapDefinition: Codable, Sendable {
         title = try container.decode(String.self, forKey: .title)
         command = try container.decode(String.self, forKey: .command)
         capDescription = try container.decodeIfPresent(String.self, forKey: .capDescription)
-        args = try container.decodeIfPresent([CborCapArg].self, forKey: .args) ?? []
+        args = try container.decodeIfPresent([CapArg].self, forKey: .args) ?? []
     }
 
     /// Check if this cap accepts stdin input.
@@ -831,13 +1113,13 @@ public struct CborCapDefinition: Codable, Sendable {
 }
 
 /// Plugin manifest structure.
-public struct CborManifest: Codable, Sendable {
+public struct Manifest: Codable, Sendable {
     public let name: String
     public let version: String
     public let description: String
-    public let caps: [CborCapDefinition]
+    public let caps: [CapDefinition]
 
-    public init(name: String, version: String, description: String, caps: [CborCapDefinition]) {
+    public init(name: String, version: String, description: String, caps: [CapDefinition]) {
         self.name = name
         self.version = version
         self.description = description
@@ -845,7 +1127,7 @@ public struct CborManifest: Codable, Sendable {
     }
 }
 
-// MARK: - CborPluginRuntime
+// MARK: - PluginRuntime
 
 /// Plugin-side runtime for CBOR protocol communication.
 ///
@@ -867,14 +1149,14 @@ public struct CborManifest: Codable, Sendable {
 /// **This is the ONLY supported way for plugins to communicate with the host.**
 /// The manifest MUST be provided - plugins without a manifest will fail handshake.
 @available(macOS 10.15.4, iOS 13.4, *)
-public final class CborPluginRuntime: @unchecked Sendable {
+public final class PluginRuntime: @unchecked Sendable {
 
     // MARK: - Properties
 
-    private var handlers: [String: CborCapHandler] = [:]
+    private var handlers: [String: CapHandler] = [:]
     private let handlersLock = NSLock()
 
-    private var limits = CborLimits()
+    private var limits = Limits()
 
     /// Plugin manifest JSON data - sent in HELLO response.
     /// This is REQUIRED - plugins must provide their manifest.
@@ -882,7 +1164,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
     /// Parsed manifest for CLI mode support.
     /// Contains cap definitions with command names and argument sources.
-    let parsedManifest: CborManifest?
+    let parsedManifest: Manifest?
 
     // MARK: - Initialization
 
@@ -897,11 +1179,18 @@ public final class CborPluginRuntime: @unchecked Sendable {
     /// and used for CLI argument parsing (CLI mode).
     /// **Plugins MUST provide a manifest - there is no fallback.**
     ///
+    /// The runtime automatically registers:
+    /// - CAP_IDENTITY handler (mandatory) - passes input through unchanged
+    /// - CAP_DISCARD handler (standard, optional) - consumes input, produces void
+    ///
     /// - Parameter manifest: JSON-encoded manifest data
     public init(manifest: Data) {
         self.manifestData = manifest
         // Parse manifest for CLI mode support
-        self.parsedManifest = try? JSONDecoder().decode(CborManifest.self, from: manifest)
+        self.parsedManifest = try? JSONDecoder().decode(Manifest.self, from: manifest)
+
+        // Auto-register standard capability handlers
+        autoRegisterStandardCaps()
     }
 
     /// Create a plugin runtime with manifest JSON string.
@@ -913,6 +1202,37 @@ public final class CborPluginRuntime: @unchecked Sendable {
         self.init(manifest: data)
     }
 
+    /// Auto-register standard capability handlers.
+    /// Called during initialization to provide mandatory and optional standard caps.
+    private func autoRegisterStandardCaps() {
+        // Import CSStandardCaps constants
+        // CAP_IDENTITY: "cap:in=media:;out=media:" (mandatory)
+        // CAP_DISCARD: "cap:in=media:;out=media:void" (standard, optional)
+
+        // Register CAP_IDENTITY handler (MANDATORY)
+        // Identity is the categorical identity morphism - passes input through unchanged
+        register(capUrn: CSCapIdentity) { input, output, _peer in
+            // Collect all input bytes across all streams
+            let allBytes = try input.collectAllBytes()
+
+            // Emit bytes as-is (identity transformation)
+            try output.write(allBytes)
+
+            // Close output stream
+            try output.close()
+        }
+
+        // Register CAP_DISCARD handler (STANDARD, OPTIONAL)
+        // Discard is the terminal morphism - consumes input, produces void
+        register(capUrn: CSCapDiscard) { input, _output, _peer in
+            // Consume all input (required to complete the request protocol)
+            _ = try input.collectAllBytes()
+
+            // No output needed - discard produces void
+            // OutputStream is automatically closed by the runtime after handler returns
+        }
+    }
+
     // MARK: - Handler Registration
 
     /// Register a raw Frame-based handler.
@@ -920,85 +1240,15 @@ public final class CborPluginRuntime: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - capUrn: The cap URN pattern to handle
-    ///   - handler: Frame-based handler closure
-    public func registerRaw(capUrn: String, handler: @escaping CborCapHandler) {
+    ///   - handler: Handler closure with stream-based signature (InputPackage, OutputStream, PeerInvoker)
+    public func register(capUrn: String, handler: @escaping CapHandler) {
         handlersLock.lock()
         handlers[capUrn] = handler
         handlersLock.unlock()
     }
 
-    /// Register a raw Data handler (no JSON serialization).
-    /// Accumulates frames into Data, passes raw bytes to handler,
-    /// and CBOR-encodes the returned Data.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN pattern to handle
-    ///   - handler: Handler that receives raw Data and returns raw Data
-    public func register(
-        capUrn: String,
-        handler: @escaping @Sendable (Data, CborStreamEmitter, CborPeerInvoker) async throws -> Data
-    ) {
-        let frameHandler: CborCapHandler = { frames, emitter, peer in
-            // Accumulate all frame payloads
-            var accumulated = Data()
-            for await frame in frames {
-                if let payload = frame.payload {
-                    accumulated.append(payload)
-                }
-            }
-
-            // Invoke handler with raw bytes
-            let response = try await handler(accumulated, emitter, peer)
-
-            // Emit response as CBOR byteString (matches Rust emit_cbor)
-            try emitter.emitCbor(.byteString([UInt8](response)))
-        }
-
-        handlersLock.lock()
-        handlers[capUrn] = frameHandler
-        handlersLock.unlock()
-    }
-
-    /// Register a handler with typed request/response.
-    /// Automatically accumulates frames and handles serialization.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN pattern to handle
-    ///   - handler: Typed handler closure
-    public func register<Req: Decodable & Sendable, Res: Encodable & Sendable>(
-        capUrn: String,
-        handler: @escaping @Sendable (Req, CborStreamEmitter, CborPeerInvoker) async throws -> Res
-    ) {
-        // Wrapper that accumulates frames then deserializes
-        let frameHandler: CborCapHandler = { frames, emitter, peer in
-            // Accumulate all frame payloads
-            var accumulated = Data()
-            for await frame in frames {
-                if let payload = frame.payload {
-                    accumulated.append(payload)
-                }
-            }
-
-            // Deserialize request
-            let decoder = JSONDecoder()
-            let request = try decoder.decode(Req.self, from: accumulated)
-
-            // Invoke handler
-            let response = try await handler(request, emitter, peer)
-
-            // Emit response as CBOR byteString
-            let encoder = JSONEncoder()
-            let responseData = try encoder.encode(response)
-            try emitter.emitCbor(.byteString([UInt8](responseData)))
-        }
-
-        handlersLock.lock()
-        handlers[capUrn] = frameHandler
-        handlersLock.unlock()
-    }
-
     /// Find a handler for a cap URN (supports exact match and pattern matching)
-    func findHandler(capUrn: String) -> CborCapHandler? {
+    func findHandler(capUrn: String) -> CapHandler? {
         handlersLock.lock()
         defer { handlersLock.unlock() }
 
@@ -1031,7 +1281,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     /// 3. Main loop reads frames, dispatches handlers
     /// 4. Exit when stdin closes
     ///
-    /// - Throws: CborPluginRuntimeError on fatal errors
+    /// - Throws: PluginRuntimeError on fatal errors
     public func run() throws {
         let args = CommandLine.arguments
 
@@ -1069,7 +1319,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
         Task.detached { [container, semaphore] in
             let result: Result<Void, Error>
             do {
-                try await self.runCliMode(args)
+                try self.runCliMode(args)
                 result = .success(())
             } catch {
                 result = .failure(error)
@@ -1086,16 +1336,16 @@ public final class CborPluginRuntime: @unchecked Sendable {
         case .failure(let error):
             throw error
         case .none:
-            throw CborPluginRuntimeError.cliError("CLI mode failed to complete")
+            throw PluginRuntimeError.cliError("CLI mode failed to complete")
         }
     }
 
     // MARK: - CLI Mode
 
     /// Run in CLI mode - parse arguments and invoke handler.
-    private func runCliMode(_ args: [String]) async throws {
+    private func runCliMode(_ args: [String]) throws {
         guard let manifest = parsedManifest else {
-            throw CborPluginRuntimeError.manifestError("Failed to parse manifest for CLI mode")
+            throw PluginRuntimeError.manifestError("Failed to parse manifest for CLI mode")
         }
 
         // Handle --help at top level
@@ -1116,7 +1366,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
         // Find cap by command name
         guard let cap = findCapByCommand(manifest: manifest, commandName: subcommand) else {
-            throw CborPluginRuntimeError.unknownSubcommand("Unknown command '\(subcommand)'. Run with --help to see available commands.")
+            throw PluginRuntimeError.unknownSubcommand("Unknown command '\(subcommand)'. Run with --help to see available commands.")
         }
 
         // Handle --help for specific command
@@ -1127,7 +1377,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
         // Find handler
         guard let handler = findHandler(capUrn: cap.urn) else {
-            throw CborPluginRuntimeError.noHandler("No handler registered for cap '\(cap.urn)'")
+            throw PluginRuntimeError.noHandler("No handler registered for cap '\(cap.urn)'")
         }
 
         // Build payload from CLI arguments
@@ -1136,8 +1386,8 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
         // Create AsyncStream with Frame sequence for each argument
         // Each argument as separate stream: STREAM_START → CHUNK → STREAM_END per arg, then END
-        let (stream, continuation) = AsyncStream<CborFrame>.makeStream()
-        let requestId = CborMessageId.newUUID()
+        let (stream, continuation) = AsyncStream<Frame>.makeStream()
+        let requestId = MessageId.newUUID()
 
         // Decode CBOR arguments array
         if !payload.isEmpty {
@@ -1168,7 +1418,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     let streamId = "arg-\(i)"
 
                     // STREAM_START
-                    continuation.yield(CborFrame.streamStart(
+                    continuation.yield(Frame.streamStart(
                         reqId: requestId,
                         streamId: streamId,
                         mediaUrn: mediaUrn
@@ -1177,39 +1427,99 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     // CHUNK: CBOR-encode the value before sending
                     // Protocol: ALL values must be CBOR-encoded (encode once, no double-wrapping)
                     let cborValue = Data(value.encode())
+                    let checksum = Frame.computeChecksum(cborValue)
 
-                    continuation.yield(CborFrame.chunk(
+                    continuation.yield(Frame.chunk(
                         reqId: requestId,
                         streamId: streamId,
                         seq: 0,
-                        payload: cborValue
+                        payload: cborValue,
+                        chunkIndex: 0,
+                        checksum: checksum
                     ))
 
-                    // STREAM_END
-                    continuation.yield(CborFrame.streamEnd(
+                    // STREAM_END with chunk count = 1 (single chunk per argument)
+                    continuation.yield(Frame.streamEnd(
                         reqId: requestId,
-                        streamId: streamId
+                        streamId: streamId,
+                        chunkCount: 1
                     ))
                 }
             }
         }
 
         // END
-        continuation.yield(CborFrame.end(id: requestId))
+        continuation.yield(Frame.end(id: requestId))
         continuation.finish()
 
-        // Create CLI-mode emitter and no-op peer invoker
-        let emitter = CliStreamEmitter()
-        let peer = NoCborPeerInvoker()
+        // Collect all frames synchronously using DispatchGroup
+        final class FrameCollector: @unchecked Sendable {
+            var frames: [Frame] = []
+            let lock = NSLock()
 
-        // Invoke handler (async)
-        try await handler(stream, emitter, peer)
+            func add(_ frame: Frame) {
+                lock.lock()
+                frames.append(frame)
+                lock.unlock()
+            }
 
-        // Handler emits directly via emitter - no return value
+            func getAll() -> [Frame] {
+                lock.lock()
+                defer { lock.unlock() }
+                return frames
+            }
+        }
+
+        let collector = FrameCollector()
+        let group = DispatchGroup()
+        group.enter()
+
+        // Spawn detached task to drain stream
+        Task.detached {
+            for await frame in stream {
+                collector.add(frame)
+            }
+            group.leave()
+        }
+
+        group.wait()
+        let allFrames = collector.getAll()
+
+        // Build iterator for demux
+        var frameIndex = 0
+        let frameIterator = AnyIterator<Frame> {
+            guard frameIndex < allFrames.count else { return nil }
+            let frame = allFrames[frameIndex]
+            frameIndex += 1
+            return frame
+        }
+
+        // Demux frames into InputPackage
+        let inputPackage = demuxMultiStream(frameIterator: frameIterator)
+
+        // Create CLI-mode OutputStream (writes to stdout)
+        let cliSender = CliFrameSender()
+        let outputStream = OutputStream(
+            sender: cliSender,
+            streamId: "cli-output",
+            mediaUrn: "media:bytes", // CLI outputs raw bytes
+            requestId: requestId,
+            routingId: nil,
+            maxChunk: DEFAULT_MAX_CHUNK
+        )
+
+        // Create no-op peer invoker (CLI mode doesn't support peer calls)
+        let peer = NoPeerInvoker()
+
+        // Invoke handler with new signature
+        try handler(inputPackage, outputStream, peer)
+
+        // Close output stream (in CLI mode, this is a no-op)
+        try outputStream.close()
     }
 
     /// Find a cap by its command name (the CLI subcommand).
-    private func findCapByCommand(manifest: CborManifest, commandName: String) -> CborCapDefinition? {
+    private func findCapByCommand(manifest: Manifest, commandName: String) -> CapDefinition? {
         return manifest.caps.first { $0.command == commandName }
     }
 
@@ -1225,13 +1535,13 @@ public final class CborPluginRuntime: @unchecked Sendable {
     /// - Returns:
     ///   - For single file: Data containing raw file bytes
     ///   - For array: CBOR-encoded array of file bytes (each element is one file's contents)
-    /// - Throws: CborPluginRuntimeError.ioError if file cannot be read with clear error message
+    /// - Throws: PluginRuntimeError.ioError if file cannot be read with clear error message
     private func readFilePathToBytes(_ pathValue: String, isArray: Bool) throws -> Data {
         if isArray {
             // Parse JSON array of path patterns
             guard let pathData = pathValue.data(using: .utf8),
                   let pathPatterns = try? JSONSerialization.jsonObject(with: pathData) as? [String] else {
-                throw CborPluginRuntimeError.cliError(
+                throw PluginRuntimeError.cliError(
                     "Failed to parse file-path-array: expected JSON array of path patterns, got '\(pathValue)'"
                 )
             }
@@ -1248,7 +1558,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     // Literal path - verify it exists and is a file
                     let url = URL(fileURLWithPath: pattern)
                     if !fileManager.fileExists(atPath: pattern) {
-                        throw CborPluginRuntimeError.ioError(
+                        throw PluginRuntimeError.ioError(
                             "Failed to read file '\(pattern)' from file-path-array: No such file or directory"
                         )
                     }
@@ -1270,7 +1580,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                         }
                     }
                     if bracketDepth != 0 {
-                        throw CborPluginRuntimeError.cliError(
+                        throw PluginRuntimeError.cliError(
                             "Invalid glob pattern '\(pattern)': unclosed bracket"
                         )
                     }
@@ -1294,7 +1604,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     let bytes = try Data(contentsOf: url)
                     filesData.append(.byteString([UInt8](bytes)))
                 } catch {
-                    throw CborPluginRuntimeError.ioError(
+                    throw PluginRuntimeError.ioError(
                         "Failed to read file '\(url.path)' from file-path-array: \(error.localizedDescription)"
                     )
                 }
@@ -1309,7 +1619,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 let url = URL(fileURLWithPath: pathValue)
                 return try Data(contentsOf: url)
             } catch {
-                throw CborPluginRuntimeError.ioError(
+                throw PluginRuntimeError.ioError(
                     "Failed to read file '\(pathValue)': \(error.localizedDescription)"
                 )
             }
@@ -1318,8 +1628,8 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
     /// Build payload from CLI arguments based on cap's arg definitions.
     /// Internal for testing purposes.
-    func buildPayloadFromCli(cap: CborCapDefinition, cliArgs: [String]) throws -> Data {
-        var arguments: [CborCapArgumentValue] = []
+    func buildPayloadFromCli(cap: CapDefinition, cliArgs: [String]) throws -> Data {
+        var arguments: [CapArgumentValue] = []
 
         // Check for stdin data if cap accepts stdin
         let stdinData: Data?
@@ -1355,7 +1665,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     }
                 }
 
-                arguments.append(CborCapArgumentValue(mediaUrn: mediaUrn, value: v))
+                arguments.append(CapArgumentValue(mediaUrn: mediaUrn, value: v))
             } else if argDef.required {
                 // Required argument not found
                 let sources = argDef.sources.map { source -> String in
@@ -1365,7 +1675,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     case .stdin(_): return "<stdin>"
                     }
                 }.joined(separator: " or ")
-                throw CborPluginRuntimeError.missingArgument("Required argument '\(argDef.mediaUrn)' not provided. Use: \(sources)")
+                throw PluginRuntimeError.missingArgument("Required argument '\(argDef.mediaUrn)' not provided. Use: \(sources)")
             }
         }
 
@@ -1409,7 +1719,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                     let key = extractArgKey(from: arg.mediaUrn)
                     jsonObj[key] = str
                 } else {
-                    throw CborPluginRuntimeError.cliError("Binary data cannot be passed via CLI flags. Use stdin instead.")
+                    throw PluginRuntimeError.cliError("Binary data cannot be passed via CLI flags. Use stdin instead.")
                 }
             }
             return try JSONSerialization.data(withJSONObject: jsonObj)
@@ -1436,7 +1746,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     }
 
     /// Extract a single argument value from CLI args or stdin.
-    private func extractArgValue(argDef: CborCapArg, cliArgs: [String], stdinData: Data?) throws -> Data? {
+    private func extractArgValue(argDef: CapArg, cliArgs: [String], stdinData: Data?) throws -> Data? {
         // Check if this arg requires file-path to bytes conversion using proper URN matching
         let argMediaUrn = try CSTaggedUrn.fromString(argDef.mediaUrn)
 
@@ -1542,7 +1852,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
         let pollResult = Darwin.poll(&pollfd, 1, 0)  // 0 timeout = non-blocking
 
         if pollResult < 0 {
-            throw CborPluginRuntimeError.ioError("poll() failed")
+            throw PluginRuntimeError.ioError("poll() failed")
         }
 
         // No data ready - return nil immediately without blocking
@@ -1567,7 +1877,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     /// - CLI piped binary → chunk reader → payload
     /// - CBOR chunked → payload
     /// - CBOR file path → auto-convert → payload
-    func buildPayloadFromStreamingReader(cap: CborCapDefinition, reader: InputStream, maxChunk: Int) throws -> Data {
+    func buildPayloadFromStreamingReader(cap: CapDefinition, reader: Foundation.InputStream, maxChunk: Int) throws -> Data {
         // Accumulate chunks
         var chunks: [Data] = []
         var totalBytes = 0
@@ -1579,7 +1889,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
             var buffer = [UInt8](repeating: 0, count: maxChunk)
             let bytesRead = reader.read(&buffer, maxLength: maxChunk)
             if bytesRead < 0 {
-                throw CborPluginRuntimeError.ioError("Stream read error: \(reader.streamError?.localizedDescription ?? "unknown")")
+                throw PluginRuntimeError.ioError("Stream read error: \(reader.streamError?.localizedDescription ?? "unknown")")
             }
             if bytesRead == 0 {
                 break
@@ -1599,7 +1909,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
         let capUrn = try CSCapUrn.fromString(cap.urn)
         let expectedMediaUrn = capUrn.inSpec
 
-        let arg = CborCapArgumentValue(mediaUrn: expectedMediaUrn, value: completePayload)
+        let arg = CapArgumentValue(mediaUrn: expectedMediaUrn, value: completePayload)
 
         // Encode as CBOR array
         let cborArgs: [CBOR] = [
@@ -1614,7 +1924,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     }
 
     /// Print help message showing all available subcommands.
-    private func printHelp(manifest: CborManifest) {
+    private func printHelp(manifest: Manifest) {
         let stderr = FileHandle.standardError
         stderr.write(Data("\(manifest.name) v\(manifest.version)\n".utf8))
         stderr.write(Data("\(manifest.description)\n\n".utf8))
@@ -1633,7 +1943,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     }
 
     /// Print help for a specific cap.
-    private func printCapHelp(cap: CborCapDefinition) {
+    private func printCapHelp(cap: CapDefinition) {
         let stderr = FileHandle.standardError
         stderr.write(Data("\(cap.title)\n".utf8))
         if let desc = cap.capDescription {
@@ -1672,8 +1982,8 @@ public final class CborPluginRuntime: @unchecked Sendable {
         let stdinHandle = FileHandle.standardInput
         let stdoutHandle = FileHandle.standardOutput
 
-        let frameReader = CborFrameReader(handle: stdinHandle, limits: limits)
-        let frameWriter = CborFrameWriter(handle: stdoutHandle, limits: limits)
+        let frameReader = FrameReader(handle: stdinHandle, limits: limits)
+        let frameWriter = FrameWriter(handle: stdoutHandle, limits: limits)
         let writerLock = NSLock()
 
         // Perform handshake
@@ -1688,29 +1998,29 @@ public final class CborPluginRuntime: @unchecked Sendable {
         // Maps request ID to (capUrn, continuation) - forwards request frames to handler
         struct PendingIncomingRequest {
             let capUrn: String
-            let continuation: AsyncStream<CborFrame>.Continuation
+            let continuation: AsyncStream<Frame>.Continuation
         }
-        var pendingIncoming: [CborMessageId: PendingIncomingRequest] = [:]
+        var pendingIncoming: [MessageId: PendingIncomingRequest] = [:]
         let pendingIncomingLock = NSLock()
 
         // Main loop - stays responsive for heartbeats
         while true {
 
             // Read next frame
-            let frame: CborFrame
+            let frame: Frame
             do {
                 guard let f = try frameReader.read() else {
                     break // EOF - stdin closed
                 }
                 frame = f
             } catch {
-                throw CborPluginRuntimeError.ioError("\(error)")
+                throw PluginRuntimeError.ioError("\(error)")
             }
 
             switch frame.frameType {
             case .req:
                 guard let capUrn = frame.cap else {
-                    let errFrame = CborFrame.err(id: frame.id, code: "INVALID_REQUEST", message: "Request missing cap URN")
+                    let errFrame = Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "Request missing cap URN")
                     writerLock.lock()
                     try? frameWriter.write(errFrame)
                     writerLock.unlock()
@@ -1721,7 +2031,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
                 // Protocol v2: REQ must have empty payload — arguments come as streams
                 if !rawPayload.isEmpty {
-                    let errFrame = CborFrame.err(
+                    let errFrame = Frame.err(
                         id: frame.id,
                         code: "PROTOCOL_ERROR",
                         message: "REQ frame must have empty payload — use STREAM_START for arguments"
@@ -1733,13 +2043,13 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 }
 
                 // Find handler
-                let handler: CborCapHandler?
+                let handler: CapHandler?
                 handlersLock.lock()
                 handler = handlers[capUrn]
                 handlersLock.unlock()
 
                 guard let handler = handler else {
-                    let errFrame = CborFrame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)")
+                    let errFrame = Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)")
                     writerLock.lock()
                     try? frameWriter.write(errFrame)
                     writerLock.unlock()
@@ -1751,7 +2061,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 do {
                     cap = try CSCapUrn.fromString(capUrn)
                 } catch {
-                    let errFrame = CborFrame.err(id: frame.id, code: "INVALID_CAP_URN", message: "Failed to parse cap URN: \(error)")
+                    let errFrame = Frame.err(id: frame.id, code: "INVALID_CAP_URN", message: "Failed to parse cap URN: \(error)")
                     writerLock.lock()
                     try? frameWriter.write(errFrame)
                     writerLock.unlock()
@@ -1759,7 +2069,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 }
 
                 // Create AsyncStream for forwarding frames to handler
-                let (stream, continuation) = AsyncStream<CborFrame>.makeStream()
+                let (stream, continuation) = AsyncStream<Frame>.makeStream()
 
                 // Register pending request
                 pendingIncomingLock.lock()
@@ -1774,68 +2084,92 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 let outputMediaUrn = cap.getOutSpec()
 
                 DispatchQueue.global().async {
-                    Task {
-                        // Generate unique stream ID for response
-                        let responseStreamId = UUID().uuidString
+                    // Convert AsyncStream to frames array synchronously
+                    let framesBox = NSMutableArray()
+                    let group = DispatchGroup()
+                    group.enter()
 
-                        // Create emitter with stream ID and output media URN
-                        let emitter = ThreadSafeStreamEmitter(
-                            writer: frameWriter,
-                            writerLock: writerLock,
-                            requestId: requestId,
-                            streamId: responseStreamId,
-                            mediaUrn: outputMediaUrn,
-                            maxChunk: self.limits.maxChunk
-                        )
-
-                        let peer = PeerInvokerImpl(
-                            writer: frameWriter,
-                            writerLock: writerLock,
-                            pendingRequests: pendingPeerRequests,
-                            pendingRequestsLock: pendingPeerRequestsLock,
-                            maxChunk: self.limits.maxChunk
-                        )
-
-                        do {
-                            // Execute handler with frame stream
-                            try await handler(stream, emitter, peer)
-
-                            // Send STREAM_END + END after handler completes
-                            // Only send STREAM_END if STREAM_START was actually sent
-                            DispatchQueue.global().sync {
-                                writerLock.lock()
-                                if emitter.didStartStream {
-                                    let streamEndFrame = CborFrame.streamEnd(reqId: requestId, streamId: responseStreamId)
-                                    try? frameWriter.write(streamEndFrame)
-                                }
-                                let endFrame = CborFrame.end(id: requestId, finalPayload: nil)
-                                try? frameWriter.write(endFrame)
-                                writerLock.unlock()
+                    Thread.detachNewThread {
+                        let localGroup = DispatchGroup()
+                        localGroup.enter()
+                        Task {
+                            for await frame in stream {
+                                framesBox.add(frame)
                             }
-
-                        } catch {
-                            let errFrame = CborFrame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
-
-                            DispatchQueue.global().sync {
-                                writerLock.lock()
-                                try? frameWriter.write(errFrame)
-                                writerLock.unlock()
-                            }
+                            localGroup.leave()
                         }
+                        localGroup.wait()
+                        group.leave()
+                    }
+
+                    group.wait()
+                    let allFrames = framesBox.compactMap { $0 as? Frame }
+                    var frameIndex = 0
+                    let frameIterator = AnyIterator<Frame> {
+                        guard frameIndex < allFrames.count else { return nil }
+                        let frame = allFrames[frameIndex]
+                        frameIndex += 1
+                        return frame
+                    }
+
+                    // Demux frames into InputPackage
+                    let inputPackage = demuxMultiStream(frameIterator: frameIterator)
+
+                    // Create ChannelFrameSender for OutputStream
+                    let sender = ChannelFrameSender(writer: frameWriter, writerLock: writerLock)
+
+                    // Create OutputStream for response
+                    let responseStreamId = UUID().uuidString
+                    let outputStream = OutputStream(
+                        sender: sender,
+                        streamId: responseStreamId,
+                        mediaUrn: outputMediaUrn,
+                        requestId: requestId,
+                        routingId: nil,
+                        maxChunk: self.limits.maxChunk
+                    )
+
+                    // Create PeerInvoker
+                    let peer = PeerInvokerImpl(
+                        writer: frameWriter,
+                        writerLock: writerLock,
+                        pendingRequests: pendingPeerRequests,
+                        pendingRequestsLock: pendingPeerRequestsLock,
+                        maxChunk: self.limits.maxChunk
+                    )
+
+                    do {
+                        // Execute handler with new signature
+                        try handler(inputPackage, outputStream, peer)
+
+                        // Close output stream (sends STREAM_END)
+                        try outputStream.close()
+
+                        // Send END frame
+                        writerLock.lock()
+                        let endFrame = Frame.end(id: requestId, finalPayload: nil)
+                        try? frameWriter.write(endFrame)
+                        writerLock.unlock()
+
+                    } catch {
+                        let errFrame = Frame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
+                        writerLock.lock()
+                        try? frameWriter.write(errFrame)
+                        writerLock.unlock()
                     }
                 }
                 continue
 
             case .heartbeat:
                 // Respond immediately - never blocked by handlers
-                let response = CborFrame.heartbeat(id: frame.id)
+                let response = Frame.heartbeat(id: frame.id)
                 writerLock.lock()
                 try frameWriter.write(response)
                 writerLock.unlock()
 
             case .hello:
                 // Unexpected HELLO after handshake - protocol error
-                let errFrame = CborFrame.err(id: frame.id, code: "PROTOCOL_ERROR", message: "Unexpected HELLO after handshake")
+                let errFrame = Frame.err(id: frame.id, code: "PROTOCOL_ERROR", message: "Unexpected HELLO after handshake")
                 writerLock.lock()
                 try frameWriter.write(errFrame)
                 writerLock.unlock()
@@ -1939,7 +2273,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
                 // Relay frame types should NEVER reach the plugin runtime — they are
                 // intercepted by the relay layer. If one arrives here, it's a
                 // protocol violation.
-                throw CborPluginRuntimeError.protocolError("Relay frame type \(frame.frameType) must not reach plugin runtime")
+                throw PluginRuntimeError.protocolError("Relay frame type \(frame.frameType) must not reach plugin runtime")
             }
         }
 
@@ -1948,40 +2282,50 @@ public final class CborPluginRuntime: @unchecked Sendable {
 
     // MARK: - Handshake
 
-    private func performHandshake(reader: CborFrameReader, writer: CborFrameWriter) throws {
+    private func performHandshake(reader: FrameReader, writer: FrameWriter) throws {
         // Read host's HELLO first (host initiates)
-        let theirFrame: CborFrame
+        let theirFrame: Frame
         do {
             guard let f = try reader.read() else {
-                throw CborPluginRuntimeError.handshakeFailed("Connection closed before HELLO")
+                throw PluginRuntimeError.handshakeFailed("Connection closed before HELLO")
             }
             theirFrame = f
-        } catch let error as CborError {
-            throw CborPluginRuntimeError.handshakeFailed("\(error)")
+        } catch let error as FrameError {
+            throw PluginRuntimeError.handshakeFailed("\(error)")
         }
 
         guard theirFrame.frameType == .hello else {
-            throw CborPluginRuntimeError.handshakeFailed("Expected HELLO, got \(theirFrame.frameType)")
+            throw PluginRuntimeError.handshakeFailed("Expected HELLO, got \(theirFrame.frameType)")
         }
 
-        // Negotiate limits
-        let theirMaxFrame = theirFrame.helloMaxFrame ?? DEFAULT_MAX_FRAME
-        let theirMaxChunk = theirFrame.helloMaxChunk ?? DEFAULT_MAX_CHUNK
+        // Protocol v2: All three limit fields are REQUIRED
+        guard let theirMaxFrame = theirFrame.helloMaxFrame else {
+            throw PluginRuntimeError.handshakeFailed("Protocol violation: HELLO missing max_frame")
+        }
+        guard let theirMaxChunk = theirFrame.helloMaxChunk else {
+            throw PluginRuntimeError.handshakeFailed("Protocol violation: HELLO missing max_chunk")
+        }
+        guard let theirMaxReorderBuffer = theirFrame.helloMaxReorderBuffer else {
+            throw PluginRuntimeError.handshakeFailed("Protocol violation: HELLO missing max_reorder_buffer (required in protocol v2)")
+        }
 
-        let negotiatedLimits = CborLimits(
-            maxFrame: min(DEFAULT_MAX_FRAME, theirMaxFrame),
-            maxChunk: min(DEFAULT_MAX_CHUNK, theirMaxChunk)
+        // Negotiate minimum of both sides
+        let ourLimits = Limits()
+        let negotiatedLimits = Limits(
+            maxFrame: min(ourLimits.maxFrame, theirMaxFrame),
+            maxChunk: min(ourLimits.maxChunk, theirMaxChunk),
+            maxReorderBuffer: min(ourLimits.maxReorderBuffer, theirMaxReorderBuffer)
         )
 
         self.limits = negotiatedLimits
 
         // Send our HELLO with negotiated limits AND manifest
         // The manifest is REQUIRED - this is the ONLY way to communicate plugin capabilities
-        let ourHello = CborFrame.hello(maxFrame: negotiatedLimits.maxFrame, maxChunk: negotiatedLimits.maxChunk, manifest: manifestData)
+        let ourHello = Frame.helloWithManifest(limits: negotiatedLimits, manifest: manifestData)
         do {
             try writer.write(ourHello)
         } catch {
-            throw CborPluginRuntimeError.handshakeFailed("Failed to send HELLO: \(error)")
+            throw PluginRuntimeError.handshakeFailed("Failed to send HELLO: \(error)")
         }
 
         // Update reader/writer limits
@@ -1992,7 +2336,7 @@ public final class CborPluginRuntime: @unchecked Sendable {
     // MARK: - Accessors
 
     /// Get the negotiated protocol limits
-    public var negotiatedLimits: CborLimits {
+    public var negotiatedLimits: Limits {
         return limits
     }
 }
