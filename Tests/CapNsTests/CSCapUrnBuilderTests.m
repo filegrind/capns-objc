@@ -240,13 +240,14 @@
 - (void)testBuilderMatchingWithBuiltCap {
     NSError *error;
 
-    // Create a specific cap
+    // Create a specific cap (handler/instance)
     CSCapUrnBuilder *builder1 = [CSCapUrnBuilder builder];
     [builder1 inSpec:@"media:void"];
     [builder1 outSpec:@"media:form=map;textable"];
     [builder1 tag:@"op" value:@"generate"];
     [builder1 tag:@"target" value:@"thumbnail"];
     [builder1 tag:@"format" value:@"pdf"];
+    [builder1 tag:@"ext" value:@"pdf"];  // Instance must have all tags that wildcard pattern requires
     CSCapUrn *specificCap = [builder1 build:&error];
 
     // Create a more general request (same direction)
@@ -277,7 +278,7 @@
 
     // Check specificity (includes in + out now)
     XCTAssertTrue([specificCap isMoreSpecificThan:generalRequest]);
-    XCTAssertEqual([specificCap specificity], 6); // void(1) + object(2) + op + target + format
+    XCTAssertEqual([specificCap specificity], 7); // void(1) + object(2) + op + target + format + ext
     XCTAssertEqual([generalRequest specificity], 4); // void(1) + object(2) + op
     XCTAssertEqual([wildcardRequest specificity], 5); // void(1) + object(2) + op + target (ext=* doesn't count)
 }

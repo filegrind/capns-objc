@@ -52,7 +52,7 @@ final class CborPluginRuntimeTests: XCTestCase {
     // MARK: - Test Constants
 
     static let testManifestJSON = """
-    {"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
+    {"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:in=media:;out=media:","title":"Identity","command":"identity"},{"urn":"cap:in=media:;op=test;out=media:","title":"Test","command":"test"}]}
     """
     static let testManifestData = testManifestJSON.data(using: .utf8)!
 

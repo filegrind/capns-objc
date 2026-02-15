@@ -336,8 +336,8 @@ public final class PluginHost: @unchecked Sendable {
         writer.setLimits(negotiatedLimits)
         reader.setLimits(negotiatedLimits)
 
-        // Parse caps from manifest
-        let caps = Self.extractCaps(from: manifest)
+        // Parse caps from manifest (validates CAP_IDENTITY presence)
+        let caps = try Self.extractCaps(from: manifest)
 
         // Create managed plugin
         let plugin = ManagedPlugin.attached(manifest: manifest, limits: negotiatedLimits, caps: caps)
@@ -741,12 +741,32 @@ public final class PluginHost: @unchecked Sendable {
     }
 
     /// Extract cap URN strings from a manifest JSON blob.
-    private static func extractCaps(from manifest: Data) -> [String] {
+    /// Validates that CAP_IDENTITY is present (mandatory for all plugins).
+    private static func extractCaps(from manifest: Data) throws -> [String] {
         guard let json = try? JSONSerialization.jsonObject(with: manifest) as? [String: Any],
               let caps = json["caps"] as? [[String: Any]] else {
-            return []
+            throw PluginHostError.handshakeFailed("Invalid manifest JSON or missing caps array")
         }
-        return caps.compactMap { $0["urn"] as? String }
+
+        let capUrns = caps.compactMap { $0["urn"] as? String }
+
+        // Verify CAP_IDENTITY is declared — mandatory for every plugin
+        guard let identityUrn = try? CSCapUrn.fromString(CSCapIdentity) else {
+            fatalError("BUG: CAP_IDENTITY constant '\(CSCapIdentity)' is invalid")
+        }
+
+        let hasIdentity = capUrns.contains { capUrnStr in
+            guard let capUrn = try? CSCapUrn.fromString(capUrnStr) else { return false }
+            return identityUrn.conforms(to: capUrn)
+        }
+
+        guard hasIdentity else {
+            throw PluginHostError.handshakeFailed(
+                "Plugin manifest missing required CAP_IDENTITY (\(CSCapIdentity))"
+            )
+        }
+
+        return capUrns
     }
 
     // MARK: - Spawn On Demand
@@ -842,7 +862,7 @@ public final class PluginHost: @unchecked Sendable {
             throw PluginHostError.handshakeFailed("HELLO failed for \(path): \(error.localizedDescription)")
         }
 
-        let caps = Self.extractCaps(from: handshakeResult.manifest ?? Data())
+        let caps = try Self.extractCaps(from: handshakeResult.manifest ?? Data())
 
         // Update plugin state under lock
         stateLock.lock()

@@ -21,9 +21,9 @@ import TaggedUrn
 @preconcurrency import SwiftCBOR
 import Foundation
 
-// Test manifest JSON - plugins MUST include manifest in HELLO response
+// Test manifest JSON - plugins MUST include manifest in HELLO response (including mandatory CAP_IDENTITY)
 private let testManifest = """
-{"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
+{"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:in=media:;out=media:","title":"Identity","command":"identity"},{"urn":"cap:in=media:;op=test;out=media:","title":"Test","command":"test"}]}
 """.data(using: .utf8)!
 
 final class CborIntegrationTests: XCTestCase {

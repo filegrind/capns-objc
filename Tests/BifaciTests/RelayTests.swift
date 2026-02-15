@@ -240,7 +240,7 @@ class CborRelayTests: XCTestCase {
         let limits = Limits(maxFrame: 2_000_000, maxChunk: 100_000)
 
         // Initial RelayNotify
-        let initialManifest = "{\"caps\":[\"cap:op=a\"]}".data(using: .utf8)!
+        let initialManifest = "{\"caps\":[{\"urn\":\"cap:in=media:;out=media:\",\"title\":\"Identity\",\"command\":\"identity\"},{\"urn\":\"cap:in=media:;op=a;out=media:\",\"title\":\"A\",\"command\":\"a\"}]}".data(using: .utf8)!
         let initial = Frame.relayNotify(manifest: initialManifest, limits: limits)
         try socketWriter.write(initial)
 
@@ -249,7 +249,7 @@ class CborRelayTests: XCTestCase {
         try socketWriter.write(end1)
 
         // Updated RelayNotify with new limits
-        let updatedManifest = "{\"caps\":[\"cap:op=a\",\"cap:op=b\"]}".data(using: .utf8)!
+        let updatedManifest = "{\"caps\":[{\"urn\":\"cap:in=media:;out=media:\",\"title\":\"Identity\",\"command\":\"identity\"},{\"urn\":\"cap:in=media:;op=a;out=media:\",\"title\":\"A\",\"command\":\"a\"},{\"urn\":\"cap:in=media:;op=b;out=media:\",\"title\":\"B\",\"command\":\"b\"}]}".data(using: .utf8)!
         let updatedLimits = Limits(maxFrame: 3_000_000, maxChunk: 200_000, maxReorderBuffer: 64)
         let updated = Frame.relayNotify(manifest: updatedManifest, limits: updatedLimits)
         try socketWriter.write(updated)

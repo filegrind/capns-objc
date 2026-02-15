@@ -20,7 +20,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Test Infrastructure
 
     nonisolated static let testManifestJSON = """
-    {"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
+    {"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:in=media:;out=media:","title":"Identity","command":"identity"},{"urn":"cap:in=media:;op=test;out=media:","title":"Test","command":"test"}]}
     """
     nonisolated static let testManifestData = testManifestJSON.data(using: .utf8)!
 
@@ -30,7 +30,14 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     nonisolated static func makeManifest(name: String, caps: [String]) -> Data {
-        let capsJson = caps.map { "{\"urn\":\"\($0)\"}" }.joined(separator: ",")
+        // Always include CAP_IDENTITY as first cap (mandatory)
+        var allCaps = ["{\"urn\":\"cap:in=media:;out=media:\",\"title\":\"Identity\",\"command\":\"identity\"}"]
+        // Add user caps as proper cap objects with full direction specs
+        for cap in caps {
+            let capWithDirs = cap.contains("in=") ? cap : "cap:in=media:;\(cap.dropFirst(4));out=media:"
+            allCaps.append("{\"urn\":\"\(capWithDirs)\",\"title\":\"\(name)\",\"command\":\"\(name.lowercased())\"}")
+        }
+        let capsJson = allCaps.joined(separator: ",")
         return "{\"name\":\"\(name)\",\"version\":\"1.0\",\"caps\":[\(capsJson)]}".data(using: .utf8)!
     }
 

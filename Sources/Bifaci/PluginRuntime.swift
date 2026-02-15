@@ -1247,19 +1247,47 @@ public final class PluginRuntime: @unchecked Sendable {
         handlersLock.unlock()
     }
 
-    /// Find a handler for a cap URN (supports exact match and pattern matching)
+    /// Find a handler for a cap URN (supports exact match and pattern matching).
+    ///
+    /// Matching direction: request is pattern, registered cap is instance.
+    /// `request.accepts(registered_cap)` — the request must accept the registered cap,
+    /// meaning the registered cap must be able to satisfy what the request asks for.
+    ///
+    /// Returns the handler with the closest specificity to the request (not necessarily the most specific).
     func findHandler(capUrn: String) -> CapHandler? {
         handlersLock.lock()
         defer { handlersLock.unlock() }
 
-        // Exact match first
-        if let handler = handlers[capUrn] {
-            return handler
+        // Parse request URN
+        guard let requestUrn = try? CSCapUrn.fromString(capUrn) else {
+            return nil
         }
 
-        // Pattern matching would go here if needed
-        // For now, just exact match
-        return nil
+        let requestSpecificity = requestUrn.specificity()
+        var best: (handler: CapHandler, distance: Int)? = nil
+
+        // Find all matching handlers, prefer closest specificity
+        for (registeredCapStr, handler) in handlers {
+            guard let registeredUrn = try? CSCapUrn.fromString(registeredCapStr) else {
+                continue
+            }
+
+            // Request is pattern, registered cap is instance
+            if requestUrn.accepts(registeredUrn) {
+                let specificity = registeredUrn.specificity()
+                let distance = abs(Int(specificity) - Int(requestSpecificity))
+
+                if let currentBest = best {
+                    if distance < currentBest.distance {
+                        best = (handler, distance)
+                    }
+                } else {
+                    best = (handler, distance)
+                }
+            }
+        }
+
+        return best?.handler
     }
 
     // MARK: - Main Run Loop
