@@ -130,6 +130,13 @@ private enum PluginEvent {
     case relayClosed
 }
 
+/// Composite routing key: (XID, RID) — uniquely identifies a request flow from relay.
+/// XID is assigned by RelaySwitch, RID is the request's MessageId.
+private struct RxidKey: Hashable {
+    let xid: MessageId
+    let rid: MessageId
+}
+
 /// Interval between heartbeat probes (seconds).
 private let HEARTBEAT_INTERVAL: TimeInterval = 30.0
 
@@ -234,23 +241,28 @@ public final class PluginHost: @unchecked Sendable {
     /// Routing: cap_urn -> plugin index.
     private var capTable: [(String, Int)] = []
 
-    /// Routing: req_id -> plugin index (for in-flight request frame correlation).
-    private var requestRouting: [MessageId: Int] = [:]
+    /// List 1: OUTGOING_RIDS — tracks peer requests sent BY plugins (RID → plugin_idx).
+    /// Used for death cleanup (ERR all pending peer requests when plugin dies).
+    /// Cleaned up only on plugin death, never on terminal frames.
+    private var outgoingRids: [MessageId: Int] = [:]
 
-    /// Request IDs initiated by plugins (peer invokes).
-    /// Plugin's END is the end of the outgoing request body, NOT the final response.
-    /// Routing survives until the relay sends back the response (END/ERR).
-    private var peerRequests: Set<MessageId> = []
+    /// List 2: INCOMING_RXIDS — tracks incoming requests FROM relay ((XID, RID) → plugin_idx).
+    /// Routes continuation frames (STREAM_START/CHUNK/STREAM_END/END/ERR) to the correct plugin.
+    /// NEVER cleaned up on terminal frames — intentionally leaked until plugin death.
+    /// This avoids premature cleanup in self-loop peer request scenarios where the same RID
+    /// appears in both outgoing and incoming maps.
+    private var incomingRxids: [RxidKey: Int] = [:]
 
     /// Aggregate capabilities (serialized JSON manifest of all plugin caps).
     private var _capabilities: Data = Data()
 
-    /// State lock — protects plugins, capTable, requestRouting, peerRequests, capabilities, closed.
+    /// State lock — protects plugins, capTable, outgoingRids, incomingRxids, capabilities, closed.
     private let stateLock = NSLock()
 
     /// Outbound writer — writes frames to the relay (toward engine).
     private var outboundWriter: FrameWriter?
     private let outboundLock = NSLock()
+    private var outboundSeqAssigner = SeqAssigner()
 
     /// Plugin events from reader threads.
     private var eventQueue: [PluginEvent] = []
@@ -478,19 +490,32 @@ public final class PluginHost: @unchecked Sendable {
     // MARK: - Relay Frame Handling (Engine -> Plugin)
 
     /// Handle a frame received from the relay (engine side).
+    ///
+    /// All relay frames MUST have XID (assigned by RelaySwitch).
+    /// Routes incoming REQs to plugins by cap URN, continuation frames by (XID, RID).
+    /// NEVER cleans up incomingRxids on terminal frames — intentionally leaked until plugin death.
     private func handleRelayFrame(_ frame: Frame) {
         switch frame.frameType {
         case .req:
-            // Route by cap_urn to the appropriate plugin
+            // REQ from relay MUST have XID
+            guard let xid = frame.routingId else {
+                sendToRelay(Frame.err(id: frame.id, code: "PROTOCOL_ERROR", message: "REQ from relay missing XID"))
+                return
+            }
+
             guard let capUrn = frame.cap else {
-                sendToRelay(Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "REQ missing cap URN"))
+                var err = Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "REQ missing cap URN")
+                err.routingId = xid
+                sendToRelay(err)
                 return
             }
 
             stateLock.lock()
             guard let pluginIdx = findPluginForCapLocked(capUrn) else {
                 stateLock.unlock()
-                sendToRelay(Frame.err(id: frame.id, code: "NO_HANDLER", message: "No plugin handles cap: \(capUrn)"))
+                var err = Frame.err(id: frame.id, code: "NO_HANDLER", message: "No plugin handles cap: \(capUrn)")
+                err.routingId = xid
+                sendToRelay(err)
                 return
             }
             let needsSpawn = !plugins[pluginIdx].running && !plugins[pluginIdx].helloFailed
@@ -501,58 +526,65 @@ public final class PluginHost: @unchecked Sendable {
                 do {
                     try spawnPlugin(at: pluginIdx)
                 } catch {
-                    sendToRelay(Frame.err(id: frame.id, code: "SPAWN_FAILED", message: "Failed to spawn plugin: \(error.localizedDescription)"))
+                    var err = Frame.err(id: frame.id, code: "SPAWN_FAILED", message: "Failed to spawn plugin: \(error.localizedDescription)")
+                    err.routingId = xid
+                    sendToRelay(err)
                     return
                 }
             }
 
+            // Record in INCOMING_RXIDS: (XID, RID) → plugin_idx
+            let key = RxidKey(xid: xid, rid: frame.id)
             stateLock.lock()
-            requestRouting[frame.id] = pluginIdx
+            incomingRxids[key] = pluginIdx
             let plugin = plugins[pluginIdx]
             stateLock.unlock()
 
             if !plugin.writeFrame(frame) {
-                // Plugin is dead — send ERR and clean up
-                sendToRelay(Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+                // Plugin is dead — send ERR with XID and clean up
+                var err = Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
+                err.routingId = xid
+                sendToRelay(err)
                 stateLock.lock()
-                requestRouting.removeValue(forKey: frame.id)
+                incomingRxids.removeValue(forKey: key)
                 stateLock.unlock()
             }
 
         case .streamStart, .chunk, .streamEnd, .end, .err:
-            // Route by req_id to the mapped plugin
+            // Continuation from relay MUST have XID
+            guard let xid = frame.routingId else {
+                fputs("[PluginHost] Protocol error: continuation from relay missing XID\n", stderr)
+                return
+            }
+
+            let key = RxidKey(xid: xid, rid: frame.id)
+
+            // Route by (XID, RID) to the mapped plugin
             stateLock.lock()
-            guard let pluginIdx = requestRouting[frame.id] else {
+            guard let pluginIdx = incomingRxids[key] else {
                 stateLock.unlock()
                 // Already cleaned up (e.g., plugin died, death handler sent ERR)
                 return
             }
             let plugin = plugins[pluginIdx]
-            let isPeerResponse = peerRequests.contains(frame.id)
             stateLock.unlock()
 
-            let isTerminal = frame.frameType == .end || frame.frameType == .err
-
-            // If the plugin is dead, send ERR to engine and clean up routing
+            // If the plugin is dead, send ERR to engine with XID and clean up
             if !plugin.writeFrame(frame) {
-                sendToRelay(Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+                var err = Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
+                err.routingId = xid
+                sendToRelay(err)
                 stateLock.lock()
-                requestRouting.removeValue(forKey: frame.id)
-                peerRequests.remove(frame.id)
+                outgoingRids.removeValue(forKey: frame.id)
+                incomingRxids.removeValue(forKey: key)
                 stateLock.unlock()
                 return
             }
 
-            // Only remove routing on terminal frames if this is a peer response
-            // (engine responding to a plugin's peer invoke). For engine-initiated
-            // requests, the relay END is just the end of the request body — the
-            // plugin still needs to respond, so routing must survive.
-            if isTerminal && isPeerResponse {
-                stateLock.lock()
-                requestRouting.removeValue(forKey: frame.id)
-                peerRequests.remove(frame.id)
-                stateLock.unlock()
-            }
+            // NOTE: Do NOT cleanup incomingRxids here!
+            // Frames arrive asynchronously — END can arrive before StreamStart/Chunk.
+            // We can't know when "all frames for (XID, RID) have arrived" without full stream tracking.
+            // Accept the leak: entries cleaned up on plugin death.
 
         case .hello, .heartbeat, .log:
             // These should never arrive from the engine through the relay
@@ -567,6 +599,10 @@ public final class PluginHost: @unchecked Sendable {
     // MARK: - Plugin Frame Handling (Plugin -> Engine)
 
     /// Handle a frame received from a plugin.
+    ///
+    /// REQ frames register in outgoingRids (peer invoke tracking).
+    /// All other frames are forwarded to relay as-is — no routing decisions needed
+    /// (there's only one relay destination).
     private func handlePluginFrame(pluginIdx: Int, frame: Frame) {
         switch frame.frameType {
         case .hello:
@@ -590,30 +626,18 @@ public final class PluginHost: @unchecked Sendable {
             fputs("[PluginHost] Protocol error: relay frame \(frame.frameType) from plugin \(pluginIdx)\n", stderr)
 
         case .req:
-            // Plugin peer invoke — register routing and forward to relay
+            // Plugin peer invoke — record in OUTGOING_RIDS and forward to relay.
+            // Plugins MUST NOT send XID (that's a relay-level concept).
             stateLock.lock()
-            requestRouting[frame.id] = pluginIdx
-            peerRequests.insert(frame.id)
+            outgoingRids[frame.id] = pluginIdx
             stateLock.unlock()
             sendToRelay(frame)
 
         default:
-            // Everything else: pass through to relay
-            let isTerminal = frame.frameType == .end || frame.frameType == .err
-
-            if isTerminal {
-                stateLock.lock()
-                if !peerRequests.contains(frame.id) {
-                    // Engine-initiated request: plugin's END/ERR is the final response
-                    if let idx = requestRouting[frame.id], idx == pluginIdx {
-                        requestRouting.removeValue(forKey: frame.id)
-                    }
-                }
-                // Peer-initiated: don't remove routing — relay's response
-                // (END/ERR from engine) will clean up in handleRelayFrame
-                stateLock.unlock()
-            }
-
+            // Everything else: forward as-is to relay.
+            // NO routing cleanup here — incomingRxids leak is intentional (see handleRelayFrame).
+            // NO distinction between "request body END" and "response END" at the host level —
+            // the PluginRuntime inside the plugin handles that demuxing.
             sendToRelay(frame)
         }
     }
@@ -621,6 +645,9 @@ public final class PluginHost: @unchecked Sendable {
     // MARK: - Plugin Death Handling
 
     /// Handle a plugin death (reader thread detected EOF/error).
+    ///
+    /// Sends ERR for pending peer requests (outgoingRids) and cleans up
+    /// incoming routing entries (incomingRxids).
     private func handlePluginDeath(pluginIdx: Int) {
         stateLock.lock()
         let plugin = plugins[pluginIdx]
@@ -633,16 +660,29 @@ public final class PluginHost: @unchecked Sendable {
             plugin.stdinHandle = nil
         }
 
-        // Send ERR for all requests routed to this plugin
-        var requestsToClean: [MessageId] = []
-        for (reqId, idx) in requestRouting {
+        // Send ERR for pending PEER requests (outgoingRids only).
+        // These are requests the plugin initiated — the relay is waiting for
+        // the plugin to complete its request body or receive its response.
+        var failedOutgoingRids: [MessageId] = []
+        for (rid, idx) in outgoingRids {
             if idx == pluginIdx {
-                requestsToClean.append(reqId)
+                failedOutgoingRids.append(rid)
             }
         }
-        for reqId in requestsToClean {
-            requestRouting.removeValue(forKey: reqId)
-            peerRequests.remove(reqId)
+        for rid in failedOutgoingRids {
+            outgoingRids.removeValue(forKey: rid)
+        }
+
+        // Clean up incomingRxids entries for this plugin (leaked routing entries).
+        // Also collect XID info so we can send ERR with correct XID for incoming requests.
+        var failedIncomingKeys: [(key: RxidKey, xid: MessageId, rid: MessageId)] = []
+        for (key, idx) in incomingRxids {
+            if idx == pluginIdx {
+                failedIncomingKeys.append((key: key, xid: key.xid, rid: key.rid))
+            }
+        }
+        for entry in failedIncomingKeys {
+            incomingRxids.removeValue(forKey: entry.key)
         }
 
         // Remove caps for this plugin
@@ -651,8 +691,13 @@ public final class PluginHost: @unchecked Sendable {
         stateLock.unlock()
 
         // Send ERR frames outside the lock
-        for reqId in requestsToClean {
-            sendToRelay(Frame.err(id: reqId, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+        for rid in failedOutgoingRids {
+            sendToRelay(Frame.err(id: rid, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+        }
+        for entry in failedIncomingKeys {
+            var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
+            err.routingId = entry.xid
+            sendToRelay(err)
         }
     }
 
@@ -719,11 +764,17 @@ public final class PluginHost: @unchecked Sendable {
     // MARK: - Outbound Writing
 
     /// Write a frame to the relay (toward engine). Thread-safe.
+    /// Assigns seq numbers via SeqAssigner before writing (matching Rust outbound_writer_loop).
     private func sendToRelay(_ frame: Frame) {
         outboundLock.lock()
         defer { outboundLock.unlock() }
         guard let w = outboundWriter else { return }
-        try? w.write(frame)
+        var mutableFrame = frame
+        outboundSeqAssigner.assign(&mutableFrame)
+        try? w.write(mutableFrame)
+        if mutableFrame.frameType == .end || mutableFrame.frameType == .err {
+            outboundSeqAssigner.remove(mutableFrame.id)
+        }
     }
 
     // MARK: - Internal Helpers

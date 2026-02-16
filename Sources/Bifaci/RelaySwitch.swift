@@ -12,19 +12,26 @@
 /// └──────────────┬──────────────┘
 ///                │
 /// ┌──────────────▼──────────────┐
-/// │       RelaySwitch        │
-/// │  • Aggregates capabilities   │
-/// │  • Routes REQ by cap URN     │
-/// │  • Routes frames by req_id   │
-/// │  • Tracks peer requests      │
-/// └─┬───┬───┬───┬───────────────┘
+/// │       RelaySwitch           │
+/// │  • Aggregates capabilities  │
+/// │  • Routes REQ by cap URN    │
+/// │  • Routes frames by (XID,RID) │
+/// │  • Tracks peer requests     │
+/// └─┬───┬───┬───┬──────────────┘
 ///   │   │   │   │
 ///   ▼   ▼   ▼   ▼
 ///  RM  RM  RM  RM   (Relay Masters - via socket pairs)
 /// ```
 ///
-/// No fallbacks. No heuristics. No special cases. Just deterministic frame routing
-/// based on URN matching and request ID tracking.
+/// ## Routing Semantics
+///
+/// XID (routing ID) distinguishes direction:
+/// - HAS XID → response flowing back toward origin
+/// - NO XID  → request flowing forward toward destination
+///
+/// Origin tracking:
+/// - nil = external caller (via sendToMaster)
+/// - Some(masterIdx) = peer request from another master
 
 import Foundation
 @preconcurrency import SwiftCBOR
@@ -76,21 +83,30 @@ public struct SocketPair: Sendable {
     }
 }
 
+/// Composite routing key: (XID, RID) — uniquely identifies a request flow
+private struct RoutingKey: Hashable {
+    let xid: MessageId
+    let rid: MessageId
+}
+
 /// Routing entry for request tracking
-private struct RoutingEntry: Sendable {
-    let sourceMasterIdx: Int  // ENGINE_SOURCE for engine-initiated
+private struct RoutingEntry {
+    /// Source master index, or nil if from external caller
+    let sourceMasterIdx: Int?
+    /// Destination master index (where request is being handled)
     let destinationMasterIdx: Int
 }
 
-/// Frame received from a master
-private struct MasterFrame: Sendable {
-    let masterIdx: Int
-    let frame: Frame?
-    let error: Error?
-}
-
-/// Sentinel value for engine-initiated requests
+/// Sentinel value for engine-initiated requests (used in origin tracking)
 private let ENGINE_SOURCE = Int.max
+
+// MARK: - Identity Nonce
+
+/// Generate identity verification nonce — CBOR-encoded "bifaci" text.
+/// Must match Rust's identity_nonce() exactly.
+private func identityNonce() -> Data {
+    return Data(CBOR.utf8String("bifaci").encode())
+}
 
 // MARK: - Master Connection
 
@@ -98,24 +114,22 @@ private let ENGINE_SOURCE = Int.max
 @available(macOS 10.15.4, iOS 13.4, *)
 private final class MasterConnection: @unchecked Sendable {
     let socketWriter: FrameWriter
+    /// SeqAssigner for outbound frames to this master (output stage)
+    let seqAssigner: SeqAssigner
+    /// ReorderBuffer for inbound frames from this master
+    let reorderBuffer: ReorderBuffer
     var manifest: Data
     var limits: Limits
     var caps: [String]
     var healthy: Bool
-    let readerQueue: DispatchQueue
-    /// SeqAssigner for outbound frames to this master
-    let seqAssigner: SeqAssigner
-    /// ReorderBuffer for inbound frames from this master
-    let reorderBuffer: ReorderBuffer
 
-    init(socketWriter: FrameWriter, manifest: Data, limits: Limits, caps: [String], healthy: Bool, readerQueue: DispatchQueue) {
+    init(socketWriter: FrameWriter, seqAssigner: SeqAssigner, manifest: Data, limits: Limits, caps: [String], healthy: Bool) {
         self.socketWriter = socketWriter
+        self.seqAssigner = seqAssigner
         self.manifest = manifest
         self.limits = limits
         self.caps = caps
         self.healthy = healthy
-        self.readerQueue = readerQueue
-        self.seqAssigner = SeqAssigner()
         self.reorderBuffer = ReorderBuffer(maxBufferPerFlow: limits.maxReorderBuffer)
     }
 }
@@ -125,67 +139,177 @@ private final class MasterConnection: @unchecked Sendable {
 /// Cap-aware routing multiplexer for multiple RelayMasters.
 ///
 /// Routes requests based on cap URN matching and tracks bidirectional request/response flows.
+/// Uses XID (routing ID) presence to distinguish response direction from request direction.
 @available(macOS 10.15.4, iOS 13.4, *)
 public final class RelaySwitch: @unchecked Sendable {
     private var masters: [MasterConnection] = []
     private var capTable: [(capUrn: String, masterIdx: Int)] = []
-    private var requestRouting: [String: RoutingEntry] = [:]
-    private var peerRequests: Set<String> = Set()
+
+    /// Routing: (xid, rid) → source/destination masters
+    private var requestRouting: [RoutingKey: RoutingEntry] = [:]
+    /// Peer-initiated request keys for cleanup tracking
+    private var peerRequests: Set<RoutingKey> = Set()
+    /// Origin tracking: (xid, rid) → upstream master index (nil = external caller)
+    private var originMap: [RoutingKey: Int?] = [:]
+    /// RID → XID mapping for engine-initiated requests (continuation frames need XID lookup)
+    private var ridToXid: [MessageId: MessageId] = [:]
+    /// XID counter for assigning unique routing IDs
+    private var xidCounter: UInt64 = 0
+
     private var aggregateCapabilities: Data = Data()
     private var negotiatedLimits: Limits = Limits()
     private let lock = NSLock()
-    private let frameQueue = DispatchQueue(label: "com.capns.relayswitch.frames", qos: .userInitiated)
     private var frameChannel: [(masterIdx: Int, frame: Frame?, error: Error?)] = []
     private let frameSemaphore = DispatchSemaphore(value: 0)
 
     /// Create a RelaySwitch from socket pairs.
     ///
+    /// Two-phase construction:
+    /// 1. For each master: read RelayNotify, verify identity (blocking)
+    /// 2. After all verified: spawn reader threads
+    ///
+    /// Identity verification sends CAP_IDENTITY request with nonce, expects echo response.
+    /// Updated RelayNotify frames during verification are captured (hosts send full caps after plugin startup).
+    ///
     /// - Parameter sockets: Array of socket pairs (one per master)
-    /// - Throws: RelaySwitchError if construction fails
+    /// - Throws: RelaySwitchError if construction or identity verification fails
     public init(sockets: [SocketPair]) throws {
         guard !sockets.isEmpty else {
             throw RelaySwitchError.protocolError("RelaySwitch requires at least one master")
         }
 
-        // Connect to all masters
+        // Phase 1: For each master, read RelayNotify and verify identity (blocking).
+        // Reader threads are spawned only after verification succeeds.
+        var pendingReaders: [(masterIdx: Int, reader: FrameReader)] = []
+
         for (masterIdx, sockPair) in sockets.enumerated() {
-            var reader = FrameReader(handle: sockPair.read)
-            let writer = FrameWriter(handle: sockPair.write)
+            var socketReader = FrameReader(handle: sockPair.read)
+            let socketWriter = FrameWriter(handle: sockPair.write)
 
-            // Perform handshake (read initial RelayNotify)
-            guard let frame = try reader.read() else {
-                throw RelaySwitchError.protocolError("Expected RelayNotify during handshake")
+            // Read initial RelayNotify (blocking — first frame from each master)
+            guard let notifyFrame = try socketReader.read() else {
+                throw RelaySwitchError.protocolError("master \(masterIdx): connection closed before RelayNotify")
             }
 
-            guard frame.frameType == .relayNotify else {
-                throw RelaySwitchError.protocolError("Expected RelayNotify during handshake")
+            guard notifyFrame.frameType == .relayNotify else {
+                throw RelaySwitchError.protocolError("master \(masterIdx): expected RelayNotify, got \(notifyFrame.frameType)")
             }
 
-            guard let manifest = frame.relayNotifyManifest,
-                  let limits = frame.relayNotifyLimits else {
-                throw RelaySwitchError.protocolError("RelayNotify missing manifest or limits")
+            guard var capsPayload = notifyFrame.relayNotifyManifest,
+                  var masterLimits = notifyFrame.relayNotifyLimits else {
+                throw RelaySwitchError.protocolError("master \(masterIdx): RelayNotify missing manifest or limits")
             }
 
-            let caps = try Self.parseCapabilitiesFromManifest(manifest)
+            var caps = try Self.parseCapabilitiesFromManifest(capsPayload)
 
-            // Spawn reader thread for this master
-            let readerQueue = DispatchQueue(label: "com.capns.relayswitch.reader.\(masterIdx)", qos: .userInitiated)
-            readerQueue.async { [weak self] in
-                self?.readerLoop(masterIdx: masterIdx, reader: reader)
+            // Verify identity through the relay chain.
+            // This is done inline because RelaySwitch is sync and needs its own
+            // XID allocation + SeqAssigner per-master for the relay chain.
+            let seqAssigner = SeqAssigner()
+            xidCounter += 1
+            let xid = MessageId.uint(xidCounter)
+
+            let nonce = identityNonce()
+            let reqId = MessageId.newUUID()
+            let streamId = "identity-verify"
+
+            // Send REQ + STREAM_START + CHUNK + STREAM_END + END with XID + seq
+            var req = Frame.req(id: reqId, capUrn: CSCapIdentity as String, payload: Data(), contentType: "application/cbor")
+            req.routingId = xid
+            seqAssigner.assign(&req)
+            try socketWriter.write(req)
+
+            var ss = Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: "media:bytes")
+            ss.routingId = xid
+            seqAssigner.assign(&ss)
+            try socketWriter.write(ss)
+
+            let checksum = Frame.computeChecksum(nonce)
+            var chunk = Frame.chunk(reqId: reqId, streamId: streamId, seq: 0, payload: nonce, chunkIndex: 0, checksum: checksum)
+            chunk.routingId = xid
+            seqAssigner.assign(&chunk)
+            try socketWriter.write(chunk)
+
+            var se = Frame.streamEnd(reqId: reqId, streamId: streamId, chunkCount: 1)
+            se.routingId = xid
+            seqAssigner.assign(&se)
+            try socketWriter.write(se)
+
+            var end = Frame.end(id: reqId)
+            end.routingId = xid
+            seqAssigner.assign(&end)
+            try socketWriter.write(end)
+
+            seqAssigner.remove(reqId)
+
+            // Read response — expect STREAM_START → CHUNK(s) → STREAM_END → END
+            // Also handle updated RelayNotify frames (host sends full caps after plugin startup)
+            var accumulated = Data()
+            while true {
+                guard let frame = try socketReader.read() else {
+                    throw RelaySwitchError.protocolError("master \(masterIdx): connection closed during identity verification")
+                }
+
+                switch frame.frameType {
+                case .relayNotify:
+                    // PluginHostRuntime sends the full RelayNotify (with all caps)
+                    // through RelaySlave during identity verification. Update caps.
+                    if let manifest = frame.relayNotifyManifest {
+                        capsPayload = manifest
+                        caps = try Self.parseCapabilitiesFromManifest(capsPayload)
+                    }
+                    if let newLimits = frame.relayNotifyLimits {
+                        masterLimits = newLimits
+                    }
+                case .streamStart:
+                    break // Expected, no action needed
+                case .chunk:
+                    if let payload = frame.payload {
+                        accumulated.append(payload)
+                    }
+                case .streamEnd:
+                    break // Expected, no action needed
+                case .end:
+                    // Verify nonce matches
+                    if accumulated != nonce {
+                        throw RelaySwitchError.protocolError(
+                            "master \(masterIdx): identity verification payload mismatch (expected \(nonce.count) bytes, got \(accumulated.count))")
+                    }
+                    break // Done — fall through to next master
+                case .err:
+                    let code = frame.errorCode ?? "UNKNOWN"
+                    let msg = frame.errorMessage ?? "no message"
+                    throw RelaySwitchError.protocolError("master \(masterIdx): identity verification failed: [\(code)] \(msg)")
+                default:
+                    throw RelaySwitchError.protocolError("master \(masterIdx): identity verification: unexpected frame type \(frame.frameType)")
+                }
+
+                // Break out of loop after END
+                if frame.frameType == .end { break }
             }
+
+            // Stash reader for spawning after all masters verified
+            pendingReaders.append((masterIdx: masterIdx, reader: socketReader))
 
             let masterConn = MasterConnection(
-                socketWriter: writer,
-                manifest: manifest,
-                limits: limits,
+                socketWriter: socketWriter,
+                seqAssigner: seqAssigner,
+                manifest: capsPayload,
+                limits: masterLimits,
                 caps: caps,
-                healthy: true,
-                readerQueue: readerQueue
+                healthy: true
             )
             masters.append(masterConn)
         }
 
-        // Build initial routing tables
+        // Phase 2: All masters verified — spawn reader threads
+        for (masterIdx, reader) in pendingReaders {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.readerLoop(masterIdx: masterIdx, reader: reader)
+            }
+        }
+
+        // Build routing tables from already-populated caps
         rebuildCapTable()
         rebuildCapabilities()
         rebuildLimits()
@@ -194,16 +318,15 @@ public final class RelaySwitch: @unchecked Sendable {
     // MARK: - Reader Loop
 
     private func readerLoop(masterIdx: Int, reader: FrameReader) {
-        var mutableReader = reader  // FrameReader.read() mutates state
+        var mutableReader = reader
         while true {
             do {
                 guard let frame = try mutableReader.read() else {
-                    // EOF
                     enqueueFrame(masterIdx: masterIdx, frame: nil, error: nil)
                     return
                 }
 
-                // Handle RelayNotify here (intercept before sending to queue)
+                // Intercept RelayNotify before sending to queue
                 if frame.frameType == .relayNotify {
                     lock.lock()
                     if let manifest = frame.relayNotifyManifest,
@@ -227,9 +350,7 @@ public final class RelaySwitch: @unchecked Sendable {
 
                 let readyFrames = try reorderBuffer.accept(frame)
 
-                // Enqueue all ready frames
                 for readyFrame in readyFrames {
-                    // Cleanup flow state after terminal frames
                     if readyFrame.frameType == .end || readyFrame.frameType == .err {
                         let key = FlowKey.fromFrame(readyFrame)
                         reorderBuffer.cleanupFlow(key)
@@ -250,6 +371,19 @@ public final class RelaySwitch: @unchecked Sendable {
         frameSemaphore.signal()
     }
 
+    // MARK: - Frame Output
+
+    /// Write a frame to a master, assigning seq via the per-master SeqAssigner.
+    /// Cleans up seq tracking on terminal frames (END/ERR).
+    private func writeToMasterIdx(_ masterIdx: Int, _ frame: inout Frame) throws {
+        let master = masters[masterIdx]
+        master.seqAssigner.assign(&frame)
+        try master.socketWriter.write(frame)
+        if frame.frameType == .end || frame.frameType == .err {
+            master.seqAssigner.remove(frame.id)
+        }
+    }
+
     // MARK: - Public API
 
     /// Get aggregate capabilities (union of all masters)
@@ -266,13 +400,10 @@ public final class RelaySwitch: @unchecked Sendable {
         return negotiatedLimits
     }
 
-    /// Send a frame to the appropriate master (engine → plugin direction)
+    /// Send a frame to the appropriate master (engine → plugin direction).
     ///
-    /// Routes REQ by cap URN. Routes continuation frames by request ID.
-    /// Assigns seq using master's SeqAssigner before sending.
-    ///
-    /// - Parameter frame: Frame to send
-    /// - Throws: RelaySwitchError if routing fails
+    /// REQ frames: Assigned XID if absent, routed by cap URN.
+    /// Continuation frames: Routed by (XID, RID) pair.
     public func sendToMaster(_ frame: Frame) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -281,64 +412,73 @@ public final class RelaySwitch: @unchecked Sendable {
 
         switch frame.frameType {
         case .req:
-            // Find master for this cap
             guard let cap = frame.cap, let destIdx = findMasterForCap(cap) else {
                 throw RelaySwitchError.noHandler(frame.cap ?? "nil")
             }
 
-            // Register routing (source = engine)
-            requestRouting[frame.id.toString()] = RoutingEntry(
-                sourceMasterIdx: ENGINE_SOURCE,
+            // Assign XID if absent (engine frames arrive without XID)
+            let xid: MessageId
+            if let existingXid = frame.routingId {
+                xid = existingXid
+            } else {
+                xidCounter += 1
+                xid = .uint(xidCounter)
+                mutableFrame.routingId = xid
+            }
+
+            let rid = frame.id
+            let key = RoutingKey(xid: xid, rid: rid)
+
+            // Record origin (nil = external caller via sendToMaster)
+            originMap[key] = nil as Int?
+
+            // Register routing
+            requestRouting[key] = RoutingEntry(
+                sourceMasterIdx: nil,
                 destinationMasterIdx: destIdx
             )
 
-            // Assign seq before sending
-            masters[destIdx].seqAssigner.assign(&mutableFrame)
-            try masters[destIdx].socketWriter.write(mutableFrame)
+            // Record RID → XID mapping for continuation frames from engine
+            ridToXid[rid] = xid
+
+            // Forward to destination with XID
+            try writeToMasterIdx(destIdx, &mutableFrame)
 
         case .streamStart, .chunk, .streamEnd, .end, .err:
-            // Continuation frames route by request ID
-            guard let entry = requestRouting[frame.id.toString()] else {
+            // Continuation frames from engine: look up XID from RID if missing
+            let xid: MessageId
+            if let existingXid = frame.routingId {
+                xid = existingXid
+            } else {
+                guard let lookedUpXid = ridToXid[frame.id] else {
+                    throw RelaySwitchError.unknownRequest(frame.id.toString())
+                }
+                xid = lookedUpXid
+                mutableFrame.routingId = xid
+            }
+
+            let key = RoutingKey(xid: xid, rid: frame.id)
+
+            guard let entry = requestRouting[key] else {
                 throw RelaySwitchError.unknownRequest(frame.id.toString())
             }
 
             let destIdx = entry.destinationMasterIdx
 
-            // Assign seq before sending
-            masters[destIdx].seqAssigner.assign(&mutableFrame)
-            try masters[destIdx].socketWriter.write(mutableFrame)
-
-            // Cleanup seq tracking and routing on terminal frames
-            let isTerminal = frame.frameType == .end || frame.frameType == .err
-            if isTerminal {
-                masters[destIdx].seqAssigner.remove(frame.id)
-
-                // Only remove routing for peer responses
-                if peerRequests.contains(frame.id.toString()) {
-                    requestRouting.removeValue(forKey: frame.id.toString())
-                    peerRequests.remove(frame.id.toString())
-                }
-            }
+            // Forward to destination
+            try writeToMasterIdx(destIdx, &mutableFrame)
 
         default:
-            // Other frame types pass through to first master (or error)
-            if !masters.isEmpty {
-                masters[0].seqAssigner.assign(&mutableFrame)
-                try masters[0].socketWriter.write(mutableFrame)
-            }
+            throw RelaySwitchError.protocolError("Unexpected frame type from engine: \(frame.frameType)")
         }
     }
 
     /// Read the next frame from any master (plugin → engine direction).
     ///
-    /// Blocks until a frame is available. Returns nil when all masters have closed.
+    /// Blocks until a frame is available from any master. Returns nil when all masters have closed.
     /// Peer requests (plugin → plugin) are handled internally and not returned.
-    ///
-    /// - Returns: Frame if available, nil if all masters closed
-    /// - Throws: RelaySwitchError on errors
     public func readFromMasters() throws -> Frame? {
         while true {
-            // Block on semaphore - reader threads signal when frames arrive
             frameSemaphore.wait()
 
             lock.lock()
@@ -350,56 +490,38 @@ public final class RelaySwitch: @unchecked Sendable {
             lock.unlock()
 
             if let error = masterFrame.error {
-                // Error reading from master
-                print("Error reading from master \(masterFrame.masterIdx): \(error)")
+                fputs("[RelaySwitch] Error reading from master \(masterFrame.masterIdx): \(error)\n", stderr)
                 try handleMasterDeath(masterFrame.masterIdx)
                 continue
             }
 
             guard let frame = masterFrame.frame else {
-                // EOF from master
                 try handleMasterDeath(masterFrame.masterIdx)
-                // Check if all masters are dead
                 lock.lock()
                 let allDead = masters.allSatisfy { !$0.healthy }
                 lock.unlock()
-                if allDead {
-                    return nil
-                }
+                if allDead { return nil }
                 continue
             }
 
-            // Handle the frame
             if let resultFrame = try handleMasterFrame(sourceIdx: masterFrame.masterIdx, frame: frame) {
                 return resultFrame
             }
-            // Peer request was handled internally, continue reading
         }
     }
 
-    /// Read the next frame from any master with timeout (plugin → engine direction).
+    /// Read the next frame from any master with timeout.
     ///
     /// Like readFromMasters() but returns nil after timeout instead of blocking forever.
-    /// Returns frame if available, nil on timeout or when all masters closed.
-    ///
-    /// - Parameter timeout: Maximum time to wait for a frame
-    /// - Returns: Frame if available, nil on timeout or EOF
-    /// - Throws: RelaySwitchError on errors
     public func readFromMasters(timeout: TimeInterval) throws -> Frame? {
         let deadline = Date().addingTimeInterval(timeout)
 
         while true {
             let remaining = deadline.timeIntervalSinceNow
-            if remaining <= 0 {
-                return nil  // Timeout
-            }
+            if remaining <= 0 { return nil }
 
-            // Try to wait on semaphore with timeout
             let result = frameSemaphore.wait(timeout: DispatchTime.now() + remaining)
-
-            if result == .timedOut {
-                return nil  // Timeout
-            }
+            if result == .timedOut { return nil }
 
             lock.lock()
             guard !frameChannel.isEmpty else {
@@ -410,61 +532,66 @@ public final class RelaySwitch: @unchecked Sendable {
             lock.unlock()
 
             if let error = masterFrame.error {
-                // Error reading from master
-                print("Error reading from master \(masterFrame.masterIdx): \(error)")
+                fputs("[RelaySwitch] Error reading from master \(masterFrame.masterIdx): \(error)\n", stderr)
                 try handleMasterDeath(masterFrame.masterIdx)
                 continue
             }
 
             guard let frame = masterFrame.frame else {
-                // EOF from master
                 try handleMasterDeath(masterFrame.masterIdx)
-                // Check if all masters are dead
                 lock.lock()
                 let allDead = masters.allSatisfy { !$0.healthy }
                 lock.unlock()
-                if allDead {
-                    return nil
-                }
+                if allDead { return nil }
                 continue
             }
 
-            // Handle the frame
             if let resultFrame = try handleMasterFrame(sourceIdx: masterFrame.masterIdx, frame: frame) {
                 return resultFrame
             }
-            // Peer request was handled internally, continue reading
         }
     }
 
     // MARK: - Internal Routing
 
+    /// Find which master handles a given cap URN.
+    /// Prefers the match whose specificity is CLOSEST to the request's specificity.
+    /// This ensures generic requests (e.g., identity) route to generic handlers,
+    /// and specific requests route to specific handlers.
     private func findMasterForCap(_ capUrn: String) -> Int? {
-        // Exact match first
-        for (registeredCap, idx) in capTable {
-            if registeredCap == capUrn {
-                return idx
-            }
-        }
-
-        // URN-level matching: request is pattern, registered is instance
         guard let requestUrn = try? CSCapUrn.fromString(capUrn) else {
             return nil
         }
 
-        for (registeredCap, idx) in capTable {
+        let requestSpecificity = requestUrn.specificity()
+
+        // Collect ALL matching masters with their specificity scores
+        var matches: [(masterIdx: Int, specificity: Int)] = []
+
+        for (registeredCap, masterIdx) in capTable {
             guard let registeredUrn = try? CSCapUrn.fromString(registeredCap) else {
                 continue
             }
 
             if requestUrn.accepts(registeredUrn) {
-                return idx
+                matches.append((masterIdx: masterIdx, specificity: Int(registeredUrn.specificity())))
             }
         }
 
-        return nil
+        if matches.isEmpty { return nil }
+
+        // Prefer the match with specificity closest to the request's specificity.
+        // Ties broken by first match (deterministic).
+        let reqSpec = Int(requestSpecificity)
+        let minDistance = matches.map { abs($0.specificity - reqSpec) }.min()!
+
+        return matches.first { abs($0.specificity - reqSpec) == minDistance }?.masterIdx
     }
 
+    /// Handle a frame arriving from a master (plugin → engine direction).
+    ///
+    /// Returns Some(frame) if the frame should be forwarded to the engine.
+    /// Returns nil if the frame was handled internally (peer request or request continuation).
     private func handleMasterFrame(sourceIdx: Int, frame: Frame) throws -> Frame? {
         lock.lock()
         defer { lock.unlock() }
@@ -478,58 +605,130 @@ public final class RelaySwitch: @unchecked Sendable {
                 throw RelaySwitchError.noHandler(frame.cap ?? "nil")
             }
 
-            // Register routing (source = plugin's master)
-            requestRouting[frame.id.toString()] = RoutingEntry(
+            // REQs from plugins should NOT have XID (per protocol spec)
+            if frame.routingId != nil {
+                throw RelaySwitchError.protocolError("REQ from plugin should not have XID")
+            }
+
+            // Assign fresh XID
+            xidCounter += 1
+            let xid = MessageId.uint(xidCounter)
+            mutableFrame.routingId = xid
+
+            let rid = frame.id
+            let key = RoutingKey(xid: xid, rid: rid)
+
+            // Record RID → XID mapping for continuation frames
+            ridToXid[rid] = xid
+
+            // Record origin (where this request came from)
+            originMap[key] = sourceIdx
+
+            // Register routing
+            requestRouting[key] = RoutingEntry(
                 sourceMasterIdx: sourceIdx,
                 destinationMasterIdx: destIdx
             )
-            peerRequests.insert(frame.id.toString())
 
-            // Assign seq before forwarding to destination master
-            masters[destIdx].seqAssigner.assign(&mutableFrame)
-            try masters[destIdx].socketWriter.write(mutableFrame)
+            // Mark as peer request (for cleanup tracking)
+            peerRequests.insert(key)
+
+            // Forward to destination with XID
+            try writeToMasterIdx(destIdx, &mutableFrame)
 
             // Do NOT return to engine (internal routing)
             return nil
 
         case .streamStart, .chunk, .streamEnd, .end, .err, .log:
-            guard let entry = requestRouting[frame.id.toString()] else {
-                // Unknown request - just return to engine
-                return frame
-            }
+            // Branch based on XID presence to distinguish request vs response direction
+            if frame.routingId != nil {
+                // ========================================
+                // HAS XID = RESPONSE CONTINUATION
+                // ========================================
+                // Frame already has XID, so it's a response flowing back to origin
+                let xid = frame.routingId!
+                let rid = frame.id
+                let key = RoutingKey(xid: xid, rid: rid)
 
-            if entry.sourceMasterIdx != ENGINE_SOURCE {
-                // Response to peer request
-                let destIdx = entry.sourceMasterIdx
-                let isTerminal = frame.frameType == .end || frame.frameType == .err
-
-                // Assign seq before forwarding response
-                masters[destIdx].seqAssigner.assign(&mutableFrame)
-                try masters[destIdx].socketWriter.write(mutableFrame)
-
-                if isTerminal {
-                    // Cleanup seq tracking
-                    masters[destIdx].seqAssigner.remove(frame.id)
-
-                    // Only remove routing for engine-initiated requests routed through peer
-                    if !peerRequests.contains(frame.id.toString()) {
-                        requestRouting.removeValue(forKey: frame.id.toString())
-                    }
+                guard requestRouting[key] != nil else {
+                    throw RelaySwitchError.unknownRequest(rid.toString())
                 }
 
+                // Get origin (where request came from)
+                guard let originIdx = originMap[key] else {
+                    throw RelaySwitchError.protocolError("No origin recorded for request \(rid.toString())")
+                }
+
+                let isTerminal = frame.frameType == .end || frame.frameType == .err
+
+                // Route back to origin
+                if let masterIdx = originIdx {
+                    // Peer response — route back to source master (keep XID for relay protocol)
+                    try writeToMasterIdx(masterIdx, &mutableFrame)
+
+                    if isTerminal {
+                        requestRouting.removeValue(forKey: key)
+                        originMap.removeValue(forKey: key)
+                        peerRequests.remove(key)
+                        ridToXid.removeValue(forKey: rid)
+                    }
+
+                    return nil
+                } else {
+                    // External caller (via sendToMaster) — strip XID and return to engine
+                    mutableFrame.routingId = nil
+
+                    if isTerminal {
+                        requestRouting.removeValue(forKey: key)
+                        originMap.removeValue(forKey: key)
+                        peerRequests.remove(key)
+                        ridToXid.removeValue(forKey: rid)
+                    }
+
+                    return mutableFrame
+                }
+            } else {
+                // ========================================
+                // NO XID = REQUEST CONTINUATION
+                // ========================================
+                // Frame has no XID, so it's a request continuation flowing to destination
+                let rid = frame.id
+
+                // Look up XID from RID → XID mapping (added by the REQ)
+                guard let xid = ridToXid[rid] else {
+                    throw RelaySwitchError.unknownRequest(rid.toString())
+                }
+
+                let key = RoutingKey(xid: xid, rid: rid)
+
+                guard let entry = requestRouting[key] else {
+                    throw RelaySwitchError.unknownRequest(rid.toString())
+                }
+
+                // Add XID to frame for forwarding
+                mutableFrame.routingId = xid
+
+                // Forward to destination master (keep XID)
+                try writeToMasterIdx(entry.destinationMasterIdx, &mutableFrame)
                 return nil
             }
 
-            // Response to engine request
-            let isTerminal = frame.frameType == .end || frame.frameType == .err
-            if isTerminal && !peerRequests.contains(frame.id.toString()) {
-                requestRouting.removeValue(forKey: frame.id.toString())
+        case .relayNotify:
+            // Capability update from host — update our cap table
+            if let manifest = frame.relayNotifyManifest,
+               let newLimits = frame.relayNotifyLimits {
+                let newCaps = try Self.parseCapabilitiesFromManifest(manifest)
+                masters[sourceIdx].caps = newCaps
+                masters[sourceIdx].manifest = manifest
+                masters[sourceIdx].limits = newLimits
+                rebuildCapTable()
+                rebuildCapabilities()
+                rebuildLimits()
             }
-
+            // Pass through to engine (for visibility)
             return frame
 
         default:
-            // Unknown frame type - return to engine
             return frame
         }
     }
@@ -539,26 +738,36 @@ public final class RelaySwitch: @unchecked Sendable {
         defer { lock.unlock() }
 
         guard masters[masterIdx].healthy else {
-            return  // Already handled
+            return
         }
 
+        fputs("[RelaySwitch] Master \(masterIdx) died\n", stderr)
         masters[masterIdx].healthy = false
 
-        // ERR all pending requests to this master
-        var toRemove: [String] = []
-        for (reqId, entry) in requestRouting {
+        // Find all pending requests to this master and ERR them
+        var deadKeys: [(key: RoutingKey, sourceMasterIdx: Int?)] = []
+        for (key, entry) in requestRouting {
             if entry.destinationMasterIdx == masterIdx {
-                // TODO: Send ERR to source
-                toRemove.append(reqId)
+                deadKeys.append((key: key, sourceMasterIdx: entry.sourceMasterIdx))
             }
         }
 
-        for reqId in toRemove {
-            requestRouting.removeValue(forKey: reqId)
-            peerRequests.remove(reqId)
+        for (key, sourceMasterIdx) in deadKeys {
+            // Create ERR frame
+            var errFrame = Frame.err(id: key.rid, code: "MASTER_DIED", message: "Relay master connection closed")
+            errFrame.routingId = key.xid
+
+            if let masterIdx = sourceMasterIdx, masters[masterIdx].healthy {
+                // Send ERR back to source master
+                try? writeToMasterIdx(masterIdx, &errFrame)
+            }
+
+            // Cleanup routing
+            requestRouting.removeValue(forKey: key)
+            originMap.removeValue(forKey: key)
+            peerRequests.remove(key)
         }
 
-        // Rebuild cap table without dead master
         rebuildCapTable()
         rebuildCapabilities()
         rebuildLimits()
@@ -585,8 +794,6 @@ public final class RelaySwitch: @unchecked Sendable {
             }
         }
 
-        // Serialize as a simple JSON array of URN strings (not an object)
-        // This matches Rust's aggregate_capabilities format
         let capsArray = Array(allCaps).sorted()
         aggregateCapabilities = (try? JSONSerialization.data(withJSONObject: capsArray)) ?? Data()
     }
@@ -606,12 +813,8 @@ public final class RelaySwitch: @unchecked Sendable {
             }
         }
 
-        if minFrame == Int.max {
-            minFrame = DEFAULT_MAX_FRAME
-        }
-        if minChunk == Int.max {
-            minChunk = DEFAULT_MAX_CHUNK
-        }
+        if minFrame == Int.max { minFrame = DEFAULT_MAX_FRAME }
+        if minChunk == Int.max { minChunk = DEFAULT_MAX_CHUNK }
 
         negotiatedLimits = Limits(maxFrame: minFrame, maxChunk: minChunk)
     }
@@ -619,8 +822,6 @@ public final class RelaySwitch: @unchecked Sendable {
     // MARK: - Helper Functions
 
     private static func parseCapabilitiesFromManifest(_ manifest: Data) throws -> [String] {
-        // Parse as direct JSON array of URN strings (not an object with "capabilities" key)
-        // This matches Rust's parse_caps_from_relay_notify which expects: ["cap:", "cap:in=...", ...]
         guard let capsArray = try? JSONSerialization.jsonObject(with: manifest) as? [String] else {
             throw RelaySwitchError.protocolError("Manifest must be JSON array of capability URN strings")
         }
