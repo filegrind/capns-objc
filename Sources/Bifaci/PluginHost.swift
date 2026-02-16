@@ -421,6 +421,12 @@ public final class PluginHost: @unchecked Sendable {
         outboundWriter = FrameWriter(handle: relayWrite)
         outboundLock.unlock()
 
+        // Send initial RelayNotify with capabilities from any already-attached plugins.
+        // Plugins attached before run() was called won't have sent their RelayNotify yet.
+        stateLock.lock()
+        rebuildCapabilities()
+        stateLock.unlock()
+
         // Start relay reader thread — feeds into the same event queue as plugin readers
         let relayReader = FrameReader(handle: relayRead)
         let relayThread = Thread { [weak self] in
@@ -725,6 +731,10 @@ public final class PluginHost: @unchecked Sendable {
     /// Rebuild aggregate capabilities from all running plugins.
     /// Must hold stateLock when calling.
     /// Creates a JSON array of URN strings (not objects) to match Rust implementation.
+    ///
+    /// If running in relay mode (outboundWriter is set), sends a RelayNotify frame
+    /// to the relay interface with the updated capabilities. This allows the router
+    /// to track capability changes dynamically as plugins connect/disconnect/fail.
     private func rebuildCapabilities() {
         // CAP_IDENTITY is always present — structural, not plugin-dependent
         var capUrns: [String] = [CSCapIdentity]
@@ -746,11 +756,23 @@ public final class PluginHost: @unchecked Sendable {
         }
 
         // Serialize as JSON array of strings (not objects)
+        let capsData: Data
         if let data = try? JSONSerialization.data(withJSONObject: capUrns) {
+            capsData = data
             _capabilities = data
         } else {
-            _capabilities = "[]".data(using: .utf8) ?? Data()
+            capsData = "[]".data(using: .utf8) ?? Data()
+            _capabilities = capsData
         }
+
+        // Send RelayNotify to relay if in relay mode
+        // RelayNotify contains the capability URN array (not a full manifest with version/caps keys)
+        outboundLock.lock()
+        if let writer = outboundWriter {
+            let notify = Frame.relayNotify(manifest: capsData, limits: Limits())
+            try? writer.write(notify) // Ignore error if relay closed
+        }
+        outboundLock.unlock()
     }
 
     /// Extract cap URN strings from a manifest JSON blob.
