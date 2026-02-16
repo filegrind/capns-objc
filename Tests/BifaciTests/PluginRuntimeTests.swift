@@ -47,7 +47,7 @@ func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: Stri
 // See: streamToInputPackage(), OutputCollector, createCollectingOutputStream()
 
 @available(macOS 10.15.4, iOS 13.4, *)
-final class CborPluginRuntimeTests: XCTestCase {
+final class PluginRuntimeTests: XCTestCase {
 
     // MARK: - Test Constants
 

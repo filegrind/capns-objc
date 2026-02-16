@@ -73,22 +73,73 @@ final class FlowOrderingTests: XCTestCase {
         XCTAssertEqual(state.seq, 0, "RelayState seq must stay 0 (non-flow frame)")
     }
 
-    // TEST445: SeqAssigner.remove resets flow; next frame for that RID starts at seq 0
-    func testSeqAssignerRemoveResets() {
+    // TEST445: SeqAssigner.remove with FlowKey(rid, nil) resets that flow; FlowKey(rid, Some(xid)) is unaffected
+    func testSeqAssignerRemoveByFlowKey() {
         var assigner = SeqAssigner()
         let rid = MessageId.newUUID()
+        let xid = MessageId.newUUID()
 
+        // Flow 1: (rid, nil) — plugin peer invoke
         var f0 = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
         var f1 = Frame.end(id: rid, finalPayload: nil)
         assigner.assign(&f0)
         assigner.assign(&f1)
-        XCTAssertEqual(f1.seq, 1, "Second frame before remove seq=1")
+        XCTAssertEqual(f1.seq, 1)
 
-        assigner.remove(rid)
+        // Flow 2: (rid, Some(xid)) — relay response
+        var g0 = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
+        g0.routingId = xid
+        var g1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        g1.routingId = xid
+        assigner.assign(&g0)
+        assigner.assign(&g1)
+        XCTAssertEqual(g0.seq, 0)
+        XCTAssertEqual(g1.seq, 1)
 
+        // Remove Flow 1 only
+        assigner.remove(FlowKey(rid: rid, xid: nil))
+
+        // Flow 1 restarts at 0
         var f2 = Frame.req(id: rid, capUrn: "cap:op=test2;in=media:;out=media:", payload: Data(), contentType: "")
         assigner.assign(&f2)
-        XCTAssertEqual(f2.seq, 0, "After remove, seq must restart at 0")
+        XCTAssertEqual(f2.seq, 0, "After remove(rid, nil), that flow restarts at 0")
+
+        // Flow 2 continues unaffected
+        var g2 = Frame.end(id: rid, finalPayload: nil)
+        g2.routingId = xid
+        assigner.assign(&g2)
+        XCTAssertEqual(g2.seq, 2, "remove(rid, nil) must not affect (rid, Some(xid))")
+    }
+
+    // TEST445a: Same RID with different XIDs get independent seq counters
+    func testSeqAssignerSameRidDifferentXidsIndependent() {
+        var assigner = SeqAssigner()
+        let rid = MessageId.newUUID()
+        let xidA = MessageId.uint(1)
+        let xidB = MessageId.uint(2)
+
+        // Flow A: (rid, xidA)
+        var a0 = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
+        a0.routingId = xidA
+        var a1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        a1.routingId = xidA
+
+        // Flow B: (rid, xidB)
+        var b0 = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
+        b0.routingId = xidB
+
+        // Flow C: (rid, nil)
+        var c0 = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
+
+        assigner.assign(&a0)
+        assigner.assign(&b0)
+        assigner.assign(&a1)
+        assigner.assign(&c0)
+
+        XCTAssertEqual(a0.seq, 0, "flow (rid, xidA) starts at 0")
+        XCTAssertEqual(a1.seq, 1, "flow (rid, xidA) increments to 1")
+        XCTAssertEqual(b0.seq, 0, "flow (rid, xidB) starts at 0 independently")
+        XCTAssertEqual(c0.seq, 0, "flow (rid, nil) starts at 0 independently")
     }
 
     // TEST446: SeqAssigner handles mixed frame types (REQ, CHUNK, LOG, END) for same RID

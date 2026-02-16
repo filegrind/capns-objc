@@ -262,7 +262,11 @@ public final class PluginHost: @unchecked Sendable {
     /// Outbound writer — writes frames to the relay (toward engine).
     private var outboundWriter: FrameWriter?
     private let outboundLock = NSLock()
-    private var outboundSeqAssigner = SeqAssigner()
+
+    /// Max-seen seq per flow for plugin-originated frames.
+    /// Used to set seq on host-generated ERR frames (max_seen + 1).
+    /// Protected by stateLock (same as outgoingRids/incomingRxids).
+    private var outgoingMaxSeq: [FlowKey: UInt64] = [:]
 
     /// Plugin events from reader threads.
     private var eventQueue: [PluginEvent] = []
@@ -571,13 +575,16 @@ public final class PluginHost: @unchecked Sendable {
 
             // If the plugin is dead, send ERR to engine with XID and clean up
             if !plugin.writeFrame(frame) {
-                var err = Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
-                err.routingId = xid
-                sendToRelay(err)
+                let flowKey = FlowKey(rid: frame.id, xid: xid)
                 stateLock.lock()
+                let nextSeq = (outgoingMaxSeq.removeValue(forKey: flowKey) ?? 0) + 1
                 outgoingRids.removeValue(forKey: frame.id)
                 incomingRxids.removeValue(forKey: key)
                 stateLock.unlock()
+                var err = Frame.err(id: frame.id, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
+                err.routingId = xid
+                err.seq = nextSeq
+                sendToRelay(err)
                 return
             }
 
@@ -601,6 +608,7 @@ public final class PluginHost: @unchecked Sendable {
     /// Handle a frame received from a plugin.
     ///
     /// REQ frames register in outgoingRids (peer invoke tracking).
+    /// All frames track max-seen seq per FlowKey for host-generated ERR frames.
     /// All other frames are forwarded to relay as-is — no routing decisions needed
     /// (there's only one relay destination).
     private func handlePluginFrame(pluginIdx: Int, frame: Frame) {
@@ -626,18 +634,29 @@ public final class PluginHost: @unchecked Sendable {
             fputs("[PluginHost] Protocol error: relay frame \(frame.frameType) from plugin \(pluginIdx)\n", stderr)
 
         case .req:
-            // Plugin peer invoke — record in OUTGOING_RIDS and forward to relay.
+            // Plugin peer invoke — record in OUTGOING_RIDS and track max-seen seq.
             // Plugins MUST NOT send XID (that's a relay-level concept).
             stateLock.lock()
             outgoingRids[frame.id] = pluginIdx
+            let flowKey = FlowKey.fromFrame(frame)
+            outgoingMaxSeq[flowKey] = frame.seq
             stateLock.unlock()
             sendToRelay(frame)
 
         default:
             // Everything else: forward as-is to relay.
-            // NO routing cleanup here — incomingRxids leak is intentional (see handleRelayFrame).
-            // NO distinction between "request body END" and "response END" at the host level —
-            // the PluginRuntime inside the plugin handles that demuxing.
+            // Track max-seen seq for flow, clean up on terminal.
+            if frame.isFlowFrame() {
+                let flowKey = FlowKey.fromFrame(frame)
+                stateLock.lock()
+                let isTerminal = frame.frameType == .end || frame.frameType == .err
+                if isTerminal {
+                    outgoingMaxSeq.removeValue(forKey: flowKey)
+                } else {
+                    outgoingMaxSeq[flowKey] = frame.seq
+                }
+                stateLock.unlock()
+            }
             sendToRelay(frame)
         }
     }
@@ -648,6 +667,7 @@ public final class PluginHost: @unchecked Sendable {
     ///
     /// Sends ERR for pending peer requests (outgoingRids) and cleans up
     /// incoming routing entries (incomingRxids).
+    /// Host-generated ERR uses max_seen + 1 seq for the flow.
     private func handlePluginDeath(pluginIdx: Int) {
         stateLock.lock()
         let plugin = plugins[pluginIdx]
@@ -663,25 +683,31 @@ public final class PluginHost: @unchecked Sendable {
         // Send ERR for pending PEER requests (outgoingRids only).
         // These are requests the plugin initiated — the relay is waiting for
         // the plugin to complete its request body or receive its response.
-        var failedOutgoingRids: [MessageId] = []
+        // Collect (rid, nextSeq) inside the lock.
+        var failedOutgoing: [(rid: MessageId, nextSeq: UInt64)] = []
         for (rid, idx) in outgoingRids {
             if idx == pluginIdx {
-                failedOutgoingRids.append(rid)
+                // Peer REQs have no XID (plugins never send XID)
+                let flowKey = FlowKey(rid: rid, xid: nil)
+                let nextSeq = (outgoingMaxSeq.removeValue(forKey: flowKey) ?? 0) + 1
+                failedOutgoing.append((rid: rid, nextSeq: nextSeq))
             }
         }
-        for rid in failedOutgoingRids {
-            outgoingRids.removeValue(forKey: rid)
+        for entry in failedOutgoing {
+            outgoingRids.removeValue(forKey: entry.rid)
         }
 
         // Clean up incomingRxids entries for this plugin (leaked routing entries).
         // Also collect XID info so we can send ERR with correct XID for incoming requests.
-        var failedIncomingKeys: [(key: RxidKey, xid: MessageId, rid: MessageId)] = []
+        var failedIncoming: [(key: RxidKey, xid: MessageId, rid: MessageId, nextSeq: UInt64)] = []
         for (key, idx) in incomingRxids {
             if idx == pluginIdx {
-                failedIncomingKeys.append((key: key, xid: key.xid, rid: key.rid))
+                let flowKey = FlowKey(rid: key.rid, xid: key.xid)
+                let nextSeq = (outgoingMaxSeq.removeValue(forKey: flowKey) ?? 0) + 1
+                failedIncoming.append((key: key, xid: key.xid, rid: key.rid, nextSeq: nextSeq))
             }
         }
-        for entry in failedIncomingKeys {
+        for entry in failedIncoming {
             incomingRxids.removeValue(forKey: entry.key)
         }
 
@@ -690,13 +716,16 @@ public final class PluginHost: @unchecked Sendable {
         rebuildCapabilities()
         stateLock.unlock()
 
-        // Send ERR frames outside the lock
-        for rid in failedOutgoingRids {
-            sendToRelay(Frame.err(id: rid, code: "PLUGIN_DIED", message: "Plugin exited while processing request"))
+        // Send ERR frames outside the lock — with correct seq from max-seen tracking
+        for entry in failedOutgoing {
+            var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
+            err.seq = entry.nextSeq
+            sendToRelay(err)
         }
-        for entry in failedIncomingKeys {
+        for entry in failedIncoming {
             var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: "Plugin exited while processing request")
             err.routingId = entry.xid
+            err.seq = entry.nextSeq
             sendToRelay(err)
         }
     }
@@ -764,17 +793,12 @@ public final class PluginHost: @unchecked Sendable {
     // MARK: - Outbound Writing
 
     /// Write a frame to the relay (toward engine). Thread-safe.
-    /// Assigns seq numbers via SeqAssigner before writing (matching Rust outbound_writer_loop).
+    /// Frames arrive with seq already assigned by PluginRuntime — no modification needed.
     private func sendToRelay(_ frame: Frame) {
         outboundLock.lock()
         defer { outboundLock.unlock() }
         guard let w = outboundWriter else { return }
-        var mutableFrame = frame
-        outboundSeqAssigner.assign(&mutableFrame)
-        try? w.write(mutableFrame)
-        if mutableFrame.frameType == .end || mutableFrame.frameType == .err {
-            outboundSeqAssigner.remove(mutableFrame.id)
-        }
+        try? w.write(frame)
     }
 
     // MARK: - Internal Helpers

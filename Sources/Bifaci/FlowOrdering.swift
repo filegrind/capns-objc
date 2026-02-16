@@ -27,8 +27,11 @@ public struct FlowKey: Hashable, Sendable {
 ///
 /// Non-flow frames (Hello, Heartbeat, RelayNotify, RelayState) are skipped
 /// and their seq stays at 0.
+/// Assigns monotonically increasing seq numbers per FlowKey (RID + optional XID).
+/// Keyed by FlowKey to match ReorderBuffer's key space exactly:
+/// (RID=A, XID=nil) and (RID=A, XID=5) are separate flows with independent counters.
 public final class SeqAssigner: @unchecked Sendable {
-    private var counters: [MessageId: UInt64] = [:]
+    private var counters: [FlowKey: UInt64] = [:]
     private let lock = NSLock()
 
     public init() {}
@@ -43,16 +46,17 @@ public final class SeqAssigner: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let counter = counters[frame.id, default: 0]
+        let key = FlowKey.fromFrame(frame)
+        let counter = counters[key, default: 0]
         frame.seq = counter
-        counters[frame.id] = counter + 1
+        counters[key] = counter + 1
     }
 
-    /// Remove tracking for a request ID (call after END/ERR delivery).
-    public func remove(_ rid: MessageId) {
+    /// Remove tracking for a flow (call after END/ERR delivery).
+    public func remove(_ key: FlowKey) {
         lock.lock()
         defer { lock.unlock() }
-        counters.removeValue(forKey: rid)
+        counters.removeValue(forKey: key)
     }
 }
 

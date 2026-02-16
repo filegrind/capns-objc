@@ -240,7 +240,7 @@ public final class RelaySwitch: @unchecked Sendable {
             seqAssigner.assign(&end)
             try socketWriter.write(end)
 
-            seqAssigner.remove(reqId)
+            seqAssigner.remove(FlowKey(rid: reqId, xid: xid))
 
             // Read response — expect STREAM_START → CHUNK(s) → STREAM_END → END
             // Also handle updated RelayNotify frames (host sends full caps after plugin startup)
@@ -380,7 +380,7 @@ public final class RelaySwitch: @unchecked Sendable {
         master.seqAssigner.assign(&frame)
         try master.socketWriter.write(frame)
         if frame.frameType == .end || frame.frameType == .err {
-            master.seqAssigner.remove(frame.id)
+            master.seqAssigner.remove(FlowKey.fromFrame(frame))
         }
     }
 

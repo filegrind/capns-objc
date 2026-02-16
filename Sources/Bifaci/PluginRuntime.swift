@@ -946,21 +946,30 @@ private struct PendingPeerRequest {
 /// Implementation of PeerInvoker that sends REQ frames to the host.
 /// Spawns a background task that forwards response frames via FrameQueue.
 @available(macOS 10.15.4, iOS 13.4, *)
-/// ChannelFrameSender implementation for sending frames from PeerInvokerImpl
+/// ChannelFrameSender implementation for sending frames from PeerInvokerImpl and OutputStream.
+/// Applies SeqAssigner to every outbound frame, matching Rust's writer-thread seq assignment.
+/// Cleans up flow tracking on terminal frames (END/ERR).
 @available(macOS 10.15.4, iOS 13.4, *)
 private final class ChannelFrameSender: FrameSender, @unchecked Sendable {
     private let writer: FrameWriter
     private let writerLock: NSLock
+    private let seqAssigner: SeqAssigner
 
-    init(writer: FrameWriter, writerLock: NSLock) {
+    init(writer: FrameWriter, writerLock: NSLock, seqAssigner: SeqAssigner) {
         self.writer = writer
         self.writerLock = writerLock
+        self.seqAssigner = seqAssigner
     }
 
     func send(_ frame: Frame) throws {
         writerLock.lock()
         defer { writerLock.unlock() }
-        try writer.write(frame)
+        var mutableFrame = frame
+        seqAssigner.assign(&mutableFrame)
+        try writer.write(mutableFrame)
+        if mutableFrame.frameType == .end || mutableFrame.frameType == .err {
+            seqAssigner.remove(FlowKey.fromFrame(mutableFrame))
+        }
     }
 }
 
@@ -968,13 +977,15 @@ private final class ChannelFrameSender: FrameSender, @unchecked Sendable {
 final class PeerInvokerImpl: PeerInvoker, @unchecked Sendable {
     private let writer: FrameWriter
     private let writerLock: NSLock
+    private let seqAssigner: SeqAssigner
     private let pendingRequests: NSMutableDictionary // [MessageId: PendingPeerRequest]
     private let pendingRequestsLock: NSLock
     private let maxChunk: Int
 
-    init(writer: FrameWriter, writerLock: NSLock, pendingRequests: NSMutableDictionary, pendingRequestsLock: NSLock, maxChunk: Int) {
+    init(writer: FrameWriter, writerLock: NSLock, seqAssigner: SeqAssigner, pendingRequests: NSMutableDictionary, pendingRequestsLock: NSLock, maxChunk: Int) {
         self.writer = writer
         self.writerLock = writerLock
+        self.seqAssigner = seqAssigner
         self.pendingRequests = pendingRequests
         self.pendingRequestsLock = pendingRequestsLock
         self.maxChunk = maxChunk
@@ -998,10 +1009,11 @@ final class PeerInvokerImpl: PeerInvoker, @unchecked Sendable {
         pendingRequests[requestId] = pending
         pendingRequestsLock.unlock()
 
-        // Send REQ with empty payload
+        // Send REQ with empty payload — apply seq assignment
         writerLock.lock()
         do {
-            let reqFrame = Frame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
+            var reqFrame = Frame.req(id: requestId, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
+            seqAssigner.assign(&reqFrame)
             try writer.write(reqFrame)
         } catch {
             writerLock.unlock()
@@ -1064,8 +1076,8 @@ final class PeerInvokerImpl: PeerInvoker, @unchecked Sendable {
             queue.next()
         }
 
-        // Create ChannelFrameSender for arg streams
-        let sender = ChannelFrameSender(writer: writer, writerLock: writerLock)
+        // Create ChannelFrameSender for arg streams (shares seqAssigner)
+        let sender = ChannelFrameSender(writer: writer, writerLock: writerLock, seqAssigner: seqAssigner)
 
         // Return PeerCall with response iterator
         return PeerCall(
@@ -2108,9 +2120,14 @@ public final class PluginRuntime: @unchecked Sendable {
         let frameReader = FrameReader(handle: stdinHandle, limits: limits)
         let frameWriter = FrameWriter(handle: stdoutHandle, limits: limits)
         let writerLock = NSLock()
+        let seqAssigner = SeqAssigner()
 
         // Perform handshake
         try performHandshake(reader: frameReader, writer: frameWriter)
+
+        // Shared output sender — all outbound frames go through this.
+        // Applies SeqAssigner and cleans up flow tracking on terminal frames.
+        let outputSender = ChannelFrameSender(writer: frameWriter, writerLock: writerLock, seqAssigner: seqAssigner)
 
         // Track pending peer requests (plugin invoking host caps)
         // Maps request ID to AsyncStream.Continuation for forwarding response frames
@@ -2148,10 +2165,7 @@ public final class PluginRuntime: @unchecked Sendable {
             switch frame.frameType {
             case .req:
                 guard let capUrn = frame.cap else {
-                    let errFrame = Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "Request missing cap URN")
-                    writerLock.lock()
-                    try? frameWriter.write(errFrame)
-                    writerLock.unlock()
+                    try? outputSender.send(Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "Request missing cap URN"))
                     continue
                 }
 
@@ -2159,23 +2173,17 @@ public final class PluginRuntime: @unchecked Sendable {
 
                 // Protocol v2: REQ must have empty payload — arguments come as streams
                 if !rawPayload.isEmpty {
-                    let errFrame = Frame.err(
+                    try? outputSender.send(Frame.err(
                         id: frame.id,
                         code: "PROTOCOL_ERROR",
                         message: "REQ frame must have empty payload — use STREAM_START for arguments"
-                    )
-                    writerLock.lock()
-                    try? frameWriter.write(errFrame)
-                    writerLock.unlock()
+                    ))
                     continue
                 }
 
                 // Find handler (using pattern matching to support wildcards)
                 guard let handler = findHandler(capUrn: capUrn) else {
-                    let errFrame = Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)")
-                    writerLock.lock()
-                    try? frameWriter.write(errFrame)
-                    writerLock.unlock()
+                    try? outputSender.send(Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)"))
                     continue
                 }
 
@@ -2184,10 +2192,7 @@ public final class PluginRuntime: @unchecked Sendable {
                 do {
                     cap = try CSCapUrn.fromString(capUrn)
                 } catch {
-                    let errFrame = Frame.err(id: frame.id, code: "INVALID_CAP_URN", message: "Failed to parse cap URN: \(error)")
-                    writerLock.lock()
-                    try? frameWriter.write(errFrame)
-                    writerLock.unlock()
+                    try? outputSender.send(Frame.err(id: frame.id, code: "INVALID_CAP_URN", message: "Failed to parse cap URN: \(error)"))
                     continue
                 }
 
@@ -2227,24 +2232,22 @@ public final class PluginRuntime: @unchecked Sendable {
                     // Demux frames into InputPackage
                     let inputPackage = demuxMultiStream(frameIterator: frameIterator)
 
-                    // Create ChannelFrameSender for OutputStream
-                    let sender = ChannelFrameSender(writer: frameWriter, writerLock: writerLock)
-
-                    // Create OutputStream for response
+                    // Create OutputStream for response (uses shared outputSender for seq assignment)
                     let responseStreamId = UUID().uuidString
                     let outputStream = OutputStream(
-                        sender: sender,
+                        sender: outputSender,
                         streamId: responseStreamId,
                         mediaUrn: outputMediaUrn,
                         requestId: requestId,
-                        routingId: routingId,  // Include routing_id from request
+                        routingId: routingId,
                         maxChunk: self.limits.maxChunk
                     )
 
-                    // Create PeerInvoker
+                    // Create PeerInvoker (shares seqAssigner)
                     let peer = PeerInvokerImpl(
                         writer: frameWriter,
                         writerLock: writerLock,
+                        seqAssigner: seqAssigner,
                         pendingRequests: pendingPeerRequests,
                         pendingRequestsLock: pendingPeerRequestsLock,
                         maxChunk: self.limits.maxChunk
@@ -2254,22 +2257,18 @@ public final class PluginRuntime: @unchecked Sendable {
                         // Execute handler with new signature
                         try handler(inputPackage, outputStream, peer)
 
-                        // Close output stream (sends STREAM_END)
+                        // Close output stream (sends STREAM_END via outputSender)
                         try outputStream.close()
 
-                        // Send END frame with routing_id
-                        writerLock.lock()
+                        // Send END frame with routing_id (via outputSender for seq assignment)
                         var endFrame = Frame.end(id: requestId, finalPayload: nil)
                         endFrame.routingId = routingId
-                        try? frameWriter.write(endFrame)
-                        writerLock.unlock()
+                        try? outputSender.send(endFrame)
 
                     } catch {
                         var errFrame = Frame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
                         errFrame.routingId = routingId
-                        writerLock.lock()
-                        try? frameWriter.write(errFrame)
-                        writerLock.unlock()
+                        try? outputSender.send(errFrame)
                     }
                 }
                 continue
@@ -2286,19 +2285,13 @@ public final class PluginRuntime: @unchecked Sendable {
                 if isOurProbe {
                     // Response to our health probe - host is alive, no action needed
                 } else {
-                    // Host-initiated heartbeat - respond immediately
-                    let response = Frame.heartbeat(id: frame.id)
-                    writerLock.lock()
-                    try frameWriter.write(response)
-                    writerLock.unlock()
+                    // Host-initiated heartbeat - respond immediately (non-flow, seq stays 0)
+                    try outputSender.send(Frame.heartbeat(id: frame.id))
                 }
 
             case .hello:
                 // Unexpected HELLO after handshake - protocol error
-                let errFrame = Frame.err(id: frame.id, code: "PROTOCOL_ERROR", message: "Unexpected HELLO after handshake")
-                writerLock.lock()
-                try frameWriter.write(errFrame)
-                writerLock.unlock()
+                try outputSender.send(Frame.err(id: frame.id, code: "PROTOCOL_ERROR", message: "Unexpected HELLO after handshake"))
 
             // case .res: REMOVED - old single-response protocol no longer supported
 
