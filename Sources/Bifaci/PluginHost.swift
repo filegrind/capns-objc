@@ -724,18 +724,29 @@ public final class PluginHost: @unchecked Sendable {
 
     /// Rebuild aggregate capabilities from all running plugins.
     /// Must hold stateLock when calling.
+    /// Creates a JSON array of URN strings (not objects) to match Rust implementation.
     private func rebuildCapabilities() {
-        var allCaps: [[String: Any]] = []
+        // CAP_IDENTITY is always present — structural, not plugin-dependent
+        var capUrns: [String] = [CSCapIdentity]
+
         for plugin in plugins where plugin.running {
-            // Try to parse manifest as JSON to extract caps
+            // Extract cap URN strings from manifest
             if !plugin.manifest.isEmpty,
                let json = try? JSONSerialization.jsonObject(with: plugin.manifest) as? [String: Any],
                let caps = json["caps"] as? [[String: Any]] {
-                allCaps.append(contentsOf: caps)
+                for cap in caps {
+                    if let urn = cap["urn"] as? String {
+                        // Don't duplicate identity (plugins also declare it)
+                        if urn != CSCapIdentity {
+                            capUrns.append(urn)
+                        }
+                    }
+                }
             }
         }
 
-        if let data = try? JSONSerialization.data(withJSONObject: allCaps) {
+        // Serialize as JSON array of strings (not objects)
+        if let data = try? JSONSerialization.data(withJSONObject: capUrns) {
             _capabilities = data
         } else {
             _capabilities = "[]".data(using: .utf8) ?? Data()

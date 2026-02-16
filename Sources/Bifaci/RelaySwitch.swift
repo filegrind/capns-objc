@@ -377,6 +377,66 @@ public final class RelaySwitch: @unchecked Sendable {
         }
     }
 
+    /// Read the next frame from any master with timeout (plugin → engine direction).
+    ///
+    /// Like readFromMasters() but returns nil after timeout instead of blocking forever.
+    /// Returns frame if available, nil on timeout or when all masters closed.
+    ///
+    /// - Parameter timeout: Maximum time to wait for a frame
+    /// - Returns: Frame if available, nil on timeout or EOF
+    /// - Throws: RelaySwitchError on errors
+    public func readFromMasters(timeout: TimeInterval) throws -> Frame? {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 {
+                return nil  // Timeout
+            }
+
+            // Try to wait on semaphore with timeout
+            let result = frameSemaphore.wait(timeout: DispatchTime.now() + remaining)
+
+            if result == .timedOut {
+                return nil  // Timeout
+            }
+
+            lock.lock()
+            guard !frameChannel.isEmpty else {
+                lock.unlock()
+                continue
+            }
+            let masterFrame = frameChannel.removeFirst()
+            lock.unlock()
+
+            if let error = masterFrame.error {
+                // Error reading from master
+                print("Error reading from master \(masterFrame.masterIdx): \(error)")
+                try handleMasterDeath(masterFrame.masterIdx)
+                continue
+            }
+
+            guard let frame = masterFrame.frame else {
+                // EOF from master
+                try handleMasterDeath(masterFrame.masterIdx)
+                // Check if all masters are dead
+                lock.lock()
+                let allDead = masters.allSatisfy { !$0.healthy }
+                lock.unlock()
+                if allDead {
+                    return nil
+                }
+                continue
+            }
+
+            // Handle the frame
+            if let resultFrame = try handleMasterFrame(sourceIdx: masterFrame.masterIdx, frame: frame) {
+                return resultFrame
+            }
+            // Peer request was handled internally, continue reading
+        }
+    }
+
     // MARK: - Internal Routing
 
     private func findMasterForCap(_ capUrn: String) -> Int? {
@@ -525,11 +585,10 @@ public final class RelaySwitch: @unchecked Sendable {
             }
         }
 
-        let manifest: [String: Any] = [
-            "capabilities": Array(allCaps).sorted()
-        ]
-
-        aggregateCapabilities = (try? JSONSerialization.data(withJSONObject: manifest)) ?? Data()
+        // Serialize as a simple JSON array of URN strings (not an object)
+        // This matches Rust's aggregate_capabilities format
+        let capsArray = Array(allCaps).sorted()
+        aggregateCapabilities = (try? JSONSerialization.data(withJSONObject: capsArray)) ?? Data()
     }
 
     private func rebuildLimits() {
@@ -560,10 +619,24 @@ public final class RelaySwitch: @unchecked Sendable {
     // MARK: - Helper Functions
 
     private static func parseCapabilitiesFromManifest(_ manifest: Data) throws -> [String] {
-        guard let parsed = try? JSONSerialization.jsonObject(with: manifest) as? [String: Any],
-              let capsArray = parsed["capabilities"] as? [String] else {
-            throw RelaySwitchError.protocolError("Manifest capabilities must be array")
+        // Parse as direct JSON array of URN strings (not an object with "capabilities" key)
+        // This matches Rust's parse_caps_from_relay_notify which expects: ["cap:", "cap:in=...", ...]
+        guard let capsArray = try? JSONSerialization.jsonObject(with: manifest) as? [String] else {
+            throw RelaySwitchError.protocolError("Manifest must be JSON array of capability URN strings")
         }
+
+        // Verify CAP_IDENTITY is present — mandatory for every host
+        let identityUrn = try? CSCapUrn.fromString(CSCapIdentity)
+        let hasIdentity = capsArray.contains { capStr in
+            guard let capUrn = try? CSCapUrn.fromString(capStr),
+                  let identity = identityUrn else { return false }
+            return identity.conforms(to: capUrn)
+        }
+
+        guard hasIdentity else {
+            throw RelaySwitchError.protocolError("RelayNotify missing required CAP_IDENTITY (\(CSCapIdentity))")
+        }
+
         return capsArray
     }
 }

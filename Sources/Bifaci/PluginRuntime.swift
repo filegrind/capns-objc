@@ -419,20 +419,26 @@ private final class UnsafeTransfer<T>: @unchecked Sendable {
 
 /// Thread-safe blocking queue for bridging async streams to sync iterators.
 /// Used to stream frames from AsyncStream to handler threads.
-private final class BlockingQueue<T>: @unchecked Sendable {
+public final class BlockingQueue<T>: @unchecked Sendable {
     private var queue: [T] = []
     private let lock = NSLock()
     private let condition = NSCondition()
     private var finished = false
 
-    func enqueue(_ item: T) {
+    public init() {}
+
+    public func push(_ item: T) {
         condition.lock()
         queue.append(item)
         condition.signal()
         condition.unlock()
     }
 
-    func dequeue() -> T? {
+    public func enqueue(_ item: T) {
+        push(item)
+    }
+
+    public func dequeue() -> T? {
         condition.lock()
         defer { condition.unlock() }
 
@@ -446,7 +452,30 @@ private final class BlockingQueue<T>: @unchecked Sendable {
         return nil
     }
 
-    func finish() {
+    public func tryPop(timeout: TimeInterval) -> T? {
+        condition.lock()
+        defer { condition.unlock() }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while queue.isEmpty && !finished {
+            guard condition.wait(until: deadline) else {
+                return nil  // Timeout
+            }
+        }
+
+        if !queue.isEmpty {
+            return queue.removeFirst()
+        }
+        return nil
+    }
+
+    public func isEmpty() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return queue.isEmpty
+    }
+
+    public func finish() {
         condition.lock()
         finished = true
         condition.broadcast()
