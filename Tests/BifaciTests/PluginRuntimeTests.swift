@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import SwiftCBOR
 @testable import Bifaci
+import Ops
 
 // =============================================================================
 // PluginRuntime + CapArgumentValue Tests
@@ -43,6 +44,57 @@ func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: Stri
     }
 }
 
+// MARK: - Test Op Types and invokeOp Helper
+
+/// Helper: invoke a factory-produced Op with NoPeerInvoker.
+/// Matches Rust's invoke_op() test helper.
+func invokeOp(_ factory: OpFactory, input: InputPackage, output: OutputStream) throws {
+    let op = factory()
+    try dispatchOp(op: op, input: input, output: output, peer: NoPeerInvoker())
+}
+
+/// Test Op: echoes all input bytes to output (collectAllBytes → write).
+/// dispatchOp closes output on success — do NOT call output.close() here.
+final class EchoAllBytesOp: Op, @unchecked Sendable {
+    typealias Output = Void
+    init() {}
+    func perform(dry: DryContext, wet: WetContext) async throws {
+        let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+        let input = try req.takeInput()
+        let data = try input.collectAllBytes()
+        try req.output().write(data)
+    }
+    func metadata() -> OpMetadata { OpMetadata.builder("EchoAllBytesOp").build() }
+}
+
+/// Test Op: writes fixed Data value, drains input (ignores it).
+final class WriteFixedOp: Op, @unchecked Sendable {
+    typealias Output = Void
+    private let data: Data
+    init(data: Data) { self.data = data }
+    func perform(dry: DryContext, wet: WetContext) async throws {
+        let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+        let input = try req.takeInput()
+        _ = try? input.collectAllBytes()
+        try req.output().write(data)
+    }
+    func metadata() -> OpMetadata { OpMetadata.builder("WriteFixedOp").build() }
+}
+
+/// Test Op: emits fixed CBOR byteString value, drains input.
+final class EmitCborBytesOp: Op, @unchecked Sendable {
+    typealias Output = Void
+    private let bytes: [UInt8]
+    init(bytes: [UInt8]) { self.bytes = bytes }
+    func perform(dry: DryContext, wet: WetContext) async throws {
+        let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+        let input = try req.takeInput()
+        _ = try? input.collectAllBytes()
+        try req.output().emitCbor(CBOR.byteString(bytes))
+    }
+    func metadata() -> OpMetadata { OpMetadata.builder("EmitCborBytesOp").build() }
+}
+
 // Helper functions for testing are defined later in the file
 // See: streamToInputPackage(), OutputCollector, createCollectingOutputStream()
 
@@ -58,32 +110,25 @@ final class PluginRuntimeTests: XCTestCase {
 
     // MARK: - Handler Registration Tests (TEST248-252, TEST270-271)
 
-    // TEST248: Register handler by exact cap URN and find it by the same URN
+    // TEST248: Test register_op and find_handler by exact cap URN
     func testRegisterAndFindHandler() {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:in=*;op=test;out=*") { (input: InputPackage, output: Bifaci.OutputStream, _: PeerInvoker) throws -> Void in
-            let data = try input.collectAllBytes()
-            try output.emitCbor(CBOR.byteString([UInt8]("result".utf8)))
-            try output.close()
+        runtime.register_op(capUrn: "cap:in=*;op=test;out=*") {
+            AnyOp(EmitCborBytesOp(bytes: Array("result".utf8)))
         }
 
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:in=*;op=test;out=*"),
             "handler must be found by exact URN")
     }
 
-    // TEST249: register handler works with bytes directly without deserialization
+    // TEST249: Test register_op handler echoes bytes directly
     func testRawHandler() throws {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:op=raw") { (input: InputPackage, output: Bifaci.OutputStream, _: PeerInvoker) throws in
-            let data = try input.collectAllBytes()
-            try output.write(data)
-            try output.close()
-        }
+        runtime.register_op(capUrn: "cap:op=raw") { AnyOp(EchoAllBytesOp()) }
 
-        let handler = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=raw"))
-        let noPeer = NoPeerInvoker()
+        let factory = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=raw"))
         let collector = OutputCollector()
         let output = createCollectingOutputStream(collector: collector)
 
@@ -91,7 +136,7 @@ final class PluginRuntimeTests: XCTestCase {
         let inputStream = createSinglePayloadStream(data: inputData)
         let inputPackage = streamToInputPackage(inputStream)
 
-        try handler(inputPackage, output, noPeer)
+        try invokeOp(factory, input: inputPackage, output: output)
         XCTAssertEqual(String(data: collector.getData(), encoding: .utf8), "echo this", "raw handler must echo payload")
     }
 
@@ -107,72 +152,49 @@ final class PluginRuntimeTests: XCTestCase {
             "unregistered cap must return nil")
     }
 
-    // TEST270: Registering multiple handlers for different caps and finding each independently
+    // TEST270: Test registering multiple Op handlers for different caps and finding each independently
     func testMultipleHandlers() throws {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:op=alpha") { (input, output, _) in
-            _ = try input.collectAllBytes()
-            try output.write(Data("a".utf8))
-            try output.close()
-        }
-        runtime.register(capUrn: "cap:op=beta") { (input, output, _) in
-            _ = try input.collectAllBytes()
-            try output.write(Data("b".utf8))
-            try output.close()
-        }
-        runtime.register(capUrn: "cap:op=gamma") { (input, output, _) in
-            _ = try input.collectAllBytes()
-            try output.write(Data("g".utf8))
-            try output.close()
-        }
-
-        let noPeer = NoPeerInvoker()
+        runtime.register_op(capUrn: "cap:op=alpha") { AnyOp(WriteFixedOp(data: Data("a".utf8))) }
+        runtime.register_op(capUrn: "cap:op=beta")  { AnyOp(WriteFixedOp(data: Data("b".utf8))) }
+        runtime.register_op(capUrn: "cap:op=gamma") { AnyOp(WriteFixedOp(data: Data("g".utf8))) }
 
         let emptyStream = createSinglePayloadStream(mediaUrn: "media:void", data: Data())
 
-        let hAlpha = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=alpha"))
+        let fAlpha = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=alpha"))
         let collectorA = OutputCollector()
         let outputA = createCollectingOutputStream(collector: collectorA)
-        try hAlpha(streamToInputPackage(emptyStream), outputA, noPeer)
+        try invokeOp(fAlpha, input: streamToInputPackage(emptyStream), output: outputA)
         XCTAssertEqual(collectorA.getData(), "a".data(using: .utf8)!)
 
-        let hBeta = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=beta"))
+        let fBeta = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=beta"))
         let collectorB = OutputCollector()
         let outputB = createCollectingOutputStream(collector: collectorB)
         let emptyStream2 = createSinglePayloadStream(mediaUrn: "media:void", data: Data())
-        try hBeta(streamToInputPackage(emptyStream2), outputB, noPeer)
+        try invokeOp(fBeta, input: streamToInputPackage(emptyStream2), output: outputB)
         XCTAssertEqual(collectorB.getData(), "b".data(using: .utf8)!)
 
-        let hGamma = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=gamma"))
+        let fGamma = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=gamma"))
         let collectorG = OutputCollector()
         let outputG = createCollectingOutputStream(collector: collectorG)
         let emptyStream3 = createSinglePayloadStream(mediaUrn: "media:void", data: Data())
-        try hGamma(streamToInputPackage(emptyStream3), outputG, noPeer)
+        try invokeOp(fGamma, input: streamToInputPackage(emptyStream3), output: outputG)
         XCTAssertEqual(collectorG.getData(), "g".data(using: .utf8)!)
     }
 
-    // TEST271: Handler replacing an existing registration for the same cap URN
+    // TEST271: Test Op handler replacing an existing registration for the same cap URN
     func testHandlerReplacement() throws {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
-        runtime.register(capUrn: "cap:op=test") { (input, output, _) in
-            _ = try input.collectAllBytes()
-            try output.write(Data("first".utf8))
-            try output.close()
-        }
-        runtime.register(capUrn: "cap:op=test") { (input, output, _) in
-            _ = try input.collectAllBytes()
-            try output.write(Data("second".utf8))
-            try output.close()
-        }
+        runtime.register_op(capUrn: "cap:op=test") { AnyOp(WriteFixedOp(data: Data("first".utf8))) }
+        runtime.register_op(capUrn: "cap:op=test") { AnyOp(WriteFixedOp(data: Data("second".utf8))) }
 
-        let handler = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=test"))
-        let noPeer = NoPeerInvoker()
+        let factory = try XCTUnwrap(runtime.findHandler(capUrn: "cap:op=test"))
         let collector = OutputCollector()
         let output = createCollectingOutputStream(collector: collector)
         let emptyStream = createSinglePayloadStream(mediaUrn: "media:void", data: Data())
-        try handler(streamToInputPackage(emptyStream), output, noPeer)
+        try invokeOp(factory, input: streamToInputPackage(emptyStream), output: output)
         XCTAssertEqual(String(data: collector.getData(), encoding: .utf8), "second",
             "later registration must replace earlier")
     }
@@ -540,11 +562,9 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = PluginRuntime(manifest: manifest)
 
-        // Register handler that echoes payload
-        runtime.register(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") { (input, output, _) in
-            let data = try input.collectAllBytes()
-            try output.write(data)
-            try output.close()
+        // Register Op handler that echoes payload
+        runtime.register_op(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") {
+            AnyOp(EchoAllBytesOp())
         }
 
         // Simulate CLI invocation: plugin process /path/to/file.pdf
@@ -558,14 +578,13 @@ final class CborFilePathConversionTests: XCTestCase {
             capUrn: cap.urn
         )
 
-        let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
+        let factory = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
         let collector = OutputCollector()
         let output = createCollectingOutputStream(collector: collector)
-        let peer = NoPeerInvoker()
 
         let inputStream = createSinglePayloadStream(mediaUrn: "media:pdf;bytes", data: payload)
 
-        try handler(streamToInputPackage(inputStream), output, peer)
+        try invokeOp(factory, input: streamToInputPackage(inputStream), output: output)
 
         // Verify handler received file bytes, not file path
         XCTAssertEqual(collector.getData(), Data("PDF binary content 336".utf8), "Handler should receive file bytes")
@@ -632,21 +651,17 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.register(capUrn: cap.urn) { (input, output, _) in
-            let data = try input.collectAllBytes()
-            try output.write(data)
-            try output.close()
-        }
+        runtime.register_op(capUrn: cap.urn) { AnyOp(EchoAllBytesOp()) }
 
         let cliArgs = ["--file", testFile.path]
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
         let payload = try extractEffectivePayload(payload: rawPayload, contentType: "application/cbor", capUrn: cap.urn)
 
-        let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
+        let factory = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
         let collector = OutputCollector()
         let output = createCollectingOutputStream(collector: collector)
         let inputStream = createSinglePayloadStream(mediaUrn: "media:pdf;bytes", data: payload)
-        try handler(streamToInputPackage(inputStream), output, NoPeerInvoker())
+        try invokeOp(factory, input: streamToInputPackage(inputStream), output: output)
 
         XCTAssertEqual(collector.getData(), Data("PDF via flag 338".utf8), "Should read file from --file flag")
 
@@ -770,11 +785,7 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = PluginRuntime(manifest: manifest)
 
-        runtime.register(capUrn: cap.urn) { (input, output, _) in
-            let data = try input.collectAllBytes()
-            try output.write(data)
-            try output.close()
-        }
+        runtime.register_op(capUrn: cap.urn) { AnyOp(EchoAllBytesOp()) }
 
         // Simulate stdin data being available
         // Since we can't actually provide stdin in tests, we'll test the buildPayloadFromCli behavior
@@ -1091,15 +1102,23 @@ final class CborFilePathConversionTests: XCTestCase {
         }
         let capture = PayloadCapture()
 
-        // Register handler with new signature (InputPackage, OutputStream, PeerInvoker)
-        runtime.register(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") { (input, output, _) in
-            // Collect all input bytes
-            let data = try input.collectAllBytes()
-            capture.data = data
-
-            // Emit processed output
-            try output.write(Data("processed".utf8))
-            try output.close()
+        // Register Op handler that captures received bytes and writes processed output
+        let captureRef = capture
+        runtime.register_op(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") {
+            final class CaptureAndWriteOp: Op, @unchecked Sendable {
+                typealias Output = Void
+                let capture: PayloadCapture
+                init(_ c: PayloadCapture) { capture = c }
+                func perform(dry: DryContext, wet: WetContext) async throws {
+                    let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+                    let input = try req.takeInput()
+                    let data = try input.collectAllBytes()
+                    capture.data = data
+                    try req.output().write(Data("processed".utf8))
+                }
+                func metadata() -> OpMetadata { OpMetadata.builder("CaptureAndWriteOp").build() }
+            }
+            return AnyOp(CaptureAndWriteOp(captureRef))
         }
 
         // Simulate full CLI invocation
@@ -1113,10 +1132,8 @@ final class CborFilePathConversionTests: XCTestCase {
         let outputCollector = OutputCollector()
         let outputStream = createCollectingOutputStream(collector: outputCollector, mediaUrn: "media:result;textable")
 
-        let peer = NoPeerInvoker()
-
-        let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
-        try handler(inputPackage, outputStream, peer)
+        let factory = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
+        try invokeOp(factory, input: inputPackage, output: outputStream)
 
         // Verify handler received file bytes
         XCTAssertEqual(capture.data, testContent, "Handler should receive file bytes, not path")

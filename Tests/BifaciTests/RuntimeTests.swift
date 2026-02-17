@@ -2,6 +2,20 @@ import XCTest
 import Foundation
 import SwiftCBOR
 @testable import Bifaci
+import Ops
+
+/// Test Op: emits fixed "transformed" bytes, drains input. Used in TEST293.
+final class TransformOp: Op, @unchecked Sendable {
+    typealias Output = Void
+    init() {}
+    func perform(dry: DryContext, wet: WetContext) async throws {
+        let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+        let input = try req.takeInput()
+        _ = try? input.collectAllBytes()
+        try req.output().write("transformed".data(using: .utf8)!)
+    }
+    func metadata() -> OpMetadata { OpMetadata.builder("TransformOp").build() }
+}
 
 // =============================================================================
 // PluginHost Multi-Plugin Runtime Tests
@@ -599,21 +613,12 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
     // MARK: - Handler Registration (TEST293)
 
-    // TEST293: PluginRuntime handler registration and lookup
+    // TEST293: Test PluginRuntime Op registration and lookup by exact and non-existent cap URN
     func testPluginRuntimeHandlerRegistration() throws {
         let runtime = PluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
-        runtime.register(capUrn: "cap:in=media:;out=media:") { (input: InputPackage, output: Bifaci.OutputStream, _: PeerInvoker) throws -> Void in
-            let data = try input.collectAllBytes()
-            try output.write(data)
-            try output.close()
-        }
-
-        runtime.register(capUrn: "cap:op=transform") { (input: InputPackage, output: Bifaci.OutputStream, _: PeerInvoker) throws -> Void in
-            _ = try input.collectAllBytes()
-            try output.write("transformed".data(using: .utf8)!)
-            try output.close()
-        }
+        runtime.register_op_type(capUrn: "cap:in=media:;out=media:", make: EchoAllBytesOp.init)
+        runtime.register_op_type(capUrn: "cap:op=transform", make: TransformOp.init)
 
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:in=media:;out=media:"), "echo handler must be found")
         XCTAssertNotNil(runtime.findHandler(capUrn: "cap:op=transform"), "transform handler must be found")
