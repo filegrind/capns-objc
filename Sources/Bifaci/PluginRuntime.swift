@@ -30,6 +30,7 @@ import CapNs
 import TaggedUrn
 @preconcurrency import SwiftCBOR
 import Glob
+import Ops
 
 // MARK: - Error Types
 
@@ -917,20 +918,112 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
 ///
 /// Handler processes frames and emits output via CborStreamEmitter.
 /// Handler signature for cap invocations.
-///
-/// Receives:
-/// - `InputPackage`: Bundle of input arg streams (iterate to get InputStream for each arg)
-/// - `OutputStream`: Output stream for handler results (use emitCbor/write/log/close)
-/// - `PeerInvoker`: Allows handler to invoke caps on the host (peer) during processing
-///
-/// The handler processes input streams, emits output via OutputStream, and the
-/// runtime automatically sends STREAM_END + END frames after handler completes.
-/// Handler must close() the output stream before returning.
-public typealias CapHandler = @Sendable (
-    InputPackage,
-    OutputStream,
-    PeerInvoker
-) throws -> Void
+// =============================================================================
+// OP-BASED HANDLER SYSTEM — handlers implement Ops.Op<Void>
+// =============================================================================
+
+/// Bundles capns I/O for WetContext. Op handlers extract this from WetContext
+/// to access streaming input, output, and peer invocation.
+public final class CborRequest: @unchecked Sendable {
+    private let _inputLock = NSLock()
+    private var _inputPackage: InputPackage?
+    private let _output: OutputStream
+    private let _peer: any PeerInvoker
+
+    public init(input: InputPackage, output: OutputStream, peer: any PeerInvoker) {
+        _inputPackage = input
+        _output = output
+        _peer = peer
+    }
+
+    /// Take the input package. Can only be called once — second call throws.
+    public func takeInput() throws -> InputPackage {
+        _inputLock.lock()
+        defer { _inputLock.unlock() }
+        guard let pkg = _inputPackage else {
+            throw PluginRuntimeError.protocolError("Input already consumed")
+        }
+        _inputPackage = nil
+        return pkg
+    }
+
+    public func output() -> OutputStream { _output }
+    public func peer() -> any PeerInvoker { _peer }
+}
+
+/// WetContext key for the CborRequest object.
+public let WET_KEY_REQUEST: String = "request"
+
+/// Factory that creates a fresh AnyOp<Void> per invocation.
+/// Matches Rust's `Arc<dyn Fn() -> Box<dyn Op<()>> + Send + Sync>`.
+public typealias OpFactory = @Sendable () -> AnyOp<Void>
+
+/// Standard identity handler — pure passthrough. Forwards all input chunks to output.
+public struct IdentityOp: Op, Sendable {
+    public typealias Output = Void
+    public init() {}
+    public func perform(dry: DryContext, wet: WetContext) async throws {
+        let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+        let input = try req.takeInput()
+        for streamResult in input {
+            let stream = try streamResult.get()
+            for chunkResult in stream {
+                let chunk = try chunkResult.get()
+                try req.output().emitCbor(chunk)
+            }
+        }
+    }
+    public func metadata() -> OpMetadata {
+        OpMetadata.builder("IdentityOp").description("Pure passthrough — forwards all input to output").build()
+    }
+}
+
+/// Standard discard handler — terminal morphism. Drains all input, produces nothing.
+public struct DiscardOp: Op, Sendable {
+    public typealias Output = Void
+    public init() {}
+    public func perform(dry: DryContext, wet: WetContext) async throws {
+        let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+        let input = try req.takeInput()
+        for streamResult in input {
+            let stream = try streamResult.get()
+            for chunkResult in stream {
+                _ = try chunkResult.get()
+            }
+        }
+    }
+    public func metadata() -> OpMetadata {
+        OpMetadata.builder("DiscardOp").description("Terminal morphism — drains all input, produces nothing").build()
+    }
+}
+
+/// Dispatch an AnyOp<Void> with a CborRequest via WetContext.
+/// Bridges sync handler threads to async Op.perform via DispatchSemaphore + Task.
+/// Closes the output stream on success (sends STREAM_END if stream was started).
+func dispatchOp(op: AnyOp<Void>, input: InputPackage, output: OutputStream, peer: any PeerInvoker) throws {
+    let req = CborRequest(input: input, output: output, peer: peer)
+    let dry = DryContext()
+    let wet = WetContext()
+    wet.insertRef(req, for: WET_KEY_REQUEST)
+
+    var resultError: Error? = nil
+    let sema = DispatchSemaphore(value: 0)
+    Task {
+        do {
+            _ = try await op.perform(dry: dry, wet: wet)
+        } catch {
+            resultError = error
+        }
+        sema.signal()
+    }
+    sema.wait()
+
+    if let err = resultError {
+        throw err
+    }
+    // Auto-close output stream on success
+    try? output.close()
+}
 
 // MARK: - Internal: Pending Peer Request
 
@@ -1255,7 +1348,7 @@ public final class PluginRuntime: @unchecked Sendable {
 
     // MARK: - Properties
 
-    private var handlers: [String: CapHandler] = [:]
+    private var handlers: [String: OpFactory] = [:]
     private let handlersLock = NSLock()
 
     private var limits = Limits()
@@ -1307,61 +1400,41 @@ public final class PluginRuntime: @unchecked Sendable {
     /// Auto-register standard capability handlers.
     /// Called during initialization to provide mandatory and optional standard caps.
     private func autoRegisterStandardCaps() {
-        // Import CSStandardCaps constants
         // CAP_IDENTITY: "cap:in=media:;out=media:" (mandatory)
-        // CAP_DISCARD: "cap:in=media:;out=media:void" (standard, optional)
-
-        // Register CAP_IDENTITY handler (MANDATORY)
-        // Identity is the categorical identity morphism - passes input through unchanged
-        // Forwards all input chunks to output, preserving CBOR structure
-        register(capUrn: CSCapIdentity) { input, output, _peer in
-            for streamResult in input {
-                let stream = try streamResult.get()
-                for chunkResult in stream {
-                    let chunk = try chunkResult.get()
-                    try output.emitCbor(chunk)
-                }
-            }
-            try output.close()
+        if findHandler(capUrn: CSCapIdentity) == nil {
+            register_op_type(capUrn: CSCapIdentity, make: IdentityOp.init)
         }
-
-        // Register CAP_DISCARD handler (STANDARD, OPTIONAL)
-        // Discard is the terminal morphism - consumes input, produces void
-        register(capUrn: CSCapDiscard) { input, output, _peer in
-            // Drain all input (required to complete the request protocol)
-            for streamResult in input {
-                let stream = try streamResult.get()
-                for chunkResult in stream {
-                    _ = try chunkResult.get()
-                }
-            }
-            // No output chunks needed - discard produces void
-            try output.close()
+        // CAP_DISCARD: "cap:in=media:;out=media:void" (standard, optional)
+        if findHandler(capUrn: CSCapDiscard) == nil {
+            register_op_type(capUrn: CSCapDiscard, make: DiscardOp.init)
         }
     }
 
     // MARK: - Handler Registration
 
-    /// Register a raw Frame-based handler.
-    /// Handler receives AsyncStream of bare CBOR Frame objects and must emit CBOR values via emitter.
-    ///
-    /// - Parameters:
-    ///   - capUrn: The cap URN pattern to handle
-    ///   - handler: Handler closure with stream-based signature (InputPackage, OutputStream, PeerInvoker)
-    public func register(capUrn: String, handler: @escaping CapHandler) {
+    /// Register an Op factory for a cap URN.
+    /// The factory creates a fresh AnyOp<Void> per invocation.
+    public func register_op(capUrn: String, factory: @escaping OpFactory) {
         handlersLock.lock()
-        handlers[capUrn] = handler
+        handlers[capUrn] = factory
         handlersLock.unlock()
     }
 
-    /// Find a handler for a cap URN (supports exact match and pattern matching).
+    /// Convenience: register an Op type for a cap URN using a no-arg factory closure.
+    /// Call as: register_op_type(capUrn: "cap:...", make: { MyOp() })
+    /// Or shorthand: register_op_type(capUrn: "cap:...", make: MyOp.init)
+    public func register_op_type<T: Op>(capUrn: String, make: @escaping @Sendable () -> T) where T.Output == Void {
+        register_op(capUrn: capUrn, factory: { AnyOp(make()) })
+    }
+
+    /// Find an Op factory for a cap URN (supports exact match and pattern matching).
     ///
     /// Matching direction: request is pattern, registered cap is instance.
     /// `request.accepts(registered_cap)` — the request must accept the registered cap,
     /// meaning the registered cap must be able to satisfy what the request asks for.
     ///
-    /// Returns the handler with the closest specificity to the request (not necessarily the most specific).
-    func findHandler(capUrn: String) -> CapHandler? {
+    /// Returns the factory with the closest specificity to the request (not necessarily the most specific).
+    func findHandler(capUrn: String) -> OpFactory? {
         handlersLock.lock()
         defer { handlersLock.unlock() }
 
@@ -1371,10 +1444,10 @@ public final class PluginRuntime: @unchecked Sendable {
         }
 
         let requestSpecificity = requestUrn.specificity()
-        var best: (handler: CapHandler, distance: Int)? = nil
+        var best: (factory: OpFactory, distance: Int)? = nil
 
         // Find all matching handlers, prefer closest specificity
-        for (registeredCapStr, handler) in handlers {
+        for (registeredCapStr, factory) in handlers {
             guard let registeredUrn = try? CSCapUrn.fromString(registeredCapStr) else {
                 continue
             }
@@ -1386,15 +1459,15 @@ public final class PluginRuntime: @unchecked Sendable {
 
                 if let currentBest = best {
                     if distance < currentBest.distance {
-                        best = (handler, distance)
+                        best = (factory, distance)
                     }
                 } else {
-                    best = (handler, distance)
+                    best = (factory, distance)
                 }
             }
         }
 
-        return best?.handler
+        return best?.factory
     }
 
     // MARK: - Main Run Loop
@@ -1510,8 +1583,8 @@ public final class PluginRuntime: @unchecked Sendable {
             return
         }
 
-        // Find handler
-        guard let handler = findHandler(capUrn: cap.urn) else {
+        // Find Op factory
+        guard let factory = findHandler(capUrn: cap.urn) else {
             throw PluginRuntimeError.noHandler("No handler registered for cap '\(cap.urn)'")
         }
 
@@ -1646,11 +1719,9 @@ public final class PluginRuntime: @unchecked Sendable {
         // Create no-op peer invoker (CLI mode doesn't support peer calls)
         let peer = NoPeerInvoker()
 
-        // Invoke handler with new signature
-        try handler(inputPackage, outputStream, peer)
-
-        // Close output stream (in CLI mode, this is a no-op)
-        try outputStream.close()
+        // Invoke Op handler — dispatchOp closes output stream on success
+        let op = factory()
+        try dispatchOp(op: op, input: inputPackage, output: outputStream, peer: peer)
     }
 
     /// Find a cap by its command name (the CLI subcommand).
@@ -2181,8 +2252,8 @@ public final class PluginRuntime: @unchecked Sendable {
                     continue
                 }
 
-                // Find handler (using pattern matching to support wildcards)
-                guard let handler = findHandler(capUrn: capUrn) else {
+                // Find Op factory (using pattern matching to support wildcards)
+                guard let factory = findHandler(capUrn: capUrn) else {
                     try? outputSender.send(Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)"))
                     continue
                 }
@@ -2254,11 +2325,9 @@ public final class PluginRuntime: @unchecked Sendable {
                     )
 
                     do {
-                        // Execute handler with new signature
-                        try handler(inputPackage, outputStream, peer)
-
-                        // Close output stream (sends STREAM_END via outputSender)
-                        try outputStream.close()
+                        // Invoke Op handler — dispatchOp closes output stream on success
+                        let op = factory()
+                        try dispatchOp(op: op, input: inputPackage, output: outputStream, peer: peer)
 
                         // Send END frame with routing_id (via outputSender for seq assignment)
                         var endFrame = Frame.end(id: requestId, finalPayload: nil)
