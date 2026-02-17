@@ -1,6 +1,6 @@
 //
 //  PluginRuntime.swift
-//  CapNsCbor
+//  Bifaci
 //
 //  Plugin-side runtime for CBOR-based plugin communication.
 //

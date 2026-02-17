@@ -1,6 +1,6 @@
 //
 //  CborIntegrationTests.swift
-//  CapNsCbor
+//  Bifaci
 //
 //  CBOR Integration Tests - Protocol validation tests ported from Go
 //

@@ -1,6 +1,6 @@
 //
 //  PluginHost.swift
-//  CapNsCbor
+//  Bifaci
 //
 //  Multi-plugin host runtime — manages N plugin binaries with frame routing.
 //
