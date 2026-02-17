@@ -2,6 +2,7 @@ import XCTest
 import SwiftCBOR
 @testable import Bifaci
 @testable import CapNs
+import Ops
 
 /// Tests for standard capabilities and manifest validation (TEST473-480)
 /// Based on Rust tests in standard/caps.rs and bifaci/manifest.rs
