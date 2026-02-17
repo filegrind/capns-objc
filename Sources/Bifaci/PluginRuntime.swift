@@ -1006,19 +1006,21 @@ func dispatchOp(op: AnyOp<Void>, input: InputPackage, output: OutputStream, peer
     let wet = WetContext()
     wet.insertRef(req, for: WET_KEY_REQUEST)
 
-    var resultError: Error? = nil
+    // Use a class wrapper so Task can capture it as @Sendable (Swift 6 requirement)
+    final class ErrorHolder: @unchecked Sendable { var error: Error? = nil }
+    let holder = ErrorHolder()
     let sema = DispatchSemaphore(value: 0)
-    Task {
+    Task { [holder, sema] in
         do {
             _ = try await op.perform(dry: dry, wet: wet)
         } catch {
-            resultError = error
+            holder.error = error
         }
         sema.signal()
     }
     sema.wait()
 
-    if let err = resultError {
+    if let err = holder.error {
         throw err
     }
     // Auto-close output stream on success

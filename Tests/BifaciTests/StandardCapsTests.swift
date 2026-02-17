@@ -106,7 +106,7 @@ final class StandardCapsTests: XCTestCase {
         """.data(using: .utf8)!
 
         let runtime = PluginRuntime(manifest: manifest)
-        let handler = runtime.findHandler(capUrn: CSCapIdentity)!
+        let factory = runtime.findHandler(capUrn: CSCapIdentity)!
 
         // Create test input - pre-collected chunks
         let testData = "test data".data(using: .utf8)!
@@ -160,10 +160,8 @@ final class StandardCapsTests: XCTestCase {
         let output = OutputStream(sender: mockSender, streamId: "test", mediaUrn: "media:bytes",
                                  requestId: .newUUID(), routingId: nil, maxChunk: 1000)
 
-        let peer = NoPeerInvoker()
-
-        // Execute handler
-        XCTAssertNoThrow(try handler(input, output, peer), "Identity handler must not throw")
+        // Execute Op handler via invokeOp (dispatchOp + NoPeerInvoker)
+        XCTAssertNoThrow(try invokeOp(factory, input: input, output: output), "Identity handler must not throw")
         XCTAssertEqual(collector.getData(), testData, "Identity handler must echo input unchanged")
     }
 
@@ -176,7 +174,7 @@ final class StandardCapsTests: XCTestCase {
         """.data(using: .utf8)!
 
         let runtime = PluginRuntime(manifest: manifest)
-        let handler = runtime.findHandler(capUrn: CSCapDiscard)!
+        let factory = runtime.findHandler(capUrn: CSCapDiscard)!
 
         // Create test input - pre-collected chunks
         let testData = "discard me".data(using: .utf8)!
@@ -226,12 +224,10 @@ final class StandardCapsTests: XCTestCase {
         let output = OutputStream(sender: mockSender, streamId: "test", mediaUrn: "media:void",
                                  requestId: .newUUID(), routingId: nil, maxChunk: 1000)
 
-        let peer = NoPeerInvoker()
-
-        // Execute handler
-        XCTAssertNoThrow(try handler(input, output, peer), "Discard handler must not throw")
+        // Execute Op handler via invokeOp (dispatchOp + NoPeerInvoker)
+        XCTAssertNoThrow(try invokeOp(factory, input: input, output: output), "Discard handler must not throw")
         // Discard produces void - no CHUNK output expected
-        // (STREAM_START/STREAM_END might be sent, but no data chunks)
+        // (STREAM_START/STREAM_END might be sent by dispatchOp.close(), but no data chunks)
     }
 }
 

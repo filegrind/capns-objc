@@ -48,7 +48,7 @@ func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: Stri
 
 /// Helper: invoke a factory-produced Op with NoPeerInvoker.
 /// Matches Rust's invoke_op() test helper.
-func invokeOp(_ factory: OpFactory, input: InputPackage, output: OutputStream) throws {
+func invokeOp(_ factory: OpFactory, input: InputPackage, output: Bifaci.OutputStream) throws {
     let op = factory()
     try dispatchOp(op: op, input: input, output: output, peer: NoPeerInvoker())
 }
@@ -1886,15 +1886,23 @@ final class CborFilePathConversionTests: XCTestCase {
         let manifest = createTestManifest(caps: [cap])
         let runtime = PluginRuntime(manifest: manifest)
 
-        // Register handler with new API
-        runtime.register(capUrn: cap.urn) { [resultHolder] (input, output, _) in
-            // Collect all input bytes
-            let total = try input.collectAllBytes()
-            resultHolder.data = total
-
-            // Echo the input
-            try output.write(total)
-            try output.close()
+        // Register Op handler that captures received bytes and echoes them
+        let resultHolderRef = resultHolder
+        runtime.register_op(capUrn: cap.urn) {
+            final class CaptureEchoOp: Op, @unchecked Sendable {
+                typealias Output = Void
+                let holder: ResultHolder
+                init(_ h: ResultHolder) { holder = h }
+                func perform(dry: DryContext, wet: WetContext) async throws {
+                    let req = try wet.getRequired(CborRequest.self, for: WET_KEY_REQUEST)
+                    let input = try req.takeInput()
+                    let total = try input.collectAllBytes()
+                    holder.data = total
+                    try req.output().write(total)
+                }
+                func metadata() -> OpMetadata { OpMetadata.builder("CaptureEchoOp").build() }
+            }
+            return AnyOp(CaptureEchoOp(resultHolderRef))
         }
 
         // Build CBOR payload
@@ -1914,11 +1922,9 @@ final class CborFilePathConversionTests: XCTestCase {
         let outputCollector = OutputCollector()
         let outputStream = createCollectingOutputStream(collector: outputCollector, mediaUrn: "media:pdf;bytes")
 
-        let peer = NoPeerInvoker()
-
-        // Execute handler
-        let handler = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
-        try handler(inputPackage, outputStream, peer)
+        // Execute Op handler
+        let factory = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
+        try invokeOp(factory, input: inputPackage, output: outputStream)
 
         XCTAssertEqual(resultHolder.data, pdfContent, "Handler should receive chunked content")
     }
