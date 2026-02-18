@@ -302,6 +302,7 @@ public final class PluginHost: @unchecked Sendable {
         for cap in knownCaps {
             capTable.append((cap, idx))
         }
+        rebuildCapabilities()
         stateLock.unlock()
     }
 
@@ -711,8 +712,14 @@ public final class PluginHost: @unchecked Sendable {
             incomingRxids.removeValue(forKey: entry.key)
         }
 
-        // Remove caps for this plugin
+        // Replace actual caps with knownCaps for on-demand respawn routing.
+        // If helloFailed, remove entirely (permanently broken).
         capTable.removeAll { $0.1 == pluginIdx }
+        if !plugin.helloFailed {
+            for cap in plugin.knownCaps {
+                capTable.append((cap, pluginIdx))
+            }
+        }
         rebuildCapabilities()
         stateLock.unlock()
 
@@ -803,29 +810,37 @@ public final class PluginHost: @unchecked Sendable {
 
     // MARK: - Internal Helpers
 
-    /// Rebuild aggregate capabilities from all running plugins.
+    /// Rebuild aggregate capabilities from all known/discovered plugins.
     /// Must hold stateLock when calling.
-    /// Creates a JSON array of URN strings (not objects) to match Rust implementation.
+    /// Creates a JSON array of URN strings (not objects).
+    ///
+    /// Includes caps from ALL registered plugins that haven't permanently failed HELLO.
+    /// Running plugins use their actual manifest caps; non-running plugins use knownCaps.
+    /// This ensures the relay always advertises all caps that CAN be handled, regardless
+    /// of whether the plugin process is currently alive (on-demand spawn handles restarts).
     ///
     /// If running in relay mode (outboundWriter is set), sends a RelayNotify frame
-    /// to the relay interface with the updated capabilities. This allows the router
-    /// to track capability changes dynamically as plugins connect/disconnect/fail.
+    /// to the relay interface with the updated capabilities.
     private func rebuildCapabilities() {
         // CAP_IDENTITY is always present — structural, not plugin-dependent
         var capUrns: [String] = [CSCapIdentity]
 
-        for plugin in plugins where plugin.running {
-            // Extract cap URN strings from manifest
-            if !plugin.manifest.isEmpty,
-               let json = try? JSONSerialization.jsonObject(with: plugin.manifest) as? [String: Any],
-               let caps = json["caps"] as? [[String: Any]] {
-                for cap in caps {
-                    if let urn = cap["urn"] as? String {
-                        // Don't duplicate identity (plugins also declare it)
-                        if urn != CSCapIdentity {
+        for plugin in plugins where !plugin.helloFailed {
+            if plugin.running {
+                // Running: use actual caps from manifest (verified via HELLO handshake)
+                if !plugin.manifest.isEmpty,
+                   let json = try? JSONSerialization.jsonObject(with: plugin.manifest) as? [String: Any],
+                   let caps = json["caps"] as? [[String: Any]] {
+                    for cap in caps {
+                        if let urn = cap["urn"] as? String, urn != CSCapIdentity {
                             capUrns.append(urn)
                         }
                     }
+                }
+            } else {
+                // Not running: use knownCaps (from discovery, available for on-demand spawn)
+                for cap in plugin.knownCaps where cap != CSCapIdentity {
+                    capUrns.append(cap)
                 }
             }
         }
