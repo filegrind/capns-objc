@@ -60,6 +60,12 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn accepts(&self, instance: &MediaUrn) -> Result<bool, MediaUrnError>
 - (BOOL)accepts:(CSMediaUrn *)instance error:(NSError **)error;
 
+/// Check if two media URNs have the exact same tag set (order-independent).
+/// Equivalent to `self.accepts(other) && other.accepts(self)`.
+/// Returns NO if either direction fails (including on parse errors).
+/// Mirrors Rust: pub fn is_equivalent(&self, other: &MediaUrn) -> Result<bool, MediaUrnError>
+- (BOOL)isEquivalentTo:(CSMediaUrn *)other;
+
 // MARK: - Predicates (mirror Rust MediaUrn predicates)
 
 /// Check if this represents binary data (bytes marker tag present).

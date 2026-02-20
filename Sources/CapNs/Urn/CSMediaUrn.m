@@ -83,6 +83,15 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
     return [self.inner accepts:instance.inner error:error];
 }
 
+- (BOOL)isEquivalentTo:(CSMediaUrn *)other {
+    NSError *err = nil;
+    BOOL forward = [self accepts:other error:&err];
+    if (err || !forward) return NO;
+    BOOL reverse = [other accepts:self error:&err];
+    if (err) return NO;
+    return reverse;
+}
+
 // MARK: - Predicates
 
 - (BOOL)isBinary {

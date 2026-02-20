@@ -164,9 +164,58 @@ public final class InputPackage: Sequence, @unchecked Sendable {
         return all
     }
 
+    /// Collect each stream individually into an array of (mediaUrn, bytes) pairs.
+    /// Each stream's bytes are accumulated separately — NOT concatenated.
+    public func collectStreams() throws -> [(mediaUrn: String, bytes: Data)] {
+        var result: [(mediaUrn: String, bytes: Data)] = []
+        for streamResult in self {
+            let stream = try streamResult.get()
+            let urn = stream.mediaUrn
+            let bytes = try stream.collectBytes()
+            result.append((mediaUrn: urn, bytes: bytes))
+        }
+        return result
+    }
+
     public func makeIterator() -> AnyIterator<Result<InputStream, StreamError>> {
         rx.value
     }
+}
+
+/// Find a stream's bytes by exact URN equivalence (order-independent tag matching).
+/// Uses CSMediaUrn.isEquivalentTo — matches only if both URNs have the exact same tag set.
+public func findStream(_ streams: [(mediaUrn: String, bytes: Data)], mediaUrn: String) -> Data? {
+    guard let target = try? CSMediaUrn.fromString(mediaUrn) else { return nil }
+    for (urnStr, bytes) in streams {
+        guard let urn = try? CSMediaUrn.fromString(urnStr) else { continue }
+        if target.isEquivalent(to: urn) {
+            return bytes
+        }
+    }
+    return nil
+}
+
+/// Like findStream but returns a UTF-8 string.
+public func findStreamStr(_ streams: [(mediaUrn: String, bytes: Data)], mediaUrn: String) -> String? {
+    guard let data = findStream(streams, mediaUrn: mediaUrn) else { return nil }
+    return String(data: data, encoding: .utf8)
+}
+
+/// Like findStream but fails hard if not found.
+public func requireStream(_ streams: [(mediaUrn: String, bytes: Data)], mediaUrn: String) throws -> Data {
+    guard let data = findStream(streams, mediaUrn: mediaUrn) else {
+        throw StreamError.protocolError("Missing required arg: \(mediaUrn)")
+    }
+    return data
+}
+
+/// Like requireStream but returns a UTF-8 string.
+public func requireStreamStr(_ streams: [(mediaUrn: String, bytes: Data)], mediaUrn: String) throws -> String {
+    let data = try requireStream(streams, mediaUrn: mediaUrn)
+    guard let str = String(data: data, encoding: .utf8) else {
+        throw StreamError.decode("Arg '\(mediaUrn)' is not valid UTF-8")
+    }
+    return str
 }
 
 /// Writable stream handle for handler output or peer call arguments.
@@ -2237,8 +2286,13 @@ public final class PluginRuntime: @unchecked Sendable {
 
             switch frame.frameType {
             case .req:
+                // Extract routing_id (XID) FIRST — all error paths must include it
+                let routingIdForErrors = frame.routingId
+
                 guard let capUrn = frame.cap else {
-                    try? outputSender.send(Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "Request missing cap URN"))
+                    var err = Frame.err(id: frame.id, code: "INVALID_REQUEST", message: "Request missing cap URN")
+                    err.routingId = routingIdForErrors
+                    try? outputSender.send(err)
                     continue
                 }
 
@@ -2246,17 +2300,21 @@ public final class PluginRuntime: @unchecked Sendable {
 
                 // Protocol v2: REQ must have empty payload — arguments come as streams
                 if !rawPayload.isEmpty {
-                    try? outputSender.send(Frame.err(
+                    var err = Frame.err(
                         id: frame.id,
                         code: "PROTOCOL_ERROR",
                         message: "REQ frame must have empty payload — use STREAM_START for arguments"
-                    ))
+                    )
+                    err.routingId = routingIdForErrors
+                    try? outputSender.send(err)
                     continue
                 }
 
                 // Find Op factory (using pattern matching to support wildcards)
                 guard let factory = findHandler(capUrn: capUrn) else {
-                    try? outputSender.send(Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)"))
+                    var err = Frame.err(id: frame.id, code: "NO_HANDLER", message: "No handler registered for cap: \(capUrn)")
+                    err.routingId = routingIdForErrors
+                    try? outputSender.send(err)
                     continue
                 }
 
@@ -2265,7 +2323,9 @@ public final class PluginRuntime: @unchecked Sendable {
                 do {
                     cap = try CSCapUrn.fromString(capUrn)
                 } catch {
-                    try? outputSender.send(Frame.err(id: frame.id, code: "INVALID_CAP_URN", message: "Failed to parse cap URN: \(error)"))
+                    var err = Frame.err(id: frame.id, code: "INVALID_CAP_URN", message: "Failed to parse cap URN: \(error)")
+                    err.routingId = routingIdForErrors
+                    try? outputSender.send(err)
                     continue
                 }
 
