@@ -46,7 +46,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST284: Handshake exchanges HELLO frames, negotiates limits
-    func testHandshakeHostPlugin() throws {
+    func test284_handshakeHostPlugin() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         var pluginLimits: Limits?
@@ -86,7 +86,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST285: Simple request-response flow (REQ → END with payload)
-    func testRequestResponseSimple() throws {
+    func test285_requestResponseSimple() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         let pluginSemaphore = DispatchSemaphore(value: 0)
@@ -136,7 +136,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST286: Streaming response with multiple CHUNK frames
-    func testStreamingChunks() throws {
+    func test286_streamingChunks() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         let pluginSemaphore = DispatchSemaphore(value: 0)
@@ -202,7 +202,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST287: Host-initiated heartbeat handling
-    func testHeartbeatFromHost() throws {
+    func test287_heartbeatFromHost() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         let pluginSemaphore = DispatchSemaphore(value: 0)
@@ -248,7 +248,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST290: Limit negotiation picks minimum values
-    func testLimitsNegotiation() throws {
+    func test290_limitsNegotiation() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         var pluginLimits: Limits?
@@ -283,7 +283,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST291: Binary payload roundtrip (all 256 byte values)
-    func testBinaryPayloadRoundtrip() throws {
+    func test291_binaryPayloadRoundtrip() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         let binaryData = Data((0...255).map { UInt8($0) })
@@ -342,7 +342,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST292: Sequential requests get distinct MessageIds
-    func testMessageIdUniqueness() throws {
+    func test292_messageIdUniqueness() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         var receivedIds: [MessageId] = []
@@ -395,7 +395,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST299: Empty payload request/response roundtrip
-    func testEmptyPayloadRoundtrip() throws {
+    func test299_emptyPayloadRoundtrip() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         let pluginSemaphore = DispatchSemaphore(value: 0)
@@ -442,7 +442,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage
-    func testWriteChunkedSeqAssignment() throws {
+    func test461_writeChunkedSeqAssignment() throws {
         // This test verifies that frames produced by write operations have seq=0
         // and rely on SeqAssigner at the writer thread to assign proper seq values
         let requestId = MessageId.newUUID()
@@ -470,7 +470,7 @@ final class CborIntegrationTests: XCTestCase {
     }
 
     // TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides)
-    func testHandshakeNegotiatesReorderBuffer() throws {
+    func test472_handshakeNegotiatesReorderBuffer() throws {
         let (hostWrite, pluginRead, pluginWrite, hostRead) = createSocketPairs()
 
         var pluginNegotiated: Limits?

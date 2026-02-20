@@ -8,7 +8,7 @@ final class FlowOrderingTests: XCTestCase {
     // MARK: - SeqAssigner Tests (TEST442-446)
 
     // TEST442: SeqAssigner assigns seq 0,1,2,3 for consecutive frames with same RID
-    func testSeqAssignerMonotonicSameRid() {
+    func test442_seqAssignerMonotonicSameRid() {
         var assigner = SeqAssigner()
         let rid = MessageId.newUUID()
 
@@ -29,7 +29,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST443: SeqAssigner maintains independent counters for different RIDs
-    func testSeqAssignerIndependentRids() {
+    func test443_seqAssignerIndependentRids() {
         var assigner = SeqAssigner()
         let ridA = MessageId.newUUID()
         let ridB = MessageId.newUUID()
@@ -54,7 +54,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST444: SeqAssigner skips non-flow frames (Heartbeat, RelayNotify, RelayState, Hello)
-    func testSeqAssignerSkipsNonFlow() {
+    func test444_seqAssignerSkipsNonFlow() {
         var assigner = SeqAssigner()
 
         var hello = Frame.hello(limits: Limits())
@@ -74,7 +74,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST445: SeqAssigner.remove with FlowKey(rid, nil) resets that flow; FlowKey(rid, Some(xid)) is unaffected
-    func testSeqAssignerRemoveByFlowKey() {
+    func test445_seqAssignerRemoveByFlowKey() {
         var assigner = SeqAssigner()
         let rid = MessageId.newUUID()
         let xid = MessageId.newUUID()
@@ -112,7 +112,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST445a: Same RID with different XIDs get independent seq counters
-    func testSeqAssignerSameRidDifferentXidsIndependent() {
+    func test445a_seqAssignerSameRidDifferentXidsIndependent() {
         var assigner = SeqAssigner()
         let rid = MessageId.newUUID()
         let xidA = MessageId.uint(1)
@@ -143,7 +143,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST446: SeqAssigner handles mixed frame types (REQ, CHUNK, LOG, END) for same RID
-    func testSeqAssignerMixedTypes() {
+    func test446_seqAssignerMixedTypes() {
         var assigner = SeqAssigner()
         let rid = MessageId.newUUID()
 
@@ -166,7 +166,7 @@ final class FlowOrderingTests: XCTestCase {
     // MARK: - FlowKey Tests (TEST447-450)
 
     // TEST447: FlowKey::from_frame extracts (rid, Some(xid)) when routing_id present
-    func testFlowKeyWithXid() {
+    func test447_flowKeyWithXid() {
         let rid = MessageId.newUUID()
         let xid = MessageId.newUUID()
         var frame = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
@@ -178,7 +178,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST448: FlowKey::from_frame extracts (rid, None) when routing_id absent
-    func testFlowKeyWithoutXid() {
+    func test448_flowKeyWithoutXid() {
         let rid = MessageId.newUUID()
         let frame = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
 
@@ -188,7 +188,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST449: FlowKey equality: same rid+xid equal, different xid different key
-    func testFlowKeyEquality() {
+    func test449_flowKeyEquality() {
         let rid = MessageId.newUUID()
         let xid1 = MessageId.newUUID()
         let xid2 = MessageId.newUUID()
@@ -204,7 +204,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST450: FlowKey hash: same keys hash equal (HashMap lookup)
-    func testFlowKeyHash() {
+    func test450_flowKeyHash() {
         let rid = MessageId.newUUID()
         let xid = MessageId.newUUID()
 
@@ -223,7 +223,7 @@ final class FlowOrderingTests: XCTestCase {
     // MARK: - ReorderBuffer Tests (TEST451-460)
 
     // TEST451: ReorderBuffer in-order delivery: seq 0,1,2 delivered immediately
-    func testReorderBufferInOrder() throws {
+    func test451_reorderBufferInOrder() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -245,7 +245,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST452: ReorderBuffer out-of-order: seq 1 then 0 delivers both in order
-    func testReorderBufferOutOfOrder() throws {
+    func test452_reorderBufferOutOfOrder() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -263,7 +263,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST453: ReorderBuffer gap fill: seq 0,2,1 delivers 0, buffers 2, then delivers 1+2
-    func testReorderBufferGapFill() throws {
+    func test453_reorderBufferGapFill() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -286,7 +286,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST454: ReorderBuffer stale seq is hard error
-    func testReorderBufferStaleSeq() {
+    func test454_reorderBufferStaleSeq() {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -304,7 +304,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST455: ReorderBuffer overflow triggers protocol error
-    func testReorderBufferOverflow() throws {
+    func test455_reorderBufferOverflow() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 3)
         let rid = MessageId.newUUID()
 
@@ -325,7 +325,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST456: Multiple concurrent flows reorder independently
-    func testReorderBufferMultipleFlows() throws {
+    func test456_reorderBufferMultipleFlows() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let ridA = MessageId.newUUID()
         let ridB = MessageId.newUUID()
@@ -354,7 +354,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST457: cleanup_flow removes state; new frames start at seq 0
-    func testReorderBufferCleanupFlow() throws {
+    func test457_reorderBufferCleanupFlow() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -374,7 +374,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST458: Non-flow frames bypass reorder entirely
-    func testReorderBufferNonFlowBypass() throws {
+    func test458_reorderBufferNonFlowBypass() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -387,7 +387,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST459: Terminal END frame flows through correctly
-    func testReorderBufferTerminalEnd() throws {
+    func test459_reorderBufferTerminalEnd() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -405,7 +405,7 @@ final class FlowOrderingTests: XCTestCase {
     }
 
     // TEST460: Terminal ERR frame flows through correctly
-    func testReorderBufferTerminalErr() throws {
+    func test460_reorderBufferTerminalErr() throws {
         var buffer = ReorderBuffer(maxBufferPerFlow: 10)
         let rid = MessageId.newUUID()
         let flow = FlowKey(rid: rid, xid: nil)
@@ -424,7 +424,7 @@ final class FlowOrderingTests: XCTestCase {
 
     // TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testWriteChunkedSeqZero() throws {
+    func test461_writeChunkedSeqZero() throws {
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 5, maxReorderBuffer: 64)
         let pipe = Pipe()
         let writer = FrameWriter(handle: pipe.fileHandleForWriting, limits: limits)
@@ -454,7 +454,7 @@ final class FlowOrderingTests: XCTestCase {
 
     // TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides)
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testHandshakeNegotiatesReorderBuffer() throws {
+    func test472_handshakeNegotiatesReorderBuffer() throws {
         // Simulate plugin sending HELLO with max_reorder_buffer=32
         let pluginLimits = Limits(maxFrame: DEFAULT_MAX_FRAME, maxChunk: DEFAULT_MAX_CHUNK, maxReorderBuffer: 32)
         let manifestJSON = "{\"name\":\"test\",\"version\":\"1.0\",\"caps\":[]}"

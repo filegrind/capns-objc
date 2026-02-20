@@ -11,7 +11,7 @@ final class StandardCapsTests: XCTestCase {
     // MARK: - CAP_DISCARD Tests (TEST473-474)
 
     // TEST473: CAP_DISCARD parses as valid CapUrn
-    func testCapDiscardParsesAsValidCapUrn() throws {
+    func test473_capDiscardParsesAsValidCapUrn() throws {
         let discardUrn = try CSCapUrn.fromString(CSCapDiscard)
 
         XCTAssertNotNil(discardUrn, "CAP_DISCARD must parse as valid CapUrn")
@@ -20,7 +20,7 @@ final class StandardCapsTests: XCTestCase {
     }
 
     // TEST474: CAP_DISCARD accepts specific void-output caps
-    func testCapDiscardAcceptsVoidOutputCaps() throws {
+    func test474_capDiscardAcceptsVoidOutputCaps() throws {
         let discardPattern = try CSCapUrn.fromString(CSCapDiscard)
 
         // CAP_DISCARD should accept any cap with void output
@@ -38,7 +38,7 @@ final class StandardCapsTests: XCTestCase {
     // MARK: - Manifest Validation Tests (TEST475-477)
 
     // TEST475: Manifest.validate() passes with CAP_IDENTITY present
-    func testManifestValidatePassesWithIdentity() throws {
+    func test475_manifestValidatePassesWithIdentity() throws {
         let identityUrn = try CSCapUrn.fromString(CSCapIdentity)
         let identityCap = CSCap(urn: identityUrn, title: "Identity", command: "identity")
         let manifest = CSCapManifest(name: "TestPlugin",
@@ -50,7 +50,7 @@ final class StandardCapsTests: XCTestCase {
     }
 
     // TEST476: Manifest.validate() fails without CAP_IDENTITY
-    func testManifestValidateFailsWithoutIdentity() throws {
+    func test476_manifestValidateFailsWithoutIdentity() throws {
         let otherUrn = try CSCapUrn.fromString("cap:op=test;in=media:;out=media:")
         let otherCap = CSCap(urn: otherUrn, title: "Test", command: "test")
         let manifest = CSCapManifest(name: "TestPlugin",
@@ -62,7 +62,7 @@ final class StandardCapsTests: XCTestCase {
     }
 
     // TEST477: Manifest.ensureIdentity() adds if missing, idempotent if present
-    func testManifestEnsureIdentityIdempotent() throws {
+    func test477_manifestEnsureIdentityIdempotent() throws {
         // Test 1: Adding identity when missing
         let testUrn = try CSCapUrn.fromString("cap:op=test;in=media:;out=media:")
         let cap1 = CSCap(urn: testUrn, title: "Test", command: "test")
@@ -83,7 +83,7 @@ final class StandardCapsTests: XCTestCase {
     // MARK: - Auto-Registration Tests (TEST478-480)
 
     // TEST478: PluginRuntime auto-registers CAP_IDENTITY handler
-    func testPluginRuntimeAutoRegistersIdentity() throws {
+    func test478_pluginRuntimeAutoRegistersIdentity() throws {
         let manifest = """
         {"name":"Test","version":"1.0.0","description":"Test","caps":[
             {"urn":"\(CSCapIdentity)","title":"Identity","command":"identity"}
@@ -98,7 +98,7 @@ final class StandardCapsTests: XCTestCase {
     }
 
     // TEST479: CAP_IDENTITY handler echoes input unchanged
-    func testIdentityHandlerEchoesInput() throws {
+    func test479_identityHandlerEchoesInput() throws {
         let manifest = """
         {"name":"Test","version":"1.0.0","description":"Test","caps":[
             {"urn":"\(CSCapIdentity)","title":"Identity","command":"identity"}
@@ -166,7 +166,7 @@ final class StandardCapsTests: XCTestCase {
     }
 
     // TEST480: CAP_DISCARD handler consumes input and produces void
-    func testDiscardHandlerConsumesInput() throws {
+    func test480_discardHandlerConsumesInput() throws {
         let manifest = """
         {"name":"Test","version":"1.0.0","description":"Test","caps":[
             {"urn":"\(CSCapDiscard)","title":"Discard","command":"discard"}

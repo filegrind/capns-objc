@@ -19,7 +19,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Frame Type Tests (TEST171-173)
 
     // TEST171: All FrameType discriminants roundtrip through raw value conversion preserving identity
-    func testFrameTypeRoundtrip() {
+    func test171_frameTypeRoundtrip() {
         let allTypes: [FrameType] = [.hello, .req, .chunk, .end, .log, .err, .heartbeat, .streamStart, .streamEnd]
         for ft in allTypes {
             let raw = ft.rawValue
@@ -29,7 +29,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST172: FrameType init returns nil for values outside the valid discriminant range (updated for new max)
-    func testInvalidFrameType() {
+    func test172_invalidFrameType() {
         XCTAssertNil(FrameType(rawValue: 2), "rawValue 2 (res) removed - must be invalid")
         XCTAssertEqual(FrameType(rawValue: 10), .relayNotify)
         XCTAssertEqual(FrameType(rawValue: 11), .relayState)
@@ -39,7 +39,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST173: FrameType discriminant values match the wire protocol specification exactly
-    func testFrameTypeDiscriminantValues() {
+    func test173_frameTypeDiscriminantValues() {
         XCTAssertEqual(FrameType.hello.rawValue, 0)
         XCTAssertEqual(FrameType.req.rawValue, 1)
         // res = 2 REMOVED - old single-response protocol no longer supported
@@ -57,35 +57,35 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Message ID Tests (TEST174-177, TEST202-203)
 
     // TEST174: MessageId.newUUID generates valid UUID that roundtrips through string conversion
-    func testMessageIdUUID() {
+    func test174_messageIdUUID() {
         let id = MessageId.newUUID()
         XCTAssertNotNil(id.uuid, "newUUID must produce a UUID")
         XCTAssertNotNil(id.uuidString, "newUUID must have a string representation")
     }
 
     // TEST175: Two MessageId.newUUID calls produce distinct IDs (no collisions)
-    func testMessageIdUUIDUniqueness() {
+    func test175_messageIdUUIDUniqueness() {
         let id1 = MessageId.newUUID()
         let id2 = MessageId.newUUID()
         XCTAssertNotEqual(id1, id2, "Two UUIDs must be distinct")
     }
 
     // TEST176: MessageId.uint does not produce a UUID string
-    func testMessageIdUintHasNoUUIDString() {
+    func test176_messageIdUintHasNoUUIDString() {
         let id = MessageId.uint(12345)
         XCTAssertNil(id.uuid, "uint ID must not have UUID")
         XCTAssertNil(id.uuidString, "uint ID must not have UUID string")
     }
 
     // TEST177: MessageId init from invalid UUID string returns nil
-    func testMessageIdFromInvalidUUIDStr() {
+    func test177_messageIdFromInvalidUUIDStr() {
         XCTAssertNil(MessageId(uuidString: "not-a-uuid"), "invalid UUID string must return nil")
         XCTAssertNil(MessageId(uuidString: ""), "empty string must return nil")
         XCTAssertNil(MessageId(uuidString: "12345"), "numeric string must return nil")
     }
 
     // TEST202: MessageId Eq/Hash semantics: equal UUIDs are equal, different ones are not
-    func testMessageIdEqualityAndHash() {
+    func test202_messageIdEqualityAndHash() {
         let uuid = UUID()
         let id1 = MessageId(uuid: uuid)
         let id2 = MessageId(uuid: uuid)
@@ -103,7 +103,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST203: Uuid and Uint variants of MessageId are never equal
-    func testMessageIdCrossVariantInequality() {
+    func test203_messageIdCrossVariantInequality() {
         let uuidId = MessageId.newUUID()
         let uintId = MessageId.uint(0)
         XCTAssertNotEqual(uuidId, uintId, "UUID and Uint variants must never be equal")
@@ -112,7 +112,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Frame Creation Tests (TEST180-190, TEST204)
 
     // TEST180: Frame.hello without manifest produces correct HELLO frame for host side
-    func testHelloFrame() {
+    func test180_helloFrame() {
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)
         let frame = Frame.hello(limits: limits)
         XCTAssertEqual(frame.frameType, .hello)
@@ -123,7 +123,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST181: Frame.helloWithManifest produces HELLO with manifest bytes for plugin side
-    func testHelloFrameWithManifest() {
+    func test181_helloFrameWithManifest() {
         let manifestJSON = """
         {"name":"TestPlugin","version":"1.0.0","description":"Test","caps":[]}
         """
@@ -139,7 +139,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST182: Frame.req stores cap URN, payload, and content_type correctly
-    func testReqFrame() {
+    func test182_reqFrame() {
         let id = MessageId.newUUID()
         let frame = Frame.req(
             id: id,
@@ -157,7 +157,7 @@ final class CborFrameTests: XCTestCase {
     // TEST183: REMOVED - Frame.res() removed (old single-response protocol no longer supported)
 
     // TEST184: Frame.chunk stores seq, streamId, payload, chunkIndex, and checksum for multiplexed streaming
-    func testChunkFrame() {
+    func test184_chunkFrame() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-123"
         let payload = "data".data(using: .utf8)!
@@ -171,7 +171,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST185: Frame.err stores error code and message in metadata
-    func testErrFrame() {
+    func test185_errFrame() {
         let id = MessageId.newUUID()
         let frame = Frame.err(id: id, code: "NOT_FOUND", message: "Cap not found")
         XCTAssertEqual(frame.frameType, .err)
@@ -180,7 +180,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST186: Frame.log stores level and message in metadata
-    func testLogFrame() {
+    func test186_logFrame() {
         let id = MessageId.newUUID()
         let frame = Frame.log(id: id, level: "info", message: "Processing...")
         XCTAssertEqual(frame.frameType, .log)
@@ -189,7 +189,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST187: Frame.end with payload sets eof and optional final payload
-    func testEndFrameWithPayload() {
+    func test187_endFrameWithPayload() {
         let id = MessageId.newUUID()
         let frame = Frame.end(id: id, finalPayload: "final".data(using: .utf8)!)
         XCTAssertEqual(frame.frameType, .end)
@@ -198,7 +198,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST188: Frame.end without payload still sets eof marker
-    func testEndFrameWithoutPayload() {
+    func test188_endFrameWithoutPayload() {
         let id = MessageId.newUUID()
         let frame = Frame.end(id: id)
         XCTAssertEqual(frame.frameType, .end)
@@ -207,7 +207,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST189: chunk_with_offset sets offset on all chunks but len only on seq=0 (with streamId)
-    func testChunkWithOffset() {
+    func test189_chunkWithOffset() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-456"
 
@@ -252,7 +252,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST190: Frame.heartbeat creates minimal frame with no payload or metadata
-    func testHeartbeatFrame() {
+    func test190_heartbeatFrame() {
         let id = MessageId.newUUID()
         let frame = Frame.heartbeat(id: id)
         XCTAssertEqual(frame.frameType, .heartbeat)
@@ -262,21 +262,21 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST191: error_code and error_message return nil for non-Err frame types
-    func testErrorAccessorsOnNonErrFrame() {
+    func test191_errorAccessorsOnNonErrFrame() {
         let req = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
         XCTAssertNil(req.errorCode, "errorCode must be nil on non-Err frame")
         XCTAssertNil(req.errorMessage, "errorMessage must be nil on non-Err frame")
     }
 
     // TEST192: log_level and log_message return nil for non-Log frame types
-    func testLogAccessorsOnNonLogFrame() {
+    func test192_logAccessorsOnNonLogFrame() {
         let req = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
         XCTAssertNil(req.logLevel, "logLevel must be nil on non-Log frame")
         XCTAssertNil(req.logMessage, "logMessage must be nil on non-Log frame")
     }
 
     // TEST193: hello_max_frame and hello_max_chunk return nil for non-Hello frame types
-    func testHelloAccessorsOnNonHelloFrame() {
+    func test193_helloAccessorsOnNonHelloFrame() {
         let req = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
         XCTAssertNil(req.helloMaxFrame, "helloMaxFrame must be nil on non-Hello frame")
         XCTAssertNil(req.helloMaxChunk, "helloMaxChunk must be nil on non-Hello frame")
@@ -284,28 +284,28 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST196: is_eof returns false when eof field is nil (unset)
-    func testIsEofWhenNil() {
+    func test196_isEofWhenNil() {
         var frame = Frame(frameType: .chunk, id: .newUUID())
         frame.eof = nil
         XCTAssertFalse(frame.isEof)
     }
 
     // TEST197: is_eof returns false when eof field is explicitly false
-    func testIsEofWhenFalse() {
+    func test197_isEofWhenFalse() {
         var frame = Frame(frameType: .chunk, id: .newUUID())
         frame.eof = false
         XCTAssertFalse(frame.isEof)
     }
 
     // TEST198: Limits default provides the documented default values
-    func testLimitsDefault() {
+    func test198_limitsDefault() {
         let limits = Limits()
         XCTAssertEqual(limits.maxFrame, DEFAULT_MAX_FRAME)
         XCTAssertEqual(limits.maxChunk, DEFAULT_MAX_CHUNK)
     }
 
     // TEST198 (continued): Limits negotiation picks minimum of both sides
-    func testLimitsNegotiation() {
+    func test198b_limitsNegotiation() {
         let local = Limits(maxFrame: 1_000_000, maxChunk: 100_000)
         let remote = Limits(maxFrame: 500_000, maxChunk: 200_000)
         let negotiated = local.negotiate(with: remote)
@@ -315,12 +315,12 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST199: PROTOCOL_VERSION is 2
-    func testProtocolVersionConstant() {
+    func test199_protocolVersionConstant() {
         XCTAssertEqual(CBOR_PROTOCOL_VERSION, 2)
     }
 
     // TEST200: Integer key constants match the protocol specification
-    func testKeyConstants() {
+    func test200_keyConstants() {
         XCTAssertEqual(FrameKey.version.rawValue, 0)
         XCTAssertEqual(FrameKey.frameType.rawValue, 1)
         XCTAssertEqual(FrameKey.id.rawValue, 2)
@@ -337,7 +337,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST201: hello_with_manifest preserves binary manifest data (not just JSON text)
-    func testHelloManifestBinaryData() {
+    func test201_helloManifestBinaryData() {
         // Use binary data that isn't valid JSON to verify raw preservation
         var binaryManifest = Data()
         for i: UInt8 in 0..<128 {
@@ -349,7 +349,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST204: Frame.req with empty payload stores Data() not nil
-    func testReqFrameEmptyPayload() {
+    func test204_reqFrameEmptyPayload() {
         let frame = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(), contentType: "text/plain")
         XCTAssertNotNil(frame.payload, "Empty payload must be stored as Data(), not nil")
         XCTAssertEqual(frame.payload, Data())
@@ -358,7 +358,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Encode/Decode Roundtrip Tests (TEST205-213)
 
     // TEST205: REQ frame encode/decode roundtrip preserves all fields
-    func testEncodeDecodeRoundtrip() throws {
+    func test205_encodeDecodeRoundtrip() throws {
         let id = MessageId.newUUID()
         let original = Frame.req(
             id: id,
@@ -379,7 +379,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST206: HELLO frame encode/decode roundtrip preserves max_frame, max_chunk, and max_reorder_buffer
-    func testHelloFrameRoundtrip() throws {
+    func test206_helloFrameRoundtrip() throws {
         let limits = Limits(maxFrame: 500_000, maxChunk: 50_000, maxReorderBuffer: 64)
         let original = Frame.hello(limits: limits)
         let encoded = try encodeFrame(original)
@@ -392,7 +392,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST207: ERR frame encode/decode roundtrip preserves error code and message
-    func testErrFrameRoundtrip() throws {
+    func test207_errFrameRoundtrip() throws {
         let id = MessageId.newUUID()
         let original = Frame.err(id: id, code: "NOT_FOUND", message: "Cap not found")
         let encoded = try encodeFrame(original)
@@ -404,7 +404,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST208: LOG frame encode/decode roundtrip preserves level and message
-    func testLogFrameRoundtrip() throws {
+    func test208_logFrameRoundtrip() throws {
         let id = MessageId.newUUID()
         let original = Frame.log(id: id, level: "warn", message: "Something happened")
         let encoded = try encodeFrame(original)
@@ -418,7 +418,7 @@ final class CborFrameTests: XCTestCase {
     // TEST209: REMOVED - RES frame test removed (old single-response protocol no longer supported)
 
     // TEST210: END frame encode/decode roundtrip preserves eof marker and optional payload
-    func testEndFrameRoundtrip() throws {
+    func test210_endFrameRoundtrip() throws {
         let id = MessageId.newUUID()
         let original = Frame.end(id: id, finalPayload: "final".data(using: .utf8)!)
         let encoded = try encodeFrame(original)
@@ -431,7 +431,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST211: HELLO with manifest encode/decode roundtrip preserves manifest bytes
-    func testHelloWithManifestRoundtrip() throws {
+    func test211_helloWithManifestRoundtrip() throws {
         let manifestJSON = """
         {"name":"TestPlugin","version":"1.0.0","description":"Test description","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
         """
@@ -450,7 +450,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST212: chunk_with_offset encode/decode roundtrip preserves offset, len, eof, streamId
-    func testChunkWithOffsetRoundtrip() throws {
+    func test212_chunkWithOffsetRoundtrip() throws {
         let reqId = MessageId.newUUID()
         let streamId = "stream-789"
 
@@ -507,7 +507,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST213: Heartbeat frame encode/decode roundtrip preserves ID with no extra fields
-    func testHeartbeatRoundtrip() throws {
+    func test213_heartbeatRoundtrip() throws {
         let id = MessageId.newUUID()
         let original = Frame.heartbeat(id: id)
         let encoded = try encodeFrame(original)
@@ -522,7 +522,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST214: write_frame/read_frame IO roundtrip through length-prefixed wire format
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testFrameIORoundtrip() throws {
+    func test214_frameIORoundtrip() throws {
         let pipe = Pipe()
         let limits = Limits()
         let id = MessageId.newUUID()
@@ -540,7 +540,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST215: Reading multiple sequential frames from a single stream (with streamId)
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testMultipleFrames() throws {
+    func test215_multipleFrames() throws {
         let pipe = Pipe()
         let limits = Limits()
 
@@ -578,7 +578,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST216: write_frame rejects frames exceeding max_frame limit
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testFrameTooLarge() throws {
+    func test216_frameTooLarge() throws {
         let pipe = Pipe()
         let limits = Limits(maxFrame: 100, maxChunk: 50)
 
@@ -596,7 +596,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST217: read_frame rejects incoming frames exceeding the negotiated max_frame limit
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testReadFrameTooLarge() throws {
+    func test217_readFrameTooLarge() throws {
         let pipe = Pipe()
         let writeLimits = Limits(maxFrame: 10_000_000, maxChunk: 1_000_000)
         let readLimits = Limits(maxFrame: 50, maxChunk: 50)
@@ -618,7 +618,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST218: write_chunked splits data into chunks respecting max_chunk (with streamId parameter)
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testWriteChunked() throws {
+    func test218_writeChunked() throws {
         let pipe = Pipe()
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 10) // Very small for testing
         let writer = FrameWriter(handle: pipe.fileHandleForWriting, limits: limits)
@@ -669,7 +669,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST219: write_chunked with empty data produces a single EOF chunk (with streamId)
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testWriteChunkedEmptyData() throws {
+    func test219_writeChunkedEmptyData() throws {
         let pipe = Pipe()
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 100)
         let writer = FrameWriter(handle: pipe.fileHandleForWriting, limits: limits)
@@ -689,7 +689,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST220: write_chunked with data exactly equal to max_chunk produces exactly one chunk (with streamId)
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testWriteChunkedExactFit() throws {
+    func test220_writeChunkedExactFit() throws {
         let pipe = Pipe()
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 10)
         let writer = FrameWriter(handle: pipe.fileHandleForWriting, limits: limits)
@@ -713,7 +713,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST221: read_frame returns nil on clean EOF (empty stream)
-    func testEofHandling() throws {
+    func test221_eofHandling() throws {
         let pipe = Pipe()
         pipe.fileHandleForWriting.closeFile() // immediate EOF
 
@@ -723,7 +723,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST222: read_frame handles truncated length prefix (fewer than 4 bytes available)
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testTruncatedLengthPrefix() throws {
+    func test222_truncatedLengthPrefix() throws {
         let pipe = Pipe()
         // Write only 2 bytes (need 4 for length prefix)
         pipe.fileHandleForWriting.write(Data([0x00, 0x01]))
@@ -743,7 +743,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST223: read_frame returns error on truncated frame body
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testTruncatedFrameBody() throws {
+    func test223_truncatedFrameBody() throws {
         let pipe = Pipe()
         // Write length prefix claiming 100 bytes, but only provide 5
         var lengthBytes = Data(count: 4)
@@ -768,7 +768,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST224: MessageId.uint roundtrips through encode/decode
-    func testMessageIdUintRoundtrip() throws {
+    func test224_messageIdUintRoundtrip() throws {
         let id = MessageId.uint(12345)
         let original = Frame(frameType: .req, id: id)
         let encoded = try encodeFrame(original)
@@ -777,7 +777,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST225: decode_frame rejects non-map CBOR values (e.g., array, integer, string)
-    func testDecodeNonMapValue() throws {
+    func test225_decodeNonMapValue() throws {
         // Encode a CBOR array instead of map
         let arrayValue = CBOR.array([.unsignedInt(1)])
         let bytes = Data(arrayValue.encode())
@@ -792,7 +792,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST226: decode_frame rejects CBOR map missing required version field
-    func testDecodeMissingVersion() throws {
+    func test226_decodeMissingVersion() throws {
         // Build CBOR map with frame_type and id but missing version
         let map = CBOR.map([
             .unsignedInt(FrameKey.frameType.rawValue): .unsignedInt(1),
@@ -810,7 +810,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST227: decode_frame rejects CBOR map with invalid frame_type value
-    func testDecodeInvalidFrameTypeValue() throws {
+    func test227_decodeInvalidFrameTypeValue() throws {
         let map = CBOR.map([
             .unsignedInt(FrameKey.version.rawValue): .unsignedInt(1),
             .unsignedInt(FrameKey.frameType.rawValue): .unsignedInt(99),
@@ -828,7 +828,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST228: decode_frame rejects CBOR map missing required id field
-    func testDecodeMissingId() throws {
+    func test228_decodeMissingId() throws {
         let map = CBOR.map([
             .unsignedInt(FrameKey.version.rawValue): .unsignedInt(1),
             .unsignedInt(FrameKey.frameType.rawValue): .unsignedInt(1)
@@ -847,7 +847,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST229: FrameReader/FrameWriter set_limits updates the negotiated limits
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testFrameReaderWriterSetLimits() {
+    func test229_frameReaderWriterSetLimits() {
         let pipe = Pipe()
         let reader = FrameReader(handle: pipe.fileHandleForReading)
         let writer = FrameWriter(handle: pipe.fileHandleForWriting)
@@ -863,7 +863,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST233: Binary payload with all 256 byte values roundtrips through encode/decode
-    func testBinaryPayloadAllByteValues() throws {
+    func test233_binaryPayloadAllByteValues() throws {
         var data = Data()
         for i: UInt8 in 0...255 {
             data.append(i)
@@ -879,7 +879,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST234: decode_frame handles garbage CBOR bytes gracefully with an error
-    func testDecodeGarbageBytes() {
+    func test234_decodeGarbageBytes() {
         let garbage = Data([0xFF, 0xFE, 0xFD, 0xFC, 0xFB])
         XCTAssertThrowsError(try decodeFrame(garbage), "garbage bytes must produce decode error")
     }
@@ -887,7 +887,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - All Frame Types Roundtrip (combined TEST for TEST205-213 coverage)
 
     // Covers all frame types in a single loop for comprehensive roundtrip verification
-    func testAllFrameTypesRoundtrip() throws {
+    func test205b_allFrameTypesRoundtrip() throws {
         let chunkPayload = "chunk".data(using: .utf8)!
         let testCases: [(Frame, String)] = [
             (Frame.hello(limits: Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)), "HELLO"),
@@ -918,7 +918,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Response/Error Type Tests (TEST235-243)
 
     // TEST235: ResponseChunk stores payload, seq, offset, len, and eof fields correctly
-    func testResponseChunk() {
+    func test235_responseChunk() {
         let chunk = ResponseChunk(
             payload: "hello".data(using: .utf8)!,
             seq: 0, offset: nil, len: nil, isEof: false
@@ -931,7 +931,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST236: ResponseChunk with all fields populated preserves offset, len, and eof
-    func testResponseChunkWithAllFields() {
+    func test236_responseChunkWithAllFields() {
         let chunk = ResponseChunk(
             payload: "data".data(using: .utf8)!,
             seq: 3, offset: 1000, len: 5000, isEof: true
@@ -943,21 +943,21 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST237: PluginResponse.single final_payload returns the single payload
-    func testPluginResponseSingle() {
+    func test237_pluginResponseSingle() {
         let response = PluginResponse.single("hello".data(using: .utf8)!)
         XCTAssertEqual(response.finalPayload, "hello".data(using: .utf8)!)
         XCTAssertEqual(response.concatenated(), "hello".data(using: .utf8)!)
     }
 
     // TEST238: PluginResponse.single with empty payload returns empty data
-    func testPluginResponseSingleEmpty() {
+    func test238_pluginResponseSingleEmpty() {
         let response = PluginResponse.single(Data())
         XCTAssertEqual(response.finalPayload, Data())
         XCTAssertEqual(response.concatenated(), Data())
     }
 
     // TEST239: PluginResponse.streaming concatenated joins all chunk payloads in order
-    func testPluginResponseStreaming() {
+    func test239_pluginResponseStreaming() {
         let chunks = [
             ResponseChunk(payload: "hello".data(using: .utf8)!, seq: 0, offset: nil, len: nil, isEof: false),
             ResponseChunk(payload: " ".data(using: .utf8)!, seq: 1, offset: nil, len: nil, isEof: false),
@@ -968,7 +968,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST240: PluginResponse.streaming finalPayload returns the last chunk's payload
-    func testPluginResponseStreamingFinalPayload() {
+    func test240_pluginResponseStreamingFinalPayload() {
         let chunks = [
             ResponseChunk(payload: "first".data(using: .utf8)!, seq: 0, offset: nil, len: nil, isEof: false),
             ResponseChunk(payload: "last".data(using: .utf8)!, seq: 1, offset: nil, len: nil, isEof: true),
@@ -978,14 +978,14 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST241: PluginResponse.streaming with empty chunks vec returns empty concatenation
-    func testPluginResponseStreamingEmptyChunks() {
+    func test241_pluginResponseStreamingEmptyChunks() {
         let response = PluginResponse.streaming([])
         XCTAssertEqual(response.concatenated(), Data())
         XCTAssertNil(response.finalPayload)
     }
 
     // TEST242: PluginResponse.streaming concatenated with large payload
-    func testPluginResponseStreamingLargePayload() {
+    func test242_pluginResponseStreamingLargePayload() {
         let chunk1 = ResponseChunk(payload: Data(repeating: 0xAA, count: 1000), seq: 0, offset: nil, len: nil, isEof: false)
         let chunk2 = ResponseChunk(payload: Data(repeating: 0xBB, count: 2000), seq: 1, offset: nil, len: nil, isEof: true)
         let response = PluginResponse.streaming([chunk1, chunk2])
@@ -1000,7 +1000,7 @@ final class CborFrameTests: XCTestCase {
 
     // TEST243: PluginHostError variants display correct error messages
     @available(macOS 10.15.4, iOS 13.4, *)
-    func testPluginHostErrorDisplay() {
+    func test243_pluginHostErrorDisplay() {
         let errors: [(PluginHostError, String)] = [
             (.handshakeFailed("timeout"), "timeout"),
             (.pluginError(code: "NOT_FOUND", message: "Cap not found"), "NOT_FOUND"),
@@ -1018,7 +1018,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Stream Multiplexing Frame Tests (TEST365-368)
 
     // TEST365: Frame.stream_start stores reqId, streamId, and mediaUrn correctly
-    func testStreamStartFrame() {
+    func test365_streamStartFrame() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-abc-123"
         let mediaUrn = "media:bytes"
@@ -1031,7 +1031,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST366: Frame.stream_end stores reqId and streamId correctly
-    func testStreamEndFrame() {
+    func test366_streamEndFrame() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-xyz-789"
         let frame = Frame.streamEnd(reqId: reqId, streamId: streamId, chunkCount: 1)
@@ -1044,7 +1044,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST367: Frame.stream_start with empty streamId still constructs successfully
-    func testStreamStartWithEmptyStreamId() {
+    func test367_streamStartWithEmptyStreamId() {
         let reqId = MessageId.newUUID()
         let streamId = ""
         let mediaUrn = "media:text"
@@ -1056,7 +1056,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST368: Frame.stream_start with empty mediaUrn still constructs successfully
-    func testStreamStartWithEmptyMediaUrn() {
+    func test368_streamStartWithEmptyMediaUrn() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-empty-media"
         let mediaUrn = ""
@@ -1068,7 +1068,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST389: StreamStart encode/decode roundtrip preserves stream_id and media_urn
-    func testStreamStartRoundtrip() throws {
+    func test389_streamStartRoundtrip() throws {
         let id = MessageId.newUUID()
         let streamId = "stream-abc-123"
         let mediaUrn = "media:bytes"
@@ -1084,7 +1084,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST390: StreamEnd encode/decode roundtrip preserves stream_id, no media_urn
-    func testStreamEndRoundtrip() throws {
+    func test390_streamEndRoundtrip() throws {
         let id = MessageId.newUUID()
         let streamId = "stream-xyz-789"
 
@@ -1102,7 +1102,7 @@ final class CborFrameTests: XCTestCase {
     // MARK: - Relay Frame Tests (TEST399-403, TEST399a-400a)
 
     // TEST399: RelayNotify discriminant roundtrips through rawValue conversion (value 10)
-    func testRelayNotifyDiscriminantRoundtrip() {
+    func test399_relayNotifyDiscriminantRoundtrip() {
         let ft = FrameType.relayNotify
         XCTAssertEqual(ft.rawValue, 10, "RELAY_NOTIFY must be 10")
         let restored = FrameType(rawValue: 10)
@@ -1110,7 +1110,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST400: RelayState discriminant roundtrips through rawValue conversion (value 11)
-    func testRelayStateDiscriminantRoundtrip() {
+    func test400_relayStateDiscriminantRoundtrip() {
         let ft = FrameType.relayState
         XCTAssertEqual(ft.rawValue, 11, "RELAY_STATE must be 11")
         let restored = FrameType(rawValue: 11)
@@ -1118,7 +1118,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST401: relay_notify factory stores manifest and limits, accessors extract them correctly
-    func testRelayNotifyFactoryAndAccessors() {
+    func test401_relayNotifyFactoryAndAccessors() {
         let manifest = "{\"caps\":[\"cap:op=test\"]}".data(using: .utf8)!
         let limits = Limits(maxFrame: 2_000_000, maxChunk: 128_000, maxReorderBuffer: 64)
 
@@ -1144,7 +1144,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST402: relay_state factory stores resource payload in payload field
-    func testRelayStateFactoryAndPayload() {
+    func test402_relayStateFactoryAndPayload() {
         let resources = "{\"gpu_memory\":8192}".data(using: .utf8)!
 
         let frame = Frame.relayState(resources: resources)
@@ -1154,12 +1154,12 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST403: FrameType from value 12 is nil (one past RelayState)
-    func testFrameTypeOnePastRelayState() {
+    func test403_frameTypeOnePastRelayState() {
         XCTAssertNil(FrameType(rawValue: 12), "rawValue 12 must be nil (one past RelayState)")
     }
 
     // TEST399a: RelayNotify encode/decode roundtrip preserves manifest and limits
-    func testRelayNotifyRoundtrip() throws {
+    func test399a_relayNotifyRoundtrip() throws {
         let manifest = "{\"caps\":[\"cap:op=relay-test\"]}".data(using: .utf8)!
         let limits = Limits(maxFrame: 2_000_000, maxChunk: 128_000, maxReorderBuffer: 64)
 
@@ -1180,7 +1180,7 @@ final class CborFrameTests: XCTestCase {
     }
 
     // TEST400a: RelayState encode/decode roundtrip preserves resource payload
-    func testRelayStateRoundtrip() throws {
+    func test400a_relayStateRoundtrip() throws {
         let resources = "{\"gpu_memory\":8192,\"cpu_cores\":16}".data(using: .utf8)!
 
         let original = Frame.relayState(resources: resources)

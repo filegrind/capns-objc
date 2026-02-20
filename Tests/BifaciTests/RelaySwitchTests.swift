@@ -8,9 +8,9 @@ import CapNs
 @available(macOS 10.15.4, iOS 13.4, *)
 final class CborRelaySwitchTests: XCTestCase {
 
-    // Helper to send RelayNotify
-    private func sendNotify(writer: FrameWriter, manifestJSON: [String: Any], limits: Limits) throws {
-        let manifestBytes = try JSONSerialization.data(withJSONObject: manifestJSON)
+    // Helper to send RelayNotify (manifest is a JSON array of capability URN strings)
+    private func sendNotify(writer: FrameWriter, capabilities: [String], limits: Limits) throws {
+        let manifestBytes = try JSONSerialization.data(withJSONObject: capabilities)
         let notify = Frame.relayNotify(
             manifest: manifestBytes,
             limits: limits
@@ -18,8 +18,41 @@ final class CborRelaySwitchTests: XCTestCase {
         try writer.write(notify)
     }
 
+    // Helper to handle the identity verification protocol that RelaySwitch init performs.
+    // RelaySwitch sends: REQ + STREAM_START + CHUNK(nonce) + STREAM_END + END
+    // This helper reads those frames and echoes back: STREAM_START + CHUNK(nonce) + STREAM_END + END
+    private func handleIdentityVerification(reader: FrameReader, writer: FrameWriter) throws {
+        var nonce = Data()
+        var reqId: MessageId? = nil
+        let streamId = "identity-verify"
+        while true {
+            guard let frame = try reader.read() else { return }
+            switch frame.frameType {
+            case .req:
+                reqId = frame.id
+            case .streamStart:
+                break
+            case .chunk:
+                if let p = frame.payload { nonce.append(p) }
+            case .streamEnd:
+                break
+            case .end:
+                guard let id = reqId else { return }
+                // Echo nonce back: STREAM_START + CHUNK(nonce) + STREAM_END + END
+                try writer.write(Frame.streamStart(reqId: id, streamId: streamId, mediaUrn: "media:bytes"))
+                let checksum = Frame.computeChecksum(nonce)
+                try writer.write(Frame.chunk(reqId: id, streamId: streamId, seq: 0, payload: nonce, chunkIndex: 0, checksum: checksum))
+                try writer.write(Frame.streamEnd(reqId: id, streamId: streamId, chunkCount: 1))
+                try writer.write(Frame.end(id: id))
+                return
+            default:
+                return
+            }
+        }
+    }
+
     // TEST426: Single master REQ/response routing
-    func test_426_single_master_req_response() throws {
+    func test426_single_master_req_response() throws {
         // Create socket pairs for master-slave communication
         // engine_read <-> slave_write (one pair)
         // slave_read <-> engine_write (another pair)
@@ -28,18 +61,22 @@ final class CborRelaySwitchTests: XCTestCase {
 
         let done = DispatchSemaphore(value: 0)
 
-        // Spawn mock slave that sends RelayNotify then echoes frames
+        // Spawn mock slave that sends RelayNotify, handles identity verification, then echoes frames
         DispatchQueue.global().async {
             var reader = FrameReader(handle: pair2.read, limits: Limits())  // slave reads from pair2
             let writer = FrameWriter(handle: pair1.write, limits: Limits())  // slave writes to pair1
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done.signal()
 
-            // Read one REQ and send response
+            // Handle identity verification from RelaySwitch init
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
+
+            // Read one REQ and send response (must copy XID from REQ so RelaySwitch routes as response)
             if let frame = try? reader.read(), frame.frameType == .req {
-                let response = Frame.end(id: frame.id, finalPayload: Data([42]))
+                var response = Frame.end(id: frame.id, finalPayload: Data([42]))
+                response.routingId = frame.routingId
                 try! writer.write(response)
             }
         }
@@ -70,7 +107,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST427: Multi-master cap routing
-    func test_427_multi_master_cap_routing() throws {
+    func test427_multi_master_cap_routing() throws {
         // Create cross-connected socket pairs for two masters
         // Master 1: engine_read1 <-> slave_write1, slave_read1 <-> engine_write1
         let pair1_1 = FileHandle.socketPair()  // engine_read1, slave_write1
@@ -87,13 +124,16 @@ final class CborRelaySwitchTests: XCTestCase {
             var reader = FrameReader(handle: pair1_2.read, limits: Limits())  // slave1 reads from pair1_2
             let writer = FrameWriter(handle: pair1_1.write, limits: Limits())  // slave1 writes to pair1_1
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done1.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
 
             while let frame = try? reader.read() {
                 if frame.frameType == .req {
-                    let response = Frame.end(id: frame.id, finalPayload: Data([1]))
+                    var response = Frame.end(id: frame.id, finalPayload: Data([1]))
+                    response.routingId = frame.routingId
                     try! writer.write(response)
                 }
             }
@@ -104,13 +144,16 @@ final class CborRelaySwitchTests: XCTestCase {
             var reader = FrameReader(handle: pair2_2.read, limits: Limits())  // slave2 reads from pair2_2
             let writer = FrameWriter(handle: pair2_1.write, limits: Limits())  // slave2 writes to pair2_1
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=double;out=\"media:void\""]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:", "cap:in=\"media:void\";op=double;out=\"media:void\""]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done2.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
 
             while let frame = try? reader.read() {
                 if frame.frameType == .req {
-                    let response = Frame.end(id: frame.id, finalPayload: Data([2]))
+                    var response = Frame.end(id: frame.id, finalPayload: Data([2]))
+                    response.routingId = frame.routingId
                     try! writer.write(response)
                 }
             }
@@ -150,18 +193,21 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST428: Unknown cap returns error
-    func test_428_unknown_cap_returns_error() throws {
+    func test428_unknown_cap_returns_error() throws {
         let pair1 = FileHandle.socketPair()  // engine_read, slave_write
         let pair2 = FileHandle.socketPair()  // slave_read, engine_write
 
         let done = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2.read)  // slave reads from pair2
             let writer = FrameWriter(handle: pair1.write)  // slave writes to pair1
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
@@ -185,7 +231,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST429: Cap routing logic (find_master_for_cap)
-    func test_429_find_master_for_cap() throws {
+    func test429_find_master_for_cap() throws {
         // Create cross-connected socket pairs for two masters
         let pair1_1 = FileHandle.socketPair()  // engine_read1, slave_write1
         let pair1_2 = FileHandle.socketPair()  // slave_read1, engine_write1
@@ -196,17 +242,21 @@ final class CborRelaySwitchTests: XCTestCase {
         let done2 = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair1_2.read)  // slave1 reads from pair1_2
             let writer = FrameWriter(handle: pair1_1.write)  // slave1 writes to pair1_1
-            let manifest: [String: Any] = ["capabilities": ["cap:in=media:;out=media:"]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done1.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2_2.read)  // slave2 reads from pair2_2
             let writer = FrameWriter(handle: pair2_1.write)  // slave2 writes to pair2_1
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=double;out=\"media:void\""]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:", "cap:in=\"media:void\";op=double;out=\"media:void\""]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done2.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
@@ -217,14 +267,13 @@ final class CborRelaySwitchTests: XCTestCase {
             SocketPair(read: pair2_1.read, write: pair2_2.write),  // engine2 reads from pair2_1, writes to pair2_2
         ])
 
-        // Verify aggregate capabilities
-        let caps = try JSONSerialization.jsonObject(with: switch_.capabilities()) as! [String: Any]
-        let capList = caps["capabilities"] as! [String]
+        // Verify aggregate capabilities (returned as JSON array)
+        let capList = try JSONSerialization.jsonObject(with: switch_.capabilities()) as! [String]
         XCTAssertEqual(capList.count, 2)
     }
 
     // TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent)
-    func test_430_tie_breaking_same_cap_multiple_masters() throws {
+    func test430_tie_breaking_same_cap_multiple_masters() throws {
         // Create cross-connected socket pairs for two masters with the SAME cap
         let pair1_1 = FileHandle.socketPair()  // engine_read1, slave_write1
         let pair1_2 = FileHandle.socketPair()  // slave_read1, engine_write1
@@ -240,14 +289,17 @@ final class CborRelaySwitchTests: XCTestCase {
         DispatchQueue.global().async {
             var reader = FrameReader(handle: pair1_2.read)  // slave1 reads from pair1_2
             let writer = FrameWriter(handle: pair1_1.write)  // slave1 writes to pair1_1
-            let manifest: [String: Any] = ["capabilities": [sameCap]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = [sameCap]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done1.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
 
             // Echo with marker 1
             while let frame = try? reader.read() {
                 if frame.frameType == .req {
-                    let response = Frame.end(id: frame.id, finalPayload: Data([1]))
+                    var response = Frame.end(id: frame.id, finalPayload: Data([1]))
+                    response.routingId = frame.routingId
                     try! writer.write(response)
                 }
             }
@@ -257,14 +309,17 @@ final class CborRelaySwitchTests: XCTestCase {
         DispatchQueue.global().async {
             var reader = FrameReader(handle: pair2_2.read)  // slave2 reads from pair2_2
             let writer = FrameWriter(handle: pair2_1.write)  // slave2 writes to pair2_1
-            let manifest: [String: Any] = ["capabilities": [sameCap]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = [sameCap]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done2.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
 
             // Echo with marker 2 (should never be called if routing is consistent)
             while let frame = try? reader.read() {
                 if frame.frameType == .req {
-                    let response = Frame.end(id: frame.id, finalPayload: Data([2]))
+                    var response = Frame.end(id: frame.id, finalPayload: Data([2]))
+                    response.routingId = frame.routingId
                     try! writer.write(response)
                 }
             }
@@ -294,7 +349,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST431: Continuation frame routing (CHUNK, END follow REQ)
-    func test_431_continuation_frame_routing() throws {
+    func test431_continuation_frame_routing() throws {
         let pair1 = FileHandle.socketPair()  // engine_read, slave_write
         let pair2 = FileHandle.socketPair()  // slave_read, engine_write
 
@@ -304,9 +359,11 @@ final class CborRelaySwitchTests: XCTestCase {
             var reader = FrameReader(handle: pair2.read)
             let writer = FrameWriter(handle: pair1.write)
 
-            let manifest: [String: Any] = ["capabilities": ["cap:in=\"media:void\";op=test;out=\"media:void\""]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:", "cap:in=\"media:void\";op=test;out=\"media:void\""]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
 
             // Read REQ
             let req = try! reader.read()!
@@ -322,8 +379,9 @@ final class CborRelaySwitchTests: XCTestCase {
             XCTAssertEqual(end.frameType, .end)
             XCTAssertEqual(end.id.toString(), req.id.toString())
 
-            // Send response
-            let response = Frame.end(id: req.id, finalPayload: Data([42]))
+            // Send response (copy XID from REQ so RelaySwitch routes as response)
+            var response = Frame.end(id: req.id, finalPayload: Data([42]))
+            response.routingId = req.routingId
             try! writer.write(response)
         }
 
@@ -353,7 +411,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST432: Empty masters list returns error
-    func test_432_empty_masters_list_error() throws {
+    func test432_empty_masters_list_error() throws {
         XCTAssertThrowsError(try RelaySwitch(sockets: [])) { error in
             guard case RelaySwitchError.protocolError(let msg) = error else {
                 XCTFail("Expected protocolError")
@@ -364,7 +422,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST433: Capability aggregation deduplicates caps
-    func test_433_capability_aggregation_deduplicates() throws {
+    func test433_capability_aggregation_deduplicates() throws {
         // Create two masters with overlapping caps
         let pair1_1 = FileHandle.socketPair()  // engine_read1, slave_write1
         let pair1_2 = FileHandle.socketPair()  // slave_read1, engine_write1
@@ -375,27 +433,27 @@ final class CborRelaySwitchTests: XCTestCase {
         let done2 = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair1_2.read)  // slave1 reads from pair1_2
             let writer = FrameWriter(handle: pair1_1.write)
-            let manifest: [String: Any] = [
-                "capabilities": [
-                    "cap:in=media:;out=media:",
-                    "cap:in=\"media:void\";op=double;out=\"media:void\""
-                ]
+            let caps: [String] = [
+                "cap:in=media:;out=media:",
+                "cap:in=\"media:void\";op=double;out=\"media:void\""
             ]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done1.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2_2.read)  // slave2 reads from pair2_2
             let writer = FrameWriter(handle: pair2_1.write)
-            let manifest: [String: Any] = [
-                "capabilities": [
-                    "cap:in=media:;out=media:",  // Duplicate
-                    "cap:in=\"media:void\";op=triple;out=\"media:void\""
-                ]
+            let caps: [String] = [
+                "cap:in=media:;out=media:",  // Duplicate
+                "cap:in=\"media:void\";op=triple;out=\"media:void\""
             ]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done2.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
@@ -406,8 +464,7 @@ final class CborRelaySwitchTests: XCTestCase {
             SocketPair(read: pair2_1.read, write: pair2_2.write),
         ])
 
-        let caps = try JSONSerialization.jsonObject(with: switch_.capabilities()) as! [String: Any]
-        let capList = (caps["capabilities"] as! [String]).sorted()
+        let capList = (try JSONSerialization.jsonObject(with: switch_.capabilities()) as! [String]).sorted()
 
         // Should have 3 unique caps (echo appears twice but deduplicated)
         XCTAssertEqual(capList.count, 3)
@@ -417,7 +474,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST434: Limits negotiation takes minimum
-    func test_434_limits_negotiation_minimum() throws {
+    func test434_limits_negotiation_minimum() throws {
         let pair1_1 = FileHandle.socketPair()  // engine_read1, slave_write1
         let pair1_2 = FileHandle.socketPair()  // slave_read1, engine_write1
         let pair2_1 = FileHandle.socketPair()  // engine_read2, slave_write2
@@ -427,19 +484,23 @@ final class CborRelaySwitchTests: XCTestCase {
         let done2 = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair1_2.read)  // slave1 reads from pair1_2
             let writer = FrameWriter(handle: pair1_1.write)
-            let manifest: [String: Any] = ["capabilities": []]
+            let caps: [String] = ["cap:in=media:;out=media:"]
             let limits1 = Limits(maxFrame: 1_000_000, maxChunk: 100_000)
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: limits1)
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: limits1)
             done1.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2_2.read)  // slave2 reads from pair2_2
             let writer = FrameWriter(handle: pair2_1.write)
-            let manifest: [String: Any] = ["capabilities": []]
+            let caps: [String] = ["cap:in=media:;out=media:"]
             let limits2 = Limits(maxFrame: 2_000_000, maxChunk: 50_000)  // Larger frame, smaller chunk
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: limits2)
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: limits2)
             done2.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
@@ -456,7 +517,7 @@ final class CborRelaySwitchTests: XCTestCase {
     }
 
     // TEST435: URN matching (exact vs accepts())
-    func test_435_urn_matching_exact_and_accepts() throws {
+    func test435_urn_matching_exact_and_accepts() throws {
         let pair1 = FileHandle.socketPair()  // engine_read, slave_write
         let pair2 = FileHandle.socketPair()  // slave_read, engine_write
 
@@ -468,14 +529,17 @@ final class CborRelaySwitchTests: XCTestCase {
         DispatchQueue.global().async {
             var reader = FrameReader(handle: pair2.read)
             let writer = FrameWriter(handle: pair1.write)
-            let manifest: [String: Any] = ["capabilities": [registeredCap]]
-            try! self.sendNotify(writer: writer, manifestJSON: manifest, limits: Limits())
+            let caps: [String] = ["cap:in=media:;out=media:", registeredCap]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done.signal()
+
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
 
             // Respond to request
             while let frame = try? reader.read() {
                 if frame.frameType == .req {
-                    let response = Frame.end(id: frame.id, finalPayload: Data([42]))
+                    var response = Frame.end(id: frame.id, finalPayload: Data([42]))
+                    response.routingId = frame.routingId
                     try! writer.write(response)
                 }
             }

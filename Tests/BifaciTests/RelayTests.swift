@@ -16,7 +16,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST404: Slave sends RelayNotify on connect
 
     // TEST404: Slave sends RelayNotify on connect (initial_notify parameter)
-    func testSlaveSendsRelayNotifyOnConnect() throws {
+    func test404_slaveSendsRelayNotifyOnConnect() throws {
         let manifest = "{\"caps\":[\"cap:op=test\"]}".data(using: .utf8)!
         let limits = Limits()
 
@@ -47,7 +47,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST405: Master reads RelayNotify and extracts manifest + limits
 
     // TEST405: Master reads RelayNotify and extracts manifest + limits
-    func testMasterReadsRelayNotify() throws {
+    func test405_masterReadsRelayNotify() throws {
         let manifest = "{\"caps\":[\"cap:op=convert\"]}".data(using: .utf8)!
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 64_000)
 
@@ -73,7 +73,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST406: Slave stores RelayState from master
 
     // TEST406: Slave stores RelayState from master
-    func testSlaveStoresRelayState() throws {
+    func test406_slaveStoresRelayState() throws {
         let resources = "{\"memory_mb\":4096}".data(using: .utf8)!
 
         // Socket: master writes -> slave reads
@@ -101,7 +101,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST407: Protocol frames pass through transparently
 
     // TEST407: Protocol frames pass through slave transparently (both directions)
-    func testProtocolFramesPassThrough() throws {
+    func test407_protocolFramesPassThrough() throws {
         // Socket pair: master <-> slave
         let masterToSlave = createPipe()
         let slaveToMaster = createPipe()
@@ -160,7 +160,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST408: RelayNotify/RelayState are NOT forwarded
 
     // TEST408: RelayNotify/RelayState are NOT forwarded through relay
-    func testRelayFramesNotForwarded() throws {
+    func test408_relayFramesNotForwarded() throws {
         // Master sends RelayState then a normal REQ
         let socketPipe = createPipe()
         let localWritePipe = createPipe()
@@ -194,7 +194,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST409: Slave injects RelayNotify mid-stream
 
     // TEST409: Slave can inject RelayNotify mid-stream (cap change)
-    func testSlaveInjectsRelayNotifyMidstream() throws {
+    func test409_slaveInjectsRelayNotifyMidstream() throws {
         let socketPipe = createPipe()
         let socketWriter = FrameWriter(handle: socketPipe.write)
         let socketReader = FrameReader(handle: socketPipe.read)
@@ -232,7 +232,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST410: Master receives updated RelayNotify
 
     // TEST410: Master receives updated RelayNotify (cap change callback via readFrame)
-    func testMasterReceivesUpdatedRelayNotify() throws {
+    func test410_masterReceivesUpdatedRelayNotify() throws {
         let socketPipe = createPipe()
         let socketWriter = FrameWriter(handle: socketPipe.write)
         let socketReader = FrameReader(handle: socketPipe.read)
@@ -281,7 +281,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST411: Socket close detection
 
     // TEST411: Socket close detection (both directions)
-    func testSocketCloseDetection() throws {
+    func test411_socketCloseDetection() throws {
         // Master -> slave: master closes, slave detects
         let pipe1 = createPipe()
         pipe1.write.closeFile() // Close immediately
@@ -307,7 +307,7 @@ class CborRelayTests: XCTestCase {
     // MARK: - TEST412: Bidirectional concurrent frame flow
 
     // TEST412: Bidirectional concurrent frame flow through relay
-    func testBidirectionalConcurrentFlow() throws {
+    func test412_bidirectionalConcurrentFlow() throws {
         // Socket pair
         let masterToSlave = createPipe()
         let slaveToMaster = createPipe()

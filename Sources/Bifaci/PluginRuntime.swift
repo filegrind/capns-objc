@@ -2509,9 +2509,13 @@ public final class PluginRuntime: @unchecked Sendable {
 
         self.limits = negotiatedLimits
 
+        // Ensure CAP_IDENTITY is in the manifest caps list.
+        // Plugin binaries may not declare it — the runtime always handles it.
+        let manifest = ensureIdentityInManifest(manifestData)
+
         // Send our HELLO with negotiated limits AND manifest
         // The manifest is REQUIRED - this is the ONLY way to communicate plugin capabilities
-        let ourHello = Frame.helloWithManifest(limits: negotiatedLimits, manifest: manifestData)
+        let ourHello = Frame.helloWithManifest(limits: negotiatedLimits, manifest: manifest)
         do {
             try writer.write(ourHello)
         } catch {
@@ -2521,6 +2525,37 @@ public final class PluginRuntime: @unchecked Sendable {
         // Update reader/writer limits
         reader.setLimits(negotiatedLimits)
         writer.setLimits(negotiatedLimits)
+    }
+
+    /// Ensure CAP_IDENTITY is in the manifest's caps list.
+    /// If the manifest is valid JSON with a "caps" array and no identity cap,
+    /// injects one. Returns the (possibly modified) manifest data.
+    private func ensureIdentityInManifest(_ data: Data) -> Data {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var caps = json["caps"] as? [[String: Any]] else {
+            return data // Can't parse — return as-is, host will reject if invalid
+        }
+
+        // Check if identity is already declared
+        let hasIdentity = caps.contains { cap in
+            guard let urn = cap["urn"] as? String else { return false }
+            return urn == CSCapIdentity
+        }
+
+        if !hasIdentity {
+            // Inject identity cap entry
+            caps.insert([
+                "urn": CSCapIdentity,
+                "title": "Identity",
+                "command": "identity"
+            ], at: 0)
+            json["caps"] = caps
+            if let newData = try? JSONSerialization.data(withJSONObject: json) {
+                return newData
+            }
+        }
+
+        return data
     }
 
     // MARK: - Accessors

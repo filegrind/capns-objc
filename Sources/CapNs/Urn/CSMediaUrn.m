@@ -83,4 +83,77 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
     return [self.inner accepts:instance.inner error:error];
 }
 
+// MARK: - Predicates
+
+- (BOOL)isBinary {
+    return [self getTag:@"bytes"] != nil;
+}
+
+- (BOOL)isMap {
+    NSString *form = [self getTag:@"form"];
+    return form != nil && [form isEqualToString:@"map"];
+}
+
+- (BOOL)isScalar {
+    NSString *form = [self getTag:@"form"];
+    return form != nil && [form isEqualToString:@"scalar"];
+}
+
+- (BOOL)isList {
+    NSString *form = [self getTag:@"form"];
+    return form != nil && [form isEqualToString:@"list"];
+}
+
+- (BOOL)isStructured {
+    return [self isMap] || [self isList];
+}
+
+- (BOOL)isJson {
+    return [self getTag:@"json"] != nil;
+}
+
+- (BOOL)isText {
+    return [self getTag:@"textable"] != nil;
+}
+
+- (BOOL)isVoid {
+    return [self getTag:@"void"] != nil;
+}
+
+- (BOOL)isImage {
+    return [self getTag:@"image"] != nil;
+}
+
+- (BOOL)isAudio {
+    return [self getTag:@"audio"] != nil;
+}
+
+- (BOOL)isVideo {
+    return [self getTag:@"video"] != nil;
+}
+
+- (BOOL)isNumeric {
+    return [self getTag:@"numeric"] != nil;
+}
+
+- (BOOL)isBool {
+    return [self getTag:@"bool"] != nil;
+}
+
+- (BOOL)isFilePath {
+    return [self getTag:@"file-path"] != nil && ![self isList];
+}
+
+- (BOOL)isFilePathArray {
+    return [self getTag:@"file-path"] != nil && [self isList];
+}
+
+- (BOOL)isAnyFilePath {
+    return [self isFilePath] || [self isFilePathArray];
+}
+
+- (BOOL)isCollection {
+    return [self getTag:@"collection"] != nil;
+}
+
 @end

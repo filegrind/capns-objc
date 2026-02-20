@@ -111,7 +111,7 @@ final class PluginRuntimeTests: XCTestCase {
     // MARK: - Handler Registration Tests (TEST248-252, TEST270-271)
 
     // TEST248: Test register_op and find_handler by exact cap URN
-    func testRegisterAndFindHandler() {
+    func test248_registerAndFindHandler() {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
         runtime.register_op(capUrn: "cap:in=*;op=test;out=*") {
@@ -123,7 +123,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST249: Test register_op handler echoes bytes directly
-    func testRawHandler() throws {
+    func test249_rawHandler() throws {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
         runtime.register_op(capUrn: "cap:op=raw") { AnyOp(EchoAllBytesOp()) }
@@ -146,14 +146,14 @@ final class PluginRuntimeTests: XCTestCase {
     // TEST251: REMOVED - Typed handler API removed; handlers handle their own deserialization errors
 
     // TEST252: find_handler returns None for unregistered cap URNs
-    func testFindHandlerUnknownCap() {
+    func test252_findHandlerUnknownCap() {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
         XCTAssertNil(runtime.findHandler(capUrn: "cap:op=nonexistent"),
             "unregistered cap must return nil")
     }
 
     // TEST270: Test registering multiple Op handlers for different caps and finding each independently
-    func testMultipleHandlers() throws {
+    func test270_multipleHandlers() throws {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
         runtime.register_op(capUrn: "cap:op=alpha") { AnyOp(WriteFixedOp(data: Data("a".utf8))) }
@@ -184,7 +184,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST271: Test Op handler replacing an existing registration for the same cap URN
-    func testHandlerReplacement() throws {
+    func test271_handlerReplacement() throws {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
 
         runtime.register_op(capUrn: "cap:op=test") { AnyOp(WriteFixedOp(data: Data("first".utf8))) }
@@ -202,7 +202,7 @@ final class PluginRuntimeTests: XCTestCase {
     // MARK: - NoPeerInvoker Tests (TEST254-255)
 
     // TEST254: NoPeerInvoker always returns error regardless of arguments
-    func testNoPeerInvoker() {
+    func test254_noPeerInvoker() {
         let noPeer = NoPeerInvoker()
 
         XCTAssertThrowsError(try noPeer.call(capUrn: "cap:op=test")) { error in
@@ -217,7 +217,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST255: NoPeerInvoker returns error even with valid arguments
-    func testNoPeerInvokerWithArguments() {
+    func test255_noPeerInvokerWithArguments() {
         let noPeer = NoPeerInvoker()
 
         XCTAssertThrowsError(try noPeer.call(capUrn: "cap:op=test"),
@@ -227,21 +227,21 @@ final class PluginRuntimeTests: XCTestCase {
     // MARK: - Runtime Creation Tests (TEST256-258)
 
     // TEST256: PluginRuntime with manifest JSON stores manifest data and parses when valid
-    func testWithManifestJson() {
+    func test256_withManifestJson() {
         let runtime = PluginRuntime(manifestJSON: Self.testManifestJSON)
         XCTAssertFalse(runtime.manifestData.isEmpty, "manifestData must be populated")
         // Note: "cap:op=test" may or may not parse as valid Manifest depending on validation
     }
 
     // TEST257: PluginRuntime with invalid JSON still creates runtime
-    func testNewWithInvalidJson() {
+    func test257_newWithInvalidJson() {
         let runtime = PluginRuntime(manifest: "not json".data(using: .utf8)!)
         XCTAssertFalse(runtime.manifestData.isEmpty, "manifestData should store raw bytes")
         XCTAssertNil(runtime.parsedManifest, "invalid JSON should leave parsedManifest as nil")
     }
 
     // TEST258: PluginRuntime with valid manifest data creates runtime with parsed manifest
-    func testWithManifestStruct() {
+    func test258_withManifestStruct() {
         let runtime = PluginRuntime(manifest: Self.testManifestData)
         XCTAssertFalse(runtime.manifestData.isEmpty)
         // parsedManifest may or may not be nil depending on whether "cap:op=test" validates
@@ -251,21 +251,21 @@ final class PluginRuntimeTests: XCTestCase {
     // MARK: - Extract Effective Payload Tests (TEST259-265, TEST272-273)
 
     // TEST259: extract_effective_payload with non-CBOR content_type returns raw payload unchanged
-    func testExtractEffectivePayloadNonCbor() throws {
+    func test259_extractEffectivePayloadNonCbor() throws {
         let payload = "raw data".data(using: .utf8)!
         let result = try extractEffectivePayload(payload: payload, contentType: "application/json", capUrn: "cap:op=test")
         XCTAssertEqual(result, payload, "non-CBOR must return raw payload")
     }
 
     // TEST260: extract_effective_payload with None content_type returns raw payload unchanged
-    func testExtractEffectivePayloadNoContentType() throws {
+    func test260_extractEffectivePayloadNoContentType() throws {
         let payload = "raw data".data(using: .utf8)!
         let result = try extractEffectivePayload(payload: payload, contentType: nil, capUrn: "cap:op=test")
         XCTAssertEqual(result, payload)
     }
 
     // TEST261: extract_effective_payload with CBOR content extracts matching argument value
-    func testExtractEffectivePayloadCborMatch() throws {
+    func test261_extractEffectivePayloadCborMatch() throws {
         // Build CBOR: [{media_urn: "media:string;textable;form=scalar", value: bytes("hello")}]
         let cborArray: CBOR = .array([
             .map([
@@ -284,7 +284,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST262: extract_effective_payload with CBOR content fails when no argument matches
-    func testExtractEffectivePayloadCborNoMatch() {
+    func test262_extractEffectivePayloadCborNoMatch() {
         let cborArray: CBOR = .array([
             .map([
                 .utf8String("media_urn"): .utf8String("media:other-type"),
@@ -306,7 +306,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST263: extract_effective_payload with invalid CBOR bytes returns deserialization error
-    func testExtractEffectivePayloadInvalidCbor() {
+    func test263_extractEffectivePayloadInvalidCbor() {
         XCTAssertThrowsError(try extractEffectivePayload(
             payload: "not cbor".data(using: .utf8)!,
             contentType: "application/cbor",
@@ -315,7 +315,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST264: extract_effective_payload with CBOR non-array returns error
-    func testExtractEffectivePayloadCborNotArray() {
+    func test264_extractEffectivePayloadCborNotArray() {
         let cborMap: CBOR = .map([:])
         let payload = Data(cborMap.encode())
 
@@ -332,7 +332,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST265: extract_effective_payload with invalid cap URN returns CapUrn error
-    func testExtractEffectivePayloadInvalidCapUrn() {
+    func test265_extractEffectivePayloadInvalidCapUrn() {
         let cborArray: CBOR = .array([
             .map([
                 .utf8String("media_urn"): .utf8String("media:anything"),
@@ -356,7 +356,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST272: extract_effective_payload CBOR with multiple arguments selects the correct one
-    func testExtractEffectivePayloadMultipleArgs() throws {
+    func test272_extractEffectivePayloadMultipleArgs() throws {
         let cborArray: CBOR = .array([
             .map([
                 .utf8String("media_urn"): .utf8String("media:other-type;textable"),
@@ -378,7 +378,7 @@ final class PluginRuntimeTests: XCTestCase {
     }
 
     // TEST273: extract_effective_payload with binary data in CBOR value
-    func testExtractEffectivePayloadBinaryValue() throws {
+    func test273_extractEffectivePayloadBinaryValue() throws {
         var binaryData = [UInt8]()
         for i: UInt8 in 0...255 { binaryData.append(i) }
 
@@ -405,7 +405,7 @@ final class PluginRuntimeTests: XCTestCase {
     // MARK: - RuntimeError Display Tests (TEST268)
 
     // TEST268: RuntimeError variants display correct messages
-    func testRuntimeErrorDisplay() {
+    func test268_runtimeErrorDisplay() {
         let err1 = PluginRuntimeError.noHandler("cap:op=missing")
         XCTAssertTrue((err1.errorDescription ?? "").contains("cap:op=missing"))
 
@@ -434,7 +434,7 @@ final class PluginRuntimeTests: XCTestCase {
 final class CapArgumentValueTests: XCTestCase {
 
     // TEST274: CapArgumentValue stores media_urn and raw byte value
-    func testCapArgumentValueNew() {
+    func test274_capArgumentValueNew() {
         let arg = CapArgumentValue(
             mediaUrn: "media:model-spec;textable;form=scalar",
             value: "gpt-4".data(using: .utf8)!
@@ -444,39 +444,39 @@ final class CapArgumentValueTests: XCTestCase {
     }
 
     // TEST275: CapArgumentValue.fromString converts string to UTF-8 bytes
-    func testCapArgumentValueFromStr() {
+    func test275_capArgumentValueFromStr() {
         let arg = CapArgumentValue.fromString(mediaUrn: "media:string;textable", value: "hello world")
         XCTAssertEqual(arg.mediaUrn, "media:string;textable")
         XCTAssertEqual(arg.value, "hello world".data(using: .utf8)!)
     }
 
     // TEST276: CapArgumentValue.valueAsString succeeds for UTF-8 data
-    func testCapArgumentValueAsStrValid() throws {
+    func test276_capArgumentValueAsStrValid() throws {
         let arg = CapArgumentValue.fromString(mediaUrn: "media:string", value: "test")
         XCTAssertEqual(try arg.valueAsString(), "test")
     }
 
     // TEST277: CapArgumentValue.valueAsString fails for non-UTF-8 binary data
-    func testCapArgumentValueAsStrInvalidUtf8() {
+    func test277_capArgumentValueAsStrInvalidUtf8() {
         let arg = CapArgumentValue(mediaUrn: "media:pdf;bytes", value: Data([0xFF, 0xFE, 0x80]))
         XCTAssertThrowsError(try arg.valueAsString(), "non-UTF-8 data must fail")
     }
 
     // TEST278: CapArgumentValue with empty value stores empty Data
-    func testCapArgumentValueEmpty() throws {
+    func test278_capArgumentValueEmpty() throws {
         let arg = CapArgumentValue(mediaUrn: "media:void", value: Data())
         XCTAssertTrue(arg.value.isEmpty)
         XCTAssertEqual(try arg.valueAsString(), "")
     }
 
     // TEST282: CapArgumentValue.fromString with Unicode string preserves all characters
-    func testCapArgumentValueUnicode() throws {
+    func test282_capArgumentValueUnicode() throws {
         let arg = CapArgumentValue.fromString(mediaUrn: "media:string", value: "hello 世界 🌍")
         XCTAssertEqual(try arg.valueAsString(), "hello 世界 🌍")
     }
 
     // TEST283: CapArgumentValue with large binary payload preserves all bytes
-    func testCapArgumentValueLargeBinary() {
+    func test283_capArgumentValueLargeBinary() {
         var data = Data()
         for _ in 0..<40 {  // 40 * 256 = 10240 > 10000
             for i: UInt8 in 0...255 {

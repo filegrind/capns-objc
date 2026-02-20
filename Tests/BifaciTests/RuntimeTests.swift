@@ -146,7 +146,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Handshake Tests (TEST284, TEST290, TEST231-232)
 
     // TEST284: attachPlugin exchanges HELLO frames, negotiates limits, extracts manifest
-    func testAttachPluginHandshake() async throws {
+    func test284_attachPluginHandshake() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
@@ -174,7 +174,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST290: attachPlugin limit negotiation picks minimum of host and plugin values
-    func testAttachPluginLimitsNegotiation() async throws {
+    func test290_attachPluginLimitsNegotiation() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
@@ -199,7 +199,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST232: attachPlugin fails when plugin HELLO is missing required manifest
-    func testAttachPluginFailsOnMissingManifest() async throws {
+    func test232_attachPluginFailsOnMissingManifest() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
@@ -233,7 +233,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST231: attachPlugin fails when peer sends non-HELLO frame
-    func testAttachPluginFailsOnWrongFrameType() async throws {
+    func test231_attachPluginFailsOnWrongFrameType() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
@@ -268,7 +268,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Plugin Registration & Routing (TEST413-414, TEST425)
 
     // TEST413: registerPlugin adds to cap_table and findPluginForCap resolves it
-    func testRegisterPluginAddsToCaptable() {
+    func test413_registerPluginAddsToCaptable() {
         let host = PluginHost()
         host.registerPlugin(path: "/usr/bin/test", knownCaps: ["cap:op=convert"])
         XCTAssertNotNil(host.findPluginForCap("cap:op=convert"), "Registered cap must be found")
@@ -276,7 +276,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST414: capabilities returns empty initially
-    func testCapabilitiesEmptyInitially() {
+    func test414_capabilitiesEmptyInitially() {
         let host = PluginHost()
         // Capabilities are rebuilt from running plugins — no running plugins means empty
         let caps = host.capabilities
@@ -285,7 +285,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST425: findPluginForCap returns nil for unknown cap
-    func testFindPluginForCapUnknown() {
+    func test425_findPluginForCapUnknown() {
         let host = PluginHost()
         host.registerPlugin(path: "/test", knownCaps: ["cap:op=known"])
         XCTAssertNotNil(host.findPluginForCap("cap:op=known"))
@@ -295,7 +295,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Full Path Tests (TEST416-420, TEST426)
 
     // TEST416: attachPlugin extracts manifest and updates capabilities
-    func testAttachPluginUpdatesCaps() async throws {
+    func test416_attachPluginUpdatesCaps() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
 
@@ -324,7 +324,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST417 + TEST426: Full path - engine REQ -> relay -> host -> plugin -> response -> relay -> engine
-    func testFullPathRequestResponse() async throws {
+    func test417_fullPathRequestResponse() async throws {
         // Plugin pipes
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
@@ -398,7 +398,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST419: Plugin HEARTBEAT handled locally (not forwarded to relay)
-    func testHeartbeatHandledLocally() async throws {
+    func test419_heartbeatHandledLocally() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -473,7 +473,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST423: Multiple plugins registered with distinct caps route independently
-    func testMultiplePluginsRouteIndependently() async throws {
+    func test423_multiplePluginsRouteIndependently() async throws {
         // Plugin A
         let hostToPluginA = Pipe()
         let pluginAToHost = Pipe()
@@ -563,7 +563,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST432: REQ for unknown cap returns ERR (NoHandler)
-    func testReqForUnknownCapReturnsErr() async throws {
+    func test432_reqForUnknownCapReturnsErr() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -614,7 +614,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Handler Registration (TEST293)
 
     // TEST293: Test PluginRuntime Op registration and lookup by exact and non-existent cap URN
-    func testPluginRuntimeHandlerRegistration() throws {
+    func test293_pluginRuntimeHandlerRegistration() throws {
         let runtime = PluginRuntime(manifest: CborRuntimeTests.testManifestData)
 
         runtime.register_op_type(capUrn: "cap:in=media:;out=media:", make: EchoAllBytesOp.init)
@@ -628,7 +628,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Gap Tests (TEST415, TEST418, TEST420-422, TEST424)
 
     // TEST415: REQ for known cap triggers spawn (expect error for non-existent binary)
-    func testReqTriggersSpawnError() async throws {
+    func test415_reqTriggersSpawnError() async throws {
         let engineToHost = Pipe()
         let hostToEngine = Pipe()
 
@@ -658,7 +658,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST418: Route STREAM_START/CHUNK/STREAM_END/END by req_id
-    func testRouteContinuationByReqId() async throws {
+    func test418_routeContinuationByReqId() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -740,7 +740,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST420: Plugin non-HELLO/non-HB frames forwarded to relay
-    func testPluginFramesForwardedToRelay() async throws {
+    func test420_pluginFramesForwardedToRelay() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -810,7 +810,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST421: Plugin death updates capability list (removes dead plugin's caps)
-    func testPluginDeathUpdatesCaps() async throws {
+    func test421_pluginDeathUpdatesCaps() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -861,7 +861,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST422: Plugin death sends ERR for all pending requests
-    func testPluginDeathSendsErr() async throws {
+    func test422_pluginDeathSendsErr() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -924,7 +924,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     }
 
     // TEST424: Concurrent requests to same plugin handled independently
-    func testConcurrentRequestsSamePlugin() async throws {
+    func test424_concurrentRequestsSamePlugin() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()
@@ -1008,7 +1008,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
     // MARK: - Response Types (TEST316)
 
     // TEST316: concatenated() returns full payload while finalPayload returns only last chunk
-    func testConcatenatedVsFinalPayloadDivergence() {
+    func test316_concatenatedVsFinalPayloadDivergence() {
         let chunks = [
             ResponseChunk(payload: "AAAA".data(using: .utf8)!, seq: 0, offset: nil, len: nil, isEof: false),
             ResponseChunk(payload: "BBBB".data(using: .utf8)!, seq: 1, offset: nil, len: nil, isEof: false),

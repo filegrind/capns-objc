@@ -60,6 +60,76 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn accepts(&self, instance: &MediaUrn) -> Result<bool, MediaUrnError>
 - (BOOL)accepts:(CSMediaUrn *)instance error:(NSError **)error;
 
+// MARK: - Predicates (mirror Rust MediaUrn predicates)
+
+/// Check if this represents binary data (bytes marker tag present).
+/// Mirrors Rust: pub fn is_binary(&self) -> bool
+- (BOOL)isBinary;
+
+/// Check if this represents a map/object form (form=map).
+/// Mirrors Rust: pub fn is_map(&self) -> bool
+- (BOOL)isMap;
+
+/// Check if this represents a scalar form (form=scalar).
+/// Mirrors Rust: pub fn is_scalar(&self) -> bool
+- (BOOL)isScalar;
+
+/// Check if this represents a list form (form=list).
+/// Mirrors Rust: pub fn is_list(&self) -> bool
+- (BOOL)isList;
+
+/// Check if this represents structured data (map or list).
+/// Mirrors Rust: pub fn is_structured(&self) -> bool
+- (BOOL)isStructured;
+
+/// Check if this represents JSON data (json marker tag present).
+/// Mirrors Rust: pub fn is_json(&self) -> bool
+- (BOOL)isJson;
+
+/// Check if this represents text data (textable marker tag present).
+/// Mirrors Rust: pub fn is_text(&self) -> bool
+- (BOOL)isText;
+
+/// Check if this represents void (void marker tag present).
+/// Mirrors Rust: pub fn is_void(&self) -> bool
+- (BOOL)isVoid;
+
+/// Check if this represents image data (image marker tag present).
+/// Mirrors Rust: pub fn is_image(&self) -> bool
+- (BOOL)isImage;
+
+/// Check if this represents audio data (audio marker tag present).
+/// Mirrors Rust: pub fn is_audio(&self) -> bool
+- (BOOL)isAudio;
+
+/// Check if this represents video data (video marker tag present).
+/// Mirrors Rust: pub fn is_video(&self) -> bool
+- (BOOL)isVideo;
+
+/// Check if this represents numeric data (numeric marker tag present).
+/// Mirrors Rust: pub fn is_numeric(&self) -> bool
+- (BOOL)isNumeric;
+
+/// Check if this represents boolean data (bool marker tag present).
+/// Mirrors Rust: pub fn is_bool(&self) -> bool
+- (BOOL)isBool;
+
+/// Check if this represents a single file path (file-path marker AND NOT list).
+/// Mirrors Rust: pub fn is_file_path(&self) -> bool
+- (BOOL)isFilePath;
+
+/// Check if this represents a file path array (file-path marker AND list).
+/// Mirrors Rust: pub fn is_file_path_array(&self) -> bool
+- (BOOL)isFilePathArray;
+
+/// Check if this represents any file path type (single or array).
+/// Mirrors Rust: pub fn is_any_file_path(&self) -> bool
+- (BOOL)isAnyFilePath;
+
+/// Check if this represents a collection type (collection marker tag present).
+/// Mirrors Rust: pub fn is_collection(&self) -> bool
+- (BOOL)isCollection;
+
 @end
 
 NS_ASSUME_NONNULL_END
