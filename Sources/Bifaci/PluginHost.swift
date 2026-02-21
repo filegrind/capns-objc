@@ -566,12 +566,18 @@ public final class PluginHost: @unchecked Sendable {
 
             // Route by (XID, RID) to the mapped plugin
             stateLock.lock()
-            guard let pluginIdx = incomingRxids[key] else {
+            var pluginIdx = incomingRxids[key]
+            if pluginIdx == nil {
+                // Not an incoming engine request — check if it's a peer response.
+                // outgoingRids[RID] tracks which plugin made a peer request with this RID.
+                pluginIdx = outgoingRids[frame.id]
+            }
+            guard let resolvedIdx = pluginIdx else {
                 stateLock.unlock()
                 // Already cleaned up (e.g., plugin died, death handler sent ERR)
                 return
             }
-            let plugin = plugins[pluginIdx]
+            let plugin = plugins[resolvedIdx]
             stateLock.unlock()
 
             // If the plugin is dead, send ERR to engine with XID and clean up
@@ -594,7 +600,20 @@ public final class PluginHost: @unchecked Sendable {
             // We can't know when "all frames for (XID, RID) have arrived" without full stream tracking.
             // Accept the leak: entries cleaned up on plugin death.
 
-        case .hello, .heartbeat, .log:
+        case .log:
+            // LOG frames from peer responses — route back to the plugin that
+            // made the peer request. Identified by outgoingRids[RID].
+            stateLock.lock()
+            let pluginIdx = outgoingRids[frame.id]
+            stateLock.unlock()
+
+            if let idx = pluginIdx {
+                let plugin = plugins[idx]
+                let _ = plugin.writeFrame(frame)
+            }
+            // If not a peer response LOG, ignore silently (e.g., stale routing)
+
+        case .hello, .heartbeat:
             // These should never arrive from the engine through the relay
             fputs("[PluginHost] Protocol error: \(frame.frameType) from relay\n", stderr)
 
