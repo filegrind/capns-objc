@@ -81,6 +81,20 @@ public enum MessageId: Equatable, Hashable, Sendable {
     }
 }
 
+extension MessageId: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .uuid(let data):
+            if let uuid = UUID(data: data) {
+                return uuid.uuidString
+            }
+            return "<invalid-uuid>"
+        case .uint(let n):
+            return "\(n)"
+        }
+    }
+}
+
 /// Negotiated protocol limits
 public struct Limits: Sendable {
     /// Maximum frame size in bytes

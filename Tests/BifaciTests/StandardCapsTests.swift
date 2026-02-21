@@ -169,6 +169,7 @@ final class StandardCapsTests: XCTestCase {
     func test480_discardHandlerConsumesInput() throws {
         let manifest = """
         {"name":"Test","version":"1.0.0","description":"Test","caps":[
+            {"urn":"\(CSCapIdentity)","title":"Identity","command":"identity"},
             {"urn":"\(CSCapDiscard)","title":"Discard","command":"discard"}
         ]}
         """.data(using: .utf8)!

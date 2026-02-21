@@ -125,7 +125,7 @@ final class CborFrameTests: XCTestCase {
     // TEST181: Frame.helloWithManifest produces HELLO with manifest bytes for plugin side
     func test181_helloFrameWithManifest() {
         let manifestJSON = """
-        {"name":"TestPlugin","version":"1.0.0","description":"Test","caps":[]}
+        {"name":"TestPlugin","version":"1.0.0","description":"Test","caps":[{"urn":"cap:","title":"Identity","command":"identity"}]}
         """
         let manifestData = manifestJSON.data(using: .utf8)!
         let limits = Limits(maxFrame: 1_000_000, maxChunk: 100_000, maxReorderBuffer: 64)
@@ -433,7 +433,7 @@ final class CborFrameTests: XCTestCase {
     // TEST211: HELLO with manifest encode/decode roundtrip preserves manifest bytes
     func test211_helloWithManifestRoundtrip() throws {
         let manifestJSON = """
-        {"name":"TestPlugin","version":"1.0.0","description":"Test description","caps":[{"urn":"cap:op=test","title":"Test","command":"test"}]}
+        {"name":"TestPlugin","version":"1.0.0","description":"Test description","caps":[{"urn":"cap:","title":"Identity","command":"identity"},{"urn":"cap:op=test","title":"Test","command":"test"}]}
         """
         let manifestData = manifestJSON.data(using: .utf8)!
         let limits = Limits(maxFrame: 500_000, maxChunk: 50_000, maxReorderBuffer: 64)

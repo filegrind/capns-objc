@@ -499,11 +499,21 @@ final class CborFilePathConversionTests: XCTestCase {
 
     // Helper to create test manifest with caps
     private func createTestManifest(caps: [CapDefinition]) -> Data {
+        // Always append CAP_IDENTITY at the end - plugins must declare it
+        // (Appending instead of prepending to avoid breaking tests that reference caps[0])
+        var allCaps = caps
+        let identityCap = CapDefinition(
+            urn: "cap:",
+            title: "Identity",
+            command: "identity"
+        )
+        allCaps.append(identityCap)
+
         let manifest = Manifest(
             name: "TestPlugin",
             version: "1.0.0",
             description: "Test plugin",
-            caps: caps
+            caps: allCaps
         )
         return try! JSONEncoder().encode(manifest)
     }
