@@ -195,7 +195,7 @@ final class IdentityHandler: FrameHandler {
             case .end:
                 // Echo back as a single stream (raw bytes, no CBOR encode)
                 let streamId = "identity"
-                output.send(Frame.streamStart(reqId: MessageId.uint(0), streamId: streamId, mediaUrn: "media:bytes"))
+                output.send(Frame.streamStart(reqId: MessageId.uint(0), streamId: streamId, mediaUrn: "media:"))
 
                 let checksum = Frame.computeChecksum(data)
                 output.send(Frame.chunk(reqId: MessageId.uint(0), streamId: streamId, seq: 0, payload: data, chunkIndex: 0, checksum: checksum))

@@ -13,7 +13,7 @@ final class FlowOrderingTests: XCTestCase {
         let rid = MessageId.newUUID()
 
         var f0 = Frame.req(id: rid, capUrn: "cap:op=test;in=media:;out=media:", payload: Data(), contentType: "")
-        var f1 = Frame.streamStart(reqId: rid, streamId: "s1", mediaUrn: "media:bytes")
+        var f1 = Frame.streamStart(reqId: rid, streamId: "s1", mediaUrn: "media:")
         var f2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
         var f3 = Frame.end(id: rid, finalPayload: nil)
 

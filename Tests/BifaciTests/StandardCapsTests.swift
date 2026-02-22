@@ -119,7 +119,7 @@ final class StandardCapsTests: XCTestCase {
             return chunk
         }
 
-        let stream = Bifaci.InputStream(mediaUrn: "media:bytes", rx: chunkIterator)
+        let stream = Bifaci.InputStream(mediaUrn: "media:", rx: chunkIterator)
         let streams: [Result<Bifaci.InputStream, StreamError>] = [.success(stream)]
         var streamIndex = 0
         let streamIterator = AnyIterator<Result<Bifaci.InputStream, StreamError>> {
@@ -157,7 +157,7 @@ final class StandardCapsTests: XCTestCase {
                 }
             }
         }
-        let output = OutputStream(sender: mockSender, streamId: "test", mediaUrn: "media:bytes",
+        let output = OutputStream(sender: mockSender, streamId: "test", mediaUrn: "media:",
                                  requestId: .newUUID(), routingId: nil, maxChunk: 1000)
 
         // Execute Op handler via invokeOp (dispatchOp + NoPeerInvoker)
@@ -188,7 +188,7 @@ final class StandardCapsTests: XCTestCase {
             return chunk
         }
 
-        let stream = Bifaci.InputStream(mediaUrn: "media:bytes", rx: chunkIterator)
+        let stream = Bifaci.InputStream(mediaUrn: "media:", rx: chunkIterator)
         let streams: [Result<Bifaci.InputStream, StreamError>] = [.success(stream)]
         var streamIndex = 0
         let streamIterator = AnyIterator<Result<Bifaci.InputStream, StreamError>> {

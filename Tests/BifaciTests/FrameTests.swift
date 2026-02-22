@@ -911,7 +911,7 @@ final class CborFrameTests: XCTestCase {
             (Frame.log(id: .newUUID(), level: "info", message: "test log"), "LOG"),
             (Frame.err(id: .newUUID(), code: "ERROR", message: "test error"), "ERR"),
             (Frame.heartbeat(id: .newUUID()), "HEARTBEAT"),
-            (Frame.streamStart(reqId: .newUUID(), streamId: "stream-start-all", mediaUrn: "media:bytes"), "STREAM_START"),
+            (Frame.streamStart(reqId: .newUUID(), streamId: "stream-start-all", mediaUrn: "media:"), "STREAM_START"),
             (Frame.streamEnd(reqId: .newUUID(), streamId: "stream-end-all", chunkCount: 1), "STREAM_END"),
         ]
 
@@ -1034,7 +1034,7 @@ final class CborFrameTests: XCTestCase {
     func test365_streamStartFrame() {
         let reqId = MessageId.newUUID()
         let streamId = "stream-abc-123"
-        let mediaUrn = "media:bytes"
+        let mediaUrn = "media:"
         let frame = Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: mediaUrn)
 
         XCTAssertEqual(frame.frameType, .streamStart)
@@ -1084,7 +1084,7 @@ final class CborFrameTests: XCTestCase {
     func test389_streamStartRoundtrip() throws {
         let id = MessageId.newUUID()
         let streamId = "stream-abc-123"
-        let mediaUrn = "media:bytes"
+        let mediaUrn = "media:"
 
         let frame = Frame.streamStart(reqId: id, streamId: streamId, mediaUrn: mediaUrn)
         let encoded = try encodeFrame(frame)
@@ -1093,7 +1093,7 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(decoded.frameType, .streamStart)
         XCTAssertEqual(decoded.id, id)
         XCTAssertEqual(decoded.streamId, "stream-abc-123")
-        XCTAssertEqual(decoded.mediaUrn, "media:bytes")
+        XCTAssertEqual(decoded.mediaUrn, "media:")
     }
 
     // TEST390: StreamEnd encode/decode roundtrip preserves stream_id, no media_urn

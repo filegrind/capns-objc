@@ -161,7 +161,7 @@
 
 - (void)testCanonicalDictionaryDeserialization {
     // Test CSCap.capWithDictionary with new args format (stdin is part of arg sources)
-    NSString *stdinMediaType = @"media:pdf;bytes";
+    NSString *stdinMediaType = @"media:pdf";
     NSDictionary *capDict = @{
         @"urn": @"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata",
         @"title": @"Extract Metadata",
@@ -497,7 +497,7 @@
 }
 
 - (void)testCapManifestDictionaryDeserialization {
-    NSString *stdinMediaType = @"media:pdf;bytes";
+    NSString *stdinMediaType = @"media:pdf";
     NSDictionary *manifestDict = @{
         @"name": @"TestComponent",
         @"version": @"0.1.0",

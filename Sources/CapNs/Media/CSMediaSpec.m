@@ -25,22 +25,22 @@ NSString * const CSMediaIntegerArray = @"media:integer;textable;numeric;form=lis
 NSString * const CSMediaNumberArray = @"media:textable;numeric;form=list";
 NSString * const CSMediaBooleanArray = @"media:bool;textable;form=list";
 NSString * const CSMediaObjectArray = @"media:form=list;textable";
-NSString * const CSMediaBinary = @"media:bytes";
+NSString * const CSMediaBinary = @"media:";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
-NSString * const CSMediaPng = @"media:image;png;bytes";
-NSString * const CSMediaImage = @"media:image;png;bytes"; // alias for CSMediaPng
-NSString * const CSMediaAudio = @"media:wav;audio;bytes;";
-NSString * const CSMediaVideo = @"media:video;bytes";
+NSString * const CSMediaPng = @"media:image;png";
+NSString * const CSMediaImage = @"media:image;png"; // alias for CSMediaPng
+NSString * const CSMediaAudio = @"media:wav;audio";
+NSString * const CSMediaVideo = @"media:video";
 // Semantic AI input types
-NSString * const CSMediaAudioSpeech = @"media:audio;wav;bytes;speech";
-NSString * const CSMediaImageThumbnail = @"media:image;png;bytes;thumbnail";
+NSString * const CSMediaAudioSpeech = @"media:audio;wav;speech";
+NSString * const CSMediaImageThumbnail = @"media:image;png;thumbnail";
 // Collection types
 NSString * const CSMediaCollection = @"media:collection;form=map";
 NSString * const CSMediaCollectionList = @"media:collection;form=list";
 // Document types (PRIMARY naming - type IS the format)
-NSString * const CSMediaPdf = @"media:pdf;bytes";
-NSString * const CSMediaEpub = @"media:epub;bytes";
+NSString * const CSMediaPdf = @"media:pdf";
+NSString * const CSMediaEpub = @"media:epub";
 // Text format types (PRIMARY naming - type IS the format)
 NSString * const CSMediaMd = @"media:md;textable";
 NSString * const CSMediaTxt = @"media:txt;textable";
@@ -75,7 +75,6 @@ NSString * const CSMediaDocumentOutline = @"media:document-outline;textable;form
 NSString * const CSMediaDisboundPage = @"media:disbound-page;textable;form=list";
 NSString * const CSMediaCaptionOutput = @"media:image-caption;textable;form=map";
 NSString * const CSMediaTranscriptionOutput = @"media:transcription;textable;form=map";
-NSString * const CSMediaVisionInferenceOutput = @"media:vision-inference-output;textable;form=map";
 NSString * const CSMediaDecision = @"media:decision;bool;textable;form=scalar";
 NSString * const CSMediaDecisionArray = @"media:decision;bool;textable;form=list";
 
@@ -169,7 +168,7 @@ static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString
 /// Public function to check if a media URN represents binary data.
 /// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsBinary(NSString *mediaUrn) {
-    return CSMediaUrnHasTag(mediaUrn, @"bytes");
+    return !CSMediaUrnHasTag(mediaUrn, @"textable");
 }
 
 /// Public function to check if a media URN represents text data.
@@ -282,7 +281,7 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
 }
 
 - (BOOL)isBinary {
-    return CSMediaUrnHasTag(self.mediaUrn, @"bytes");
+    return !CSMediaUrnHasTag(self.mediaUrn, @"textable");
 }
 
 - (BOOL)isMap {

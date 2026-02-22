@@ -33,7 +33,7 @@ func collectFramePayloads(_ frames: AsyncStream<Frame>) async -> Data {
 
 /// Create a test frame stream with a single payload chunk
 @available(macOS 10.15.4, iOS 13.4, *)
-func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: String = "test", mediaUrn: String = "media:bytes", data: Data) -> AsyncStream<Frame> {
+func createSinglePayloadStream(requestId: MessageId = .newUUID(), streamId: String = "test", mediaUrn: String = "media:", data: Data) -> AsyncStream<Frame> {
     return AsyncStream<Frame> { continuation in
         continuation.yield(Frame.streamStart(reqId: requestId, streamId: streamId, mediaUrn: mediaUrn))
         let cborPayload = CBOR.byteString([UInt8](data)).encode()
@@ -384,7 +384,7 @@ final class PluginRuntimeTests: XCTestCase {
 
         let cborArray: CBOR = .array([
             .map([
-                .utf8String("media_urn"): .utf8String("media:pdf;bytes"),
+                .utf8String("media_urn"): .utf8String("media:pdf"),
                 .utf8String("value"): .byteString(binaryData)
             ])
         ])
@@ -393,7 +393,7 @@ final class PluginRuntimeTests: XCTestCase {
         let result = try extractEffectivePayload(
             payload: payload,
             contentType: "application/cbor",
-            capUrn: "cap:in=media:pdf;bytes;op=process;out=*"
+            capUrn: "cap:in=media:pdf;op=process;out=*"
         )
         XCTAssertEqual(result, Data(binaryData), "binary values must roundtrip through CBOR extraction")
     }
@@ -458,7 +458,7 @@ final class CapArgumentValueTests: XCTestCase {
 
     // TEST277: CapArgumentValue.valueAsString fails for non-UTF-8 binary data
     func test277_capArgumentValueAsStrInvalidUtf8() {
-        let arg = CapArgumentValue(mediaUrn: "media:pdf;bytes", value: Data([0xFF, 0xFE, 0x80]))
+        let arg = CapArgumentValue(mediaUrn: "media:pdf", value: Data([0xFF, 0xFE, 0x80]))
         XCTAssertThrowsError(try arg.valueAsString(), "non-UTF-8 data must fail")
     }
 
@@ -484,7 +484,7 @@ final class CapArgumentValueTests: XCTestCase {
             }
         }
         data = data.prefix(10000)  // trim to exactly 10000
-        let arg = CapArgumentValue(mediaUrn: "media:pdf;bytes", value: data)
+        let arg = CapArgumentValue(mediaUrn: "media:pdf", value: data)
         XCTAssertEqual(arg.value.count, 10000)
         XCTAssertEqual(arg.value, data)
     }
@@ -556,14 +556,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("PDF binary content 336".utf8).write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"",
             title: "Process PDF",
             command: "process",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes"),
+                    .stdin("media:pdf"),
                     .positional(0)
                 ]
             )]
@@ -573,7 +573,7 @@ final class CborFilePathConversionTests: XCTestCase {
         let runtime = PluginRuntime(manifest: manifest)
 
         // Register Op handler that echoes payload
-        runtime.register_op(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"") {
+        runtime.register_op(capUrn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"") {
             AnyOp(EchoAllBytesOp())
         }
 
@@ -592,7 +592,7 @@ final class CborFilePathConversionTests: XCTestCase {
         let collector = OutputCollector()
         let output = createCollectingOutputStream(collector: collector)
 
-        let inputStream = createSinglePayloadStream(mediaUrn: "media:pdf;bytes", data: payload)
+        let inputStream = createSinglePayloadStream(mediaUrn: "media:pdf", data: payload)
 
         try invokeOp(factory, input: streamToInputPackage(inputStream), output: output)
 
@@ -645,14 +645,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("PDF via flag 338".utf8).write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes"),
+                    .stdin("media:pdf"),
                     .cliFlag("--file")
                 ]
             )]
@@ -670,7 +670,7 @@ final class CborFilePathConversionTests: XCTestCase {
         let factory = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
         let collector = OutputCollector()
         let output = createCollectingOutputStream(collector: collector)
-        let inputStream = createSinglePayloadStream(mediaUrn: "media:pdf;bytes", data: payload)
+        let inputStream = createSinglePayloadStream(mediaUrn: "media:pdf", data: payload)
         try invokeOp(factory, input: streamToInputPackage(inputStream), output: output)
 
         XCTAssertEqual(collector.getData(), Data("PDF via flag 338".utf8), "Should read file from --file flag")
@@ -689,14 +689,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("content2".utf8).write(to: file2)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Batch",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -746,14 +746,14 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST340: File not found error provides clear message
     func test340_file_not_found_clear_error() throws {
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes"),
+                    .stdin("media:pdf"),
                     .positional(0)
                 ]
             )]
@@ -779,14 +779,14 @@ final class CborFilePathConversionTests: XCTestCase {
 
         // Stdin source comes BEFORE position source
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),  // First
+                    .stdin("media:"),  // First
                     .positional(0)          // Second
                 ]
             )]
@@ -818,14 +818,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("binary data 342".utf8).write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -878,14 +878,14 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST344: file-path-array with invalid JSON fails clearly
     func test344_file_path_array_invalid_json_fails() {
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -912,14 +912,14 @@ final class CborFilePathConversionTests: XCTestCase {
         let file2Path = tempDir.appendingPathComponent("test345_missing.txt")
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -956,14 +956,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try largeData.write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -989,14 +989,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data().write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1022,7 +1022,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
         // Position source BEFORE stdin source
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
@@ -1030,7 +1030,7 @@ final class CborFilePathConversionTests: XCTestCase {
                 required: true,
                 sources: [
                     .positional(0),         // First
-                    .stdin("media:bytes")   // Second
+                    .stdin("media:")   // Second
                 ]
             )]
         )
@@ -1055,7 +1055,7 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("content 349".utf8).write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
@@ -1064,7 +1064,7 @@ final class CborFilePathConversionTests: XCTestCase {
                 sources: [
                     .cliFlag("--file"),     // First (not provided)
                     .positional(0),         // Second (provided)
-                    .stdin("media:bytes")   // Third (not used)
+                    .stdin("media:")   // Third (not used)
                 ]
             )]
         )
@@ -1090,14 +1090,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try testContent.write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:result;textable\"",
             title: "Process PDF",
             command: "process",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes"),
+                    .stdin("media:pdf"),
                     .positional(0)
                 ]
             )]
@@ -1114,7 +1114,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
         // Register Op handler that captures received bytes and writes processed output
         let captureRef = capture
-        runtime.register_op(capUrn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:result;textable\"") {
+        runtime.register_op(capUrn: "cap:in=\"media:pdf\";op=process;out=\"media:result;textable\"") {
             final class CaptureAndWriteOp: Op, @unchecked Sendable {
                 typealias Output = Void
                 let capture: PayloadCapture
@@ -1136,7 +1136,7 @@ final class CborFilePathConversionTests: XCTestCase {
         let rawPayload = try runtime.buildPayloadFromCli(cap: cap, cliArgs: cliArgs)
 
         // Create InputPackage directly from CBOR payload (don't extract - let the test helper handle it)
-        let inputPackage = createInputPackage(fromPayload: rawPayload, mediaUrn: "media:pdf;bytes")
+        let inputPackage = createInputPackage(fromPayload: rawPayload, mediaUrn: "media:pdf")
 
         // Create output collector
         let outputCollector = OutputCollector()
@@ -1155,14 +1155,14 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST351: file-path-array with empty array succeeds
     func test351_file_path_array_empty_array() throws {
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: false,  // Not required
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1200,14 +1200,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: testFile.path)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1296,14 +1296,14 @@ final class CborFilePathConversionTests: XCTestCase {
         let tempDir = FileManager.default.temporaryDirectory
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1347,14 +1347,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("content1".utf8).write(to: file1)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1406,14 +1406,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try Data("json".utf8).write(to: file2)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1472,14 +1472,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: linkFile, withDestinationURL: realFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1508,14 +1508,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try binaryData.write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1536,14 +1536,14 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST359: Invalid glob pattern fails with clear error
     func test359_invalid_glob_pattern_fails() {
         let cap = createCap(
-            urn: "cap:in=\"media:bytes\";op=batch;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=batch;out=\"media:void\"",
             title: "Test",
             command: "batch",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=list",
                 required: true,
                 sources: [
-                    .stdin("media:bytes"),
+                    .stdin("media:"),
                     .positional(0)
                 ]
             )]
@@ -1577,14 +1577,14 @@ final class CborFilePathConversionTests: XCTestCase {
         try pdfContent.write(to: testFile)
 
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes"),
+                    .stdin("media:pdf"),
                     .positional(0)
                 ]
             )]
@@ -1614,7 +1614,7 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST395: Small payload (< max_chunk) produces correct CBOR arguments
     func test395_build_payload_small() throws {
         let cap = CapDefinition(
-            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: []
@@ -1652,7 +1652,7 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST396: Large payload (> max_chunk) accumulates across chunks correctly
     func test396_build_payload_large() throws {
         let cap = CapDefinition(
-            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: []
@@ -1682,7 +1682,7 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST397: Empty reader produces valid empty CBOR arguments
     func test397_build_payload_empty() throws {
         let cap = CapDefinition(
-            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: []
@@ -1740,7 +1740,7 @@ final class CborFilePathConversionTests: XCTestCase {
     // TEST398: IO error from reader propagates as error
     func test398_build_payload_io_error() {
         let cap = CapDefinition(
-            urn: "cap:in=\"media:bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: []
@@ -1767,14 +1767,14 @@ final class CborFilePathConversionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: testFile) }
 
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: [createArg(
                 mediaUrn: "media:file-path;textable;form=scalar",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes"),
+                    .stdin("media:pdf"),
                     .positional(0)
                 ]
             )]
@@ -1810,14 +1810,14 @@ final class CborFilePathConversionTests: XCTestCase {
 
         // Create cap that accepts stdin
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:pdf;bytes",
+                mediaUrn: "media:pdf",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes")
+                    .stdin("media:pdf")
                 ]
             )]
         )
@@ -1867,7 +1867,7 @@ final class CborFilePathConversionTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(mediaUrn, "media:pdf;bytes", "Media URN should match cap in_spec")
+        XCTAssertEqual(mediaUrn, "media:pdf", "Media URN should match cap in_spec")
         XCTAssertEqual(value, pdfContent, "Binary content should be preserved exactly")
     }
 
@@ -1881,14 +1881,14 @@ final class CborFilePathConversionTests: XCTestCase {
         let resultHolder = ResultHolder()
 
         let cap = createCap(
-            urn: "cap:in=\"media:pdf;bytes\";op=process;out=\"media:void\"",
+            urn: "cap:in=\"media:pdf\";op=process;out=\"media:void\"",
             title: "Process",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:pdf;bytes",
+                mediaUrn: "media:pdf",
                 required: true,
                 sources: [
-                    .stdin("media:pdf;bytes")
+                    .stdin("media:pdf")
                 ]
             )]
         )
@@ -1916,7 +1916,7 @@ final class CborFilePathConversionTests: XCTestCase {
         }
 
         // Build CBOR payload
-        let args = [CapArgumentValue(mediaUrn: "media:pdf;bytes", value: pdfContent)]
+        let args = [CapArgumentValue(mediaUrn: "media:pdf", value: pdfContent)]
         let cborArgs: [CBOR] = args.map { arg in
             CBOR.map([
                 CBOR.utf8String("media_urn"): CBOR.utf8String(arg.mediaUrn),
@@ -1926,11 +1926,11 @@ final class CborFilePathConversionTests: XCTestCase {
         let payloadBytes = Data(CBOR.array(cborArgs).encode())
 
         // Create InputPackage from payload
-        let inputPackage = createInputPackage(fromPayload: payloadBytes, mediaUrn: "media:pdf;bytes")
+        let inputPackage = createInputPackage(fromPayload: payloadBytes, mediaUrn: "media:pdf")
 
         // Create output collector
         let outputCollector = OutputCollector()
-        let outputStream = createCollectingOutputStream(collector: outputCollector, mediaUrn: "media:pdf;bytes")
+        let outputStream = createCollectingOutputStream(collector: outputCollector, mediaUrn: "media:pdf")
 
         // Execute Op handler
         let factory = try XCTUnwrap(runtime.findHandler(capUrn: cap.urn))
@@ -2033,7 +2033,7 @@ private final class OutputCollector: @unchecked Sendable {
 }
 
 /// Creates an OutputStream that collects emitted data into a buffer
-private func createCollectingOutputStream(collector: OutputCollector, mediaUrn: String = "media:bytes") -> Bifaci.OutputStream {
+private func createCollectingOutputStream(collector: OutputCollector, mediaUrn: String = "media:") -> Bifaci.OutputStream {
     let mockSender = MockFrameSender { frame in
         if frame.frameType == .chunk, let payload = frame.payload {
             if let cbor = try? CBOR.decode([UInt8](payload)), case .byteString(let bytes) = cbor {

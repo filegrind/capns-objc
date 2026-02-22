@@ -45,22 +45,22 @@ FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer;textabl
 FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:textable;numeric;form=list
 FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:bool;textable;form=list
 FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:form=list;textable
-FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:bytes
+FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
-FOUNDATION_EXPORT NSString * const CSMediaPng;          // media:image;png;bytes
-FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:image;png;bytes (alias for CSMediaPng)
-FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio;bytes;
-FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video;bytes
+FOUNDATION_EXPORT NSString * const CSMediaPng;          // media:image;png
+FOUNDATION_EXPORT NSString * const CSMediaImage;        // media:image;png (alias for CSMediaPng)
+FOUNDATION_EXPORT NSString * const CSMediaAudio;        // media:wav;audio
+FOUNDATION_EXPORT NSString * const CSMediaVideo;        // media:video
 // Semantic AI input types
-FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;bytes;speech
-FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;bytes;thumbnail
+FOUNDATION_EXPORT NSString * const CSMediaAudioSpeech;           // media:audio;wav;speech
+FOUNDATION_EXPORT NSString * const CSMediaImageThumbnail;        // media:image;png;thumbnail
 // Collection types
 FOUNDATION_EXPORT NSString * const CSMediaCollection;            // media:collection;form=map
 FOUNDATION_EXPORT NSString * const CSMediaCollectionList;        // media:collection;form=list
 // Document types (PRIMARY naming - type IS the format)
-FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf;bytes
-FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub;bytes
+FOUNDATION_EXPORT NSString * const CSMediaPdf;          // media:pdf
+FOUNDATION_EXPORT NSString * const CSMediaEpub;         // media:epub
 // Text format types (PRIMARY naming - type IS the format)
 FOUNDATION_EXPORT NSString * const CSMediaMd;           // media:md;textable
 FOUNDATION_EXPORT NSString * const CSMediaTxt;          // media:txt;textable
@@ -95,7 +95,6 @@ FOUNDATION_EXPORT NSString * const CSMediaDocumentOutline; // media:document-out
 FOUNDATION_EXPORT NSString * const CSMediaDisboundPage;    // media:disbound-page;textable;form=list
 FOUNDATION_EXPORT NSString * const CSMediaCaptionOutput;   // media:image-caption;textable;form=map
 FOUNDATION_EXPORT NSString * const CSMediaTranscriptionOutput; // media:transcription;textable;form=map
-FOUNDATION_EXPORT NSString * const CSMediaVisionInferenceOutput; // media:vision-inference-output;textable;form=map
 FOUNDATION_EXPORT NSString * const CSMediaDecision;        // media:decision;bool;textable;form=scalar
 FOUNDATION_EXPORT NSString * const CSMediaDecisionArray;   // media:decision;bool;textable;form=list
 
@@ -138,7 +137,7 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
  */
 @interface CSMediaSpec : NSObject
 
-/// The media URN identifier (e.g., "media:pdf;bytes")
+/// The media URN identifier (e.g., "media:pdf")
 @property (nonatomic, readonly, nullable) NSString *mediaUrn;
 
 /// The MIME content type (e.g., "application/json", "image/png")
@@ -207,7 +206,7 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
 
 /**
  * Check if this media spec represents binary output
- * @return YES if bytes marker tag is present
+ * @return YES if textable marker tag is absent
  */
 - (BOOL)isBinary;
 
@@ -303,10 +302,10 @@ BOOL CSValidateNoMediaSpecDuplicates(NSArray<NSDictionary *> * _Nullable mediaSp
                                      NSError * _Nullable * _Nullable error);
 
 /**
- * Check if a media URN represents binary data by checking for 'bytes' tag.
+ * Check if a media URN represents binary data by checking absence of 'textable' tag.
  * This is a pure syntax check - no resolution required.
  * @param mediaUrn The media URN to check (must be non-empty)
- * @return YES if the media URN has the 'bytes' marker tag
+ * @return YES if the media URN does not have the 'textable' marker tag
  */
 BOOL CSMediaUrnIsBinary(NSString *mediaUrn);
 

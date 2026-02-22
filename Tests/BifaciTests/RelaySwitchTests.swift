@@ -39,7 +39,7 @@ final class CborRelaySwitchTests: XCTestCase {
             case .end:
                 guard let id = reqId else { return }
                 // Echo nonce back: STREAM_START + CHUNK(nonce) + STREAM_END + END
-                try writer.write(Frame.streamStart(reqId: id, streamId: streamId, mediaUrn: "media:bytes"))
+                try writer.write(Frame.streamStart(reqId: id, streamId: streamId, mediaUrn: "media:"))
                 let checksum = Frame.computeChecksum(nonce)
                 try writer.write(Frame.chunk(reqId: id, streamId: streamId, seq: 0, payload: nonce, chunkIndex: 0, checksum: checksum))
                 try writer.write(Frame.streamEnd(reqId: id, streamId: streamId, chunkCount: 1))

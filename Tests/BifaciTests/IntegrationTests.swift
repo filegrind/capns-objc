@@ -156,7 +156,7 @@ final class CborIntegrationTests: XCTestCase {
                 let requestId = frame.id
 
                 let sid = "response"
-                try writer.write(Frame.streamStart(reqId: requestId, streamId: sid, mediaUrn: "media:bytes"))
+                try writer.write(Frame.streamStart(reqId: requestId, streamId: sid, mediaUrn: "media:"))
                 let chunks = [Data("chunk1".utf8), Data("chunk2".utf8), Data("chunk3".utf8)]
                 for (idx, data) in chunks.enumerated() {
                     let checksum = Frame.computeChecksum(data)

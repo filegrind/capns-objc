@@ -134,7 +134,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         reqId: MessageId,
         payload: Data,
         streamId: String = "response-stream",
-        mediaUrn: String = "media:bytes"
+        mediaUrn: String = "media:"
     ) throws {
         try writer.write(Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: mediaUrn))
         let checksum = Frame.computeChecksum(payload)
@@ -371,7 +371,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
         // Send argument stream
         let sid = "arg-0"
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:"))
         let payload1 = "request-data".data(using: .utf8)!
         let checksum1 = Frame.computeChecksum(payload1)
         try engineWriter.write(Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: payload1, chunkIndex: 0, checksum: checksum1))
@@ -446,7 +446,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
         let sid = "arg-0"
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:"))
         let emptyPayload = Data()
         let emptyChecksum = Frame.computeChecksum(emptyPayload)
         try engineWriter.write(Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: emptyChecksum))
@@ -525,7 +525,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         // Send REQ for alpha
         let alphaId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: alphaId, capUrn: "cap:op=alpha", payload: Data(), contentType: "application/cbor"))
-        try engineWriter.write(Frame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:"))
         try Self.writeChunk(writer: engineWriter, reqId: alphaId, streamId: "a0", seq: 0, payload: Data(), chunkIndex: 0)
         try Self.writeStreamEnd(writer: engineWriter, reqId: alphaId, streamId: "a0", chunkCount: 1)
         try engineWriter.write(Frame.end(id: alphaId, finalPayload: nil))
@@ -533,7 +533,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         // Send REQ for beta
         let betaId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: betaId, capUrn: "cap:op=beta", payload: Data(), contentType: "application/cbor"))
-        try engineWriter.write(Frame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:"))
         let betaPayload = Data()
         try engineWriter.write(Frame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: betaPayload, chunkIndex: 0, checksum: Frame.computeChecksum(betaPayload)))
         try engineWriter.write(Frame.streamEnd(reqId: betaId, streamId: "b0", chunkCount: 1))
@@ -718,7 +718,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=cont", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:"))
         let chunkPayload = "payload-data".data(using: .utf8)!
         try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload)))
         try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "arg-0", chunkCount: 1))
@@ -759,7 +759,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
             // Send diverse frame types back
             try pluginWriter.write(Frame.log(id: reqId, level: "info", message: "processing"))
-            try pluginWriter.write(Frame.streamStart(reqId: reqId, streamId: "output", mediaUrn: "media:bytes"))
+            try pluginWriter.write(Frame.streamStart(reqId: reqId, streamId: "output", mediaUrn: "media:"))
             let payload = "data".data(using: .utf8)!
             try pluginWriter.write(Frame.chunk(reqId: reqId, streamId: "output", seq: 0, payload: payload, chunkIndex: 0, checksum: Frame.computeChecksum(payload)))
             try pluginWriter.write(Frame.streamEnd(reqId: reqId, streamId: "output", chunkCount: 1))
@@ -784,7 +784,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=fwd", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:"))
         let emptyPayload = Data()
         try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: Frame.computeChecksum(emptyPayload)))
         try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1))
@@ -898,7 +898,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
         let reqId = MessageId.newUUID()
         try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=die", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:"))
         let chunkPayload = "hello".data(using: .utf8)!
         try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload)))
         try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1))
@@ -970,14 +970,14 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
         // Send both requests
         try engineWriter.write(Frame.req(id: id0, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:"))
         let payload0 = Data()
         try engineWriter.write(Frame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: payload0, chunkIndex: 0, checksum: Frame.computeChecksum(payload0)))
         try engineWriter.write(Frame.streamEnd(reqId: id0, streamId: "a0", chunkCount: 1))
         try engineWriter.write(Frame.end(id: id0, finalPayload: nil))
 
         try engineWriter.write(Frame.req(id: id1, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:bytes"))
+        try engineWriter.write(Frame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:"))
         let payload1 = Data()
         try engineWriter.write(Frame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: payload1, chunkIndex: 0, checksum: Frame.computeChecksum(payload1)))
         try engineWriter.write(Frame.streamEnd(reqId: id1, streamId: "a1", chunkCount: 1))

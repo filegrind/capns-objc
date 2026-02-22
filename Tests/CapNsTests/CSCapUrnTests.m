@@ -202,7 +202,7 @@ static NSString* testUrn(NSString *tags) {
     // Different inSpec should not match
     CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(cap1);
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:bytes;op=test;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:;op=test;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertFalse([cap1 accepts:cap2]);
 
@@ -321,7 +321,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertFalse([cap1 accepts:cap4]);
 
     // Different direction specs: neither accepts the other
-    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:bytes;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:form=map;textable\"" error:&error];
     XCTAssertFalse([cap1 accepts:cap5]);
     XCTAssertFalse([cap5 accepts:cap1]);
 }
@@ -382,9 +382,9 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWithOutSpec {
     NSError *error;
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
-    CSCapUrn *modified = [original withOutSpec:@"media:bytes"];
+    CSCapUrn *modified = [original withOutSpec:@"media:"];
 
-    XCTAssertEqualObjects([modified getOutSpec], @"media:bytes");
+    XCTAssertEqualObjects([modified getOutSpec], @"media:");
     XCTAssertEqualObjects([original getOutSpec], @"media:form=map;textable"); // Original unchanged
 }
 
@@ -455,12 +455,12 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMerge {
     NSError *error;
     CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:void;op=generate;out=\"media:form=map;textable\"" error:&error];
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:string;out=media:bytes;output=binary" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:string;out=media:;output=binary" error:&error];
     CSCapUrn *merged = [cap1 merge:cap2];
 
     // Direction comes from cap2 (other takes precedence)
     XCTAssertEqualObjects([merged getInSpec], @"media:string");
-    XCTAssertEqualObjects([merged getOutSpec], @"media:bytes");
+    XCTAssertEqualObjects([merged getOutSpec], @"media:");
     // Tags are merged
     XCTAssertEqualObjects([merged getTag:@"op"], @"generate");
     XCTAssertEqualObjects([merged getTag:@"ext"], @"pdf");
@@ -903,7 +903,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(cap);
 
-    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:bytes;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:form=map;textable\"" error:&error];
     XCTAssertNotNil(request);
 
     XCTAssertFalse([cap accepts:request], @"Test 10: Direction mismatch should prevent match");
@@ -913,67 +913,67 @@ static NSString* testUrn(NSString *tags) {
 - (void)testDirectionSemanticMatching {
     NSError *error = nil;
 
-    // A cap accepting media:bytes (generic) should match a request with media:pdf;bytes (specific)
-    CSCapUrn *genericCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    // A cap accepting media: (generic) should match a request with media:pdf (specific)
+    CSCapUrn *genericCap = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(genericCap, @"Failed to parse generic cap: %@", error);
-    CSCapUrn *pdfRequest = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *pdfRequest = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(pdfRequest, @"Failed to parse pdf request: %@", error);
     XCTAssertTrue([genericCap accepts:pdfRequest],
-        @"Generic bytes provider must match specific pdf;bytes request");
+        @"Generic provider must match specific pdf request");
 
-    // Generic cap also matches epub;bytes (any bytes subtype)
-    CSCapUrn *epubRequest = [CSCapUrn fromString:@"cap:in=\"media:epub;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    // Generic cap also matches epub (any subtype)
+    CSCapUrn *epubRequest = [CSCapUrn fromString:@"cap:in=\"media:epub\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(epubRequest, @"Failed to parse epub request: %@", error);
     XCTAssertTrue([genericCap accepts:epubRequest],
-        @"Generic bytes provider must match epub;bytes request");
+        @"Generic provider must match epub request");
 
     // Reverse: specific cap does NOT match generic request
-    CSCapUrn *pdfCap = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *pdfCap = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(pdfCap, @"Failed to parse pdf cap: %@", error);
-    CSCapUrn *genericRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *genericRequest = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(genericRequest, @"Failed to parse generic request: %@", error);
     XCTAssertFalse([pdfCap accepts:genericRequest],
-        @"Specific pdf;bytes cap must NOT match generic bytes request");
+        @"Specific pdf cap must NOT match generic request");
 
     // Incompatible types: pdf cap does NOT match epub request
     XCTAssertFalse([pdfCap accepts:epubRequest],
         @"PDF-specific cap must NOT match epub request (epub lacks pdf marker)");
 
     // Output direction: cap producing more specific output matches less specific request
-    CSCapUrn *specificOutCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *specificOutCap = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(specificOutCap);
-    CSCapUrn *genericOutRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;bytes\"" error:&error];
+    CSCapUrn *genericOutRequest = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image\"" error:&error];
     XCTAssertNotNil(genericOutRequest);
     XCTAssertTrue([specificOutCap accepts:genericOutRequest],
-        @"Cap producing image;png;bytes;thumbnail must satisfy request for image;bytes");
+        @"Cap producing image;png;thumbnail must satisfy request for image");
 
     // Reverse output: generic output cap does NOT match specific output request
-    CSCapUrn *genericOutCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;bytes\"" error:&error];
+    CSCapUrn *genericOutCap = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image\"" error:&error];
     XCTAssertNotNil(genericOutCap);
-    CSCapUrn *specificOutRequest = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *specificOutRequest = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(specificOutRequest);
     XCTAssertFalse([genericOutCap accepts:specificOutRequest],
-        @"Cap producing generic image;bytes must NOT satisfy request requiring image;png;bytes;thumbnail");
+        @"Cap producing generic image must NOT satisfy request requiring image;png;thumbnail");
 }
 
 // TEST052: Semantic direction specificity - more media URN tags = higher specificity
 - (void)testDirectionSemanticSpecificity {
     NSError *error = nil;
 
-    CSCapUrn *genericCap = [CSCapUrn fromString:@"cap:in=\"media:bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *genericCap = [CSCapUrn fromString:@"cap:in=\"media:\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(genericCap, @"Failed to parse generic cap: %@", error);
-    CSCapUrn *specificCap = [CSCapUrn fromString:@"cap:in=\"media:pdf;bytes\";op=generate_thumbnail;out=\"media:image;png;bytes;thumbnail\"" error:&error];
+    CSCapUrn *specificCap = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=generate_thumbnail;out=\"media:image;png;thumbnail\"" error:&error];
     XCTAssertNotNil(specificCap, @"Failed to parse specific cap: %@", error);
 
-    // generic: bytes(1) + image;png;bytes;thumbnail(4) + op(1) = 6
-    XCTAssertEqual([genericCap specificity], 6,
-        @"Generic cap specificity: bytes(1) + image;png;bytes;thumbnail(4) + op(1)");
-    // specific: pdf;bytes(2) + image;png;bytes;thumbnail(4) + op(1) = 7
-    XCTAssertEqual([specificCap specificity], 7,
-        @"Specific cap specificity: pdf;bytes(2) + image;png;bytes;thumbnail(4) + op(1)");
+    // generic: (0) + image;png;thumbnail(3) + op(1) = 4
+    XCTAssertEqual([genericCap specificity], 4,
+        @"Generic cap specificity: (0) + image;png;thumbnail(3) + op(1)");
+    // specific: pdf(1) + image;png;thumbnail(3) + op(1) = 5
+    XCTAssertEqual([specificCap specificity], 5,
+        @"Specific cap specificity: pdf(1) + image;png;thumbnail(3) + op(1)");
 
     XCTAssertGreaterThan([specificCap specificity], [genericCap specificity],
-        @"pdf;bytes cap must be more specific than bytes cap");
+        @"pdf cap must be more specific than generic cap");
 }
 
 // TEST_WILDCARD_001: cap: (empty) defaults to in=media:;out=media:
@@ -1023,12 +1023,12 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getOutSpec], @"media:");
 }
 
-// TEST_WILDCARD_006: cap:in=media:bytes;out=* has specific in, wildcard out
+// TEST_WILDCARD_006: cap:in=media:;out=* has specific in, wildcard out
 - (void)testWildcard006SpecificInWildcardOut {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:bytes;out=*" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:;out=*" error:&error];
     XCTAssertNotNil(cap);
-    XCTAssertEqualObjects([cap getInSpec], @"media:bytes");
+    XCTAssertEqualObjects([cap getInSpec], @"media:");
     XCTAssertEqualObjects([cap getOutSpec], @"media:");
 }
 
@@ -1050,10 +1050,10 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidInSpec);
 }
 
-// TEST_WILDCARD_009: cap:in=media:bytes;out=bar fails (invalid media URN)
+// TEST_WILDCARD_009: cap:in=media:;out=bar fails (invalid media URN)
 - (void)testWildcard009InvalidOutSpecFails {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:bytes;out=bar" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:;out=bar" error:&error];
     XCTAssertNil(cap, @"Invalid out spec should fail");
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidOutSpec);
@@ -1063,7 +1063,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWildcard010WildcardAcceptsSpecific {
     NSError *error = nil;
     CSCapUrn *wildcard = [CSCapUrn fromString:@"cap:" error:&error];
-    CSCapUrn *specific = [CSCapUrn fromString:@"cap:in=media:bytes;out=media:text" error:&error];
+    CSCapUrn *specific = [CSCapUrn fromString:@"cap:in=media:;out=media:text" error:&error];
     
     XCTAssertTrue([wildcard accepts:specific], @"Wildcard should accept specific cap");
     XCTAssertTrue([specific conformsTo:wildcard], @"Specific should conform to wildcard");
@@ -1073,7 +1073,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWildcard011SpecificityScoring {
     NSError *error = nil;
     CSCapUrn *wildcard = [CSCapUrn fromString:@"cap:" error:&error];
-    CSCapUrn *specific = [CSCapUrn fromString:@"cap:in=media:bytes;out=media:text" error:&error];
+    CSCapUrn *specific = [CSCapUrn fromString:@"cap:in=media:;out=media:text" error:&error];
     
     XCTAssertEqual([wildcard specificity], 0, @"Wildcard should have 0 specificity");
     XCTAssertGreaterThan([specific specificity], 0, @"Specific cap should have non-zero specificity");

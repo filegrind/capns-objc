@@ -67,7 +67,7 @@ final class InProcessPluginHostTests: XCTestCase {
                 do {
                     let args = try await accumulateInput(inputStream: inputStream)
                     let data = args.flatMap { $0.value }
-                    output.emitResponse(mediaUrn: "media:bytes", data: Data(data))
+                    output.emitResponse(mediaUrn: "media:", data: Data(data))
                 } catch {
                     output.emitError(code: "ACCUMULATE_ERROR", message: error.localizedDescription)
                 }
@@ -106,7 +106,7 @@ final class InProcessPluginHostTests: XCTestCase {
                         break
                     }
                 }
-                output.emitResponse(mediaUrn: "media:text;bytes", data: tag.data(using: .utf8)!)
+                output.emitResponse(mediaUrn: "media:text", data: tag.data(using: .utf8)!)
             }
         }
     }
@@ -114,7 +114,7 @@ final class InProcessPluginHostTests: XCTestCase {
     // MARK: - TEST654: InProcessPluginHost routes REQ to matching handler and returns response
 
     func test654_routesReqToHandler() throws {
-        let capUrn = "cap:in=\"media:text;bytes\";op=echo;out=\"media:text;bytes\""
+        let capUrn = "cap:in=\"media:text\";op=echo;out=\"media:text\""
         let cap = makeTestCap(capUrn)
         let handlers: [(name: String, caps: [CSCap], handler: FrameHandler)] = [
             ("echo", [cap], EchoHandler())
@@ -148,7 +148,7 @@ final class InProcessPluginHostTests: XCTestCase {
         req.routingId = MessageId.uint(1)
         try! writer.write(req)
 
-        let ss = Frame.streamStart(reqId: rid, streamId: "arg0", mediaUrn: "media:text;bytes")
+        let ss = Frame.streamStart(reqId: rid, streamId: "arg0", mediaUrn: "media:text")
         try! writer.write(ss)
 
         let payload = cborBytesPayload("hello world".data(using: .utf8)!)
@@ -213,7 +213,7 @@ final class InProcessPluginHostTests: XCTestCase {
 
         // Send nonce via stream (raw bytes, NOT CBOR-encoded for identity)
         let nonce = identityNonce()
-        let ss = Frame.streamStart(reqId: rid, streamId: "identity-verify", mediaUrn: "media:bytes")
+        let ss = Frame.streamStart(reqId: rid, streamId: "identity-verify", mediaUrn: "media:")
         try! writer.write(ss)
 
         let checksum = Frame.computeChecksum(nonce)
@@ -267,7 +267,7 @@ final class InProcessPluginHostTests: XCTestCase {
         let rid = MessageId.newUuid()
         var req = Frame.req(
             id: rid,
-            capUrn: "cap:in=\"media:pdf;bytes\";op=unknown;out=\"media:text;bytes\"",
+            capUrn: "cap:in=\"media:pdf\";op=unknown;out=\"media:text\"",
             args: [],
             contentType: "application/cbor"
         )
@@ -288,7 +288,7 @@ final class InProcessPluginHostTests: XCTestCase {
     // MARK: - TEST657: InProcessPluginHost manifest includes identity cap and handler caps
 
     func test657_manifestIncludesAllCaps() throws {
-        let capUrn = "cap:in=\"media:pdf;bytes\";op=thumbnail;out=\"media:image;png;bytes\""
+        let capUrn = "cap:in=\"media:pdf\";op=thumbnail;out=\"media:image;png\""
         let cap = makeTestCap(capUrn)
         let host = InProcessPluginHost(handlers: [
             ("thumb", [cap], EchoHandler())
@@ -379,8 +379,8 @@ final class InProcessPluginHostTests: XCTestCase {
     // MARK: - TEST660: InProcessPluginHost closest-specificity routing prefers specific over generic
 
     func test660_closestSpecificityRouting() throws {
-        let specificUrn = "cap:in=\"media:pdf;bytes\";op=thumbnail;out=\"media:image;png;bytes\""
-        let genericUrn = "cap:in=\"media:image;bytes\";op=thumbnail;out=\"media:image;png;bytes\""
+        let specificUrn = "cap:in=\"media:pdf\";op=thumbnail;out=\"media:image;png\""
+        let genericUrn = "cap:in=\"media:image\";op=thumbnail;out=\"media:image;png\""
 
         let specificCap = makeTestCap(specificUrn)
         let genericCap = makeTestCap(genericUrn)
@@ -406,7 +406,7 @@ final class InProcessPluginHostTests: XCTestCase {
         // Skip RelayNotify
         _ = try! reader.read()
 
-        // Request with specific input (media:pdf;bytes) — should route to "specific" handler
+        // Request with specific input (media:pdf) — should route to "specific" handler
         let rid = MessageId.newUuid()
         var req = Frame.req(id: rid, capUrn: specificUrn, args: [], contentType: "application/cbor")
         req.routingId = MessageId.uint(1)

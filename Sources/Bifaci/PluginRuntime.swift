@@ -538,7 +538,7 @@ public final class BlockingQueue<T>: @unchecked Sendable {
 private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) throws -> InputStream {
     // Create a channel for decoded CBOR values
     var chunks: [Result<CBOR, StreamError>] = []
-    var mediaUrn = "media:bytes" // Default, updated by STREAM_START
+    var mediaUrn = "media:" // Default, updated by STREAM_START
 
     // Drain the response channel and decode CHUNKs
     for frame in responseRx {
@@ -615,7 +615,7 @@ private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) th
 internal func demuxMultiStream(frameIterator: AnyIterator<Frame>) -> InputPackage {
     // Track per-stream state
     class StreamState {
-        var mediaUrn: String = "media:bytes"
+        var mediaUrn: String = "media:"
         var chunks: [Result<CBOR, StreamError>] = []
         var ended = false
     }
@@ -1780,7 +1780,7 @@ public final class PluginRuntime: @unchecked Sendable {
         let outputStream = OutputStream(
             sender: cliSender,
             streamId: "cli-output",
-            mediaUrn: "media:bytes", // CLI outputs raw bytes
+            mediaUrn: "media:", // CLI outputs raw bytes
             requestId: requestId,
             routingId: nil,
             maxChunk: DEFAULT_MAX_CHUNK

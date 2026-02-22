@@ -68,7 +68,7 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 
 // MARK: - Predicates (mirror Rust MediaUrn predicates)
 
-/// Check if this represents binary data (bytes marker tag present).
+/// Check if this represents binary data (textable marker tag absent).
 /// Mirrors Rust: pub fn is_binary(&self) -> bool
 - (BOOL)isBinary;
 

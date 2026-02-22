@@ -111,7 +111,7 @@
     // Create a media spec definition with extensions array
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"media:pdf;bytes",
+            @"urn": @"media:pdf",
             @"media_type": @"application/pdf",
             @"profile_uri": @"https://capns.org/schema/pdf",
             @"title": @"PDF Document",
@@ -121,7 +121,7 @@
     ];
 
     NSError *error = nil;
-    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:pdf;bytes", mediaSpecs, &error);
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:pdf", mediaSpecs, &error);
 
     XCTAssertNil(error, @"Should not have error");
     XCTAssertNotNil(resolved, @"Should resolve successfully");
@@ -185,7 +185,7 @@
     // Test multiple extensions in a media spec
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"media:image;jpeg;bytes",
+            @"urn": @"media:image;jpeg",
             @"media_type": @"image/jpeg",
             @"profile_uri": @"https://capns.org/schema/jpeg",
             @"title": @"JPEG Image",
@@ -195,7 +195,7 @@
     ];
 
     NSError *error = nil;
-    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:image;jpeg;bytes", mediaSpecs, &error);
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:image;jpeg", mediaSpecs, &error);
 
     XCTAssertNil(error, @"Should not have error");
     XCTAssertNotNil(resolved, @"Should resolve successfully");

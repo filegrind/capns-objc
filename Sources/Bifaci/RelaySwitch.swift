@@ -219,7 +219,7 @@ public final class RelaySwitch: @unchecked Sendable {
             seqAssigner.assign(&req)
             try socketWriter.write(req)
 
-            var ss = Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: "media:bytes")
+            var ss = Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: "media:")
             ss.routingId = xid
             seqAssigner.assign(&ss)
             try socketWriter.write(ss)

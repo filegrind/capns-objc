@@ -95,7 +95,7 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
 // MARK: - Predicates
 
 - (BOOL)isBinary {
-    return [self getTag:@"bytes"] != nil;
+    return [self getTag:@"textable"] == nil;
 }
 
 - (BOOL)isMap {

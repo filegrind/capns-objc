@@ -54,7 +54,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     [builder inSpec:@"media:string"];
-    [builder outSpec:@"media:bytes"];
+    [builder outSpec:@"media:"];
     [builder tag:@"op" value:@"process"];
     CSCapUrn *cap = [builder build:&error];
 
@@ -62,9 +62,9 @@
     XCTAssertNil(error);
 
     XCTAssertEqualObjects([cap getInSpec], @"media:string");
-    XCTAssertEqualObjects([cap getOutSpec], @"media:bytes");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:");
     XCTAssertEqualObjects([cap getTag:@"in"], @"media:string");
-    XCTAssertEqualObjects([cap getTag:@"out"], @"media:bytes");
+    XCTAssertEqualObjects([cap getTag:@"out"], @"media:");
 }
 
 - (void)testBuilderCustomTags {
@@ -173,8 +173,8 @@
 - (void)testBuilderComplex {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [builder inSpec:@"media:bytes"];
-    [builder outSpec:@"media:bytes"];
+    [builder inSpec:@"media:"];
+    [builder outSpec:@"media:"];
     [builder tag:@"type" value:@"media"];
     [builder tag:@"op" value:@"transcode"];
     [builder tag:@"target" value:@"video"];
@@ -189,7 +189,7 @@
     XCTAssertNil(error);
 
     // Alphabetical order: codec, format, framerate, in, op, out, output, quality, target, type
-    NSString *expected = @"cap:codec=h264;format=mp4;framerate=30fps;in=media:bytes;op=transcode;out=media:bytes;output=binary;quality=1080p;target=video;type=media";
+    NSString *expected = @"cap:codec=h264;format=mp4;framerate=30fps;in=media:;op=transcode;out=media:;output=binary;quality=1080p;target=video;type=media";
     XCTAssertEqualObjects([cap toString], expected);
 
     XCTAssertEqualObjects([cap getTag:@"type"], @"media");
@@ -294,7 +294,7 @@
     CSCapUrn *cap1 = [builder1 build:&error];
 
     CSCapUrnBuilder *builder2 = [CSCapUrnBuilder builder];
-    [builder2 inSpec:@"media:bytes"]; // Different inSpec
+    [builder2 inSpec:@"media:"]; // Different inSpec
     [builder2 outSpec:@"media:form=map;textable"];
     [builder2 tag:@"op" value:@"process"];
     CSCapUrn *cap2 = [builder2 build:&error];
