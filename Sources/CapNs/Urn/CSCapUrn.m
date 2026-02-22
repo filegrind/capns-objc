@@ -125,7 +125,7 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
     }
 
     // Check for "cap:" prefix early to give better error messages
-    if (string.length < 4 || ![[string substringToIndex:4] caseInsensitiveCompare:@"cap:"] == NSOrderedSame) {
+    if (string.length < 4 || [[string substringToIndex:4] caseInsensitiveCompare:@"cap:"] != NSOrderedSame) {
         if (error) {
             *error = [NSError errorWithDomain:CSCapUrnErrorDomain
                                          code:CSCapUrnErrorMissingCapPrefix
