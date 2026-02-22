@@ -463,14 +463,22 @@ final class FlowOrderingTests: XCTestCase {
         // Write plugin's HELLO with manifest to a pipe
         let pipe1 = Pipe()
         let pluginHello = Frame.helloWithManifest(limits: pluginLimits, manifest: manifestData)
-        try writeFrame(pluginHello, to: pipe1.fileHandleForWriting, limits: pluginLimits)
+        var buffer1 = Data()
+        try writeFrame(pluginHello, to: pipe1.fileHandleForWriting, limits: pluginLimits, buffer: &buffer1)
+        if !buffer1.isEmpty {
+            try pipe1.fileHandleForWriting.write(contentsOf: buffer1)
+        }
         pipe1.fileHandleForWriting.closeFile()
 
         // Write host's HELLO to a pipe (default: max_reorder_buffer=64)
         let pipe2 = Pipe()
         let hostLimits = Limits() // Default has max_reorder_buffer=64
         let hostHello = Frame.hello(limits: hostLimits)
-        try writeFrame(hostHello, to: pipe2.fileHandleForWriting, limits: hostLimits)
+        var buffer2 = Data()
+        try writeFrame(hostHello, to: pipe2.fileHandleForWriting, limits: hostLimits, buffer: &buffer2)
+        if !buffer2.isEmpty {
+            try pipe2.fileHandleForWriting.write(contentsOf: buffer2)
+        }
         pipe2.fileHandleForWriting.closeFile()
 
         // Host reads plugin's HELLO

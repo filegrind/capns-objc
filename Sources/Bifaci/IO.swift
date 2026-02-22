@@ -293,10 +293,22 @@ public func writeFrame(_ frame: Frame, to handle: FileHandle, limits: Limits, bu
     buffer.append(lengthBytes)
     buffer.append(data)
 
-    // Flush after every frame (matching Rust's flush() behavior)
-    // The buffer batches the 4-byte length prefix + frame data into one write() syscall
-    // This eliminates the overhead of two separate write calls per frame
-    try handle.write(contentsOf: buffer)
+    // Use POSIX write() directly to bypass FileHandle buffering
+    // FileHandle.write() may internally buffer data, causing frames to not reach
+    // the pipe reader immediately. POSIX write() is unbuffered and writes directly
+    // to the file descriptor, ensuring data reaches the reader without delay.
+    let fd = handle.fileDescriptor
+    try buffer.withUnsafeBytes { rawBuffer in
+        guard let baseAddress = rawBuffer.baseAddress else { return }
+        var totalWritten = 0
+        while totalWritten < buffer.count {
+            let result = Darwin.write(fd, baseAddress.advanced(by: totalWritten), buffer.count - totalWritten)
+            if result < 0 {
+                throw FrameError.ioError("write failed: \(String(cString: strerror(errno)))")
+            }
+            totalWritten += result
+        }
+    }
     buffer.removeAll(keepingCapacity: true)
 }
 
@@ -380,6 +392,25 @@ public class FrameWriter: @unchecked Sendable {
         self.limits = limits
     }
 
+    /// Destructor: flush any remaining buffered data before object is destroyed
+    deinit {
+        lock.lock()
+        defer { lock.unlock() }
+        if !buffer.isEmpty {
+            // Use POSIX write() directly to ensure data reaches pipe
+            let fd = handle.fileDescriptor
+            buffer.withUnsafeBytes { rawBuffer in
+                guard let baseAddress = rawBuffer.baseAddress else { return }
+                var totalWritten = 0
+                while totalWritten < buffer.count {
+                    let result = Darwin.write(fd, baseAddress.advanced(by: totalWritten), buffer.count - totalWritten)
+                    if result <= 0 { break }
+                    totalWritten += result
+                }
+            }
+        }
+    }
+
     /// Update limits (after handshake)
     public func setLimits(_ limits: Limits) {
         lock.lock()
@@ -406,7 +437,19 @@ public class FrameWriter: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if !buffer.isEmpty {
-            try handle.write(contentsOf: buffer)
+            // Use POSIX write() directly to ensure data reaches pipe
+            let fd = handle.fileDescriptor
+            try buffer.withUnsafeBytes { rawBuffer in
+                guard let baseAddress = rawBuffer.baseAddress else { return }
+                var totalWritten = 0
+                while totalWritten < buffer.count {
+                    let result = Darwin.write(fd, baseAddress.advanced(by: totalWritten), buffer.count - totalWritten)
+                    if result < 0 {
+                        throw FrameError.ioError("write failed: \(String(cString: strerror(errno)))")
+                    }
+                    totalWritten += result
+                }
+            }
             buffer.removeAll(keepingCapacity: true)
         }
     }

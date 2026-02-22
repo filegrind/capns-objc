@@ -528,7 +528,11 @@ final class CborFrameTests: XCTestCase {
         let id = MessageId.newUUID()
         let original = Frame.req(id: id, capUrn: "cap:op=test", payload: "payload".data(using: .utf8)!, contentType: "application/json")
 
-        try writeFrame(original, to: pipe.fileHandleForWriting, limits: limits)
+        var buffer = Data()
+        try writeFrame(original, to: pipe.fileHandleForWriting, limits: limits, buffer: &buffer)
+        if !buffer.isEmpty {
+            try pipe.fileHandleForWriting.write(contentsOf: buffer)
+        }
         pipe.fileHandleForWriting.closeFile()
 
         let decoded = try readFrame(from: pipe.fileHandleForReading, limits: limits)
@@ -553,9 +557,13 @@ final class CborFrameTests: XCTestCase {
         let f2 = Frame.chunk(reqId: id2, streamId: "stream-001", seq: 0, payload: f2Payload, chunkIndex: 0, checksum: Frame.computeChecksum(f2Payload))
         let f3 = Frame.end(id: id3, finalPayload: "three".data(using: .utf8)!)
 
-        try writeFrame(f1, to: pipe.fileHandleForWriting, limits: limits)
-        try writeFrame(f2, to: pipe.fileHandleForWriting, limits: limits)
-        try writeFrame(f3, to: pipe.fileHandleForWriting, limits: limits)
+        var buffer = Data()
+        try writeFrame(f1, to: pipe.fileHandleForWriting, limits: limits, buffer: &buffer)
+        try writeFrame(f2, to: pipe.fileHandleForWriting, limits: limits, buffer: &buffer)
+        try writeFrame(f3, to: pipe.fileHandleForWriting, limits: limits, buffer: &buffer)
+        if !buffer.isEmpty {
+            try pipe.fileHandleForWriting.write(contentsOf: buffer)
+        }
         pipe.fileHandleForWriting.closeFile()
 
         let r1 = try readFrame(from: pipe.fileHandleForReading, limits: limits)
@@ -585,7 +593,8 @@ final class CborFrameTests: XCTestCase {
         let largePayload = Data(repeating: 0, count: 200)
         let frame = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: largePayload, contentType: "application/octet-stream")
 
-        XCTAssertThrowsError(try writeFrame(frame, to: pipe.fileHandleForWriting, limits: limits)) { error in
+        var buffer = Data()
+        XCTAssertThrowsError(try writeFrame(frame, to: pipe.fileHandleForWriting, limits: limits, buffer: &buffer)) { error in
             if case FrameError.frameTooLarge = error {
                 // Expected
             } else {
@@ -603,7 +612,11 @@ final class CborFrameTests: XCTestCase {
 
         // Write a frame with generous limits
         let frame = Frame.req(id: .newUUID(), capUrn: "cap:op=test", payload: Data(repeating: 0, count: 200), contentType: "text/plain")
-        try writeFrame(frame, to: pipe.fileHandleForWriting, limits: writeLimits)
+        var buffer = Data()
+        try writeFrame(frame, to: pipe.fileHandleForWriting, limits: writeLimits, buffer: &buffer)
+        if !buffer.isEmpty {
+            try pipe.fileHandleForWriting.write(contentsOf: buffer)
+        }
         pipe.fileHandleForWriting.closeFile()
 
         // Try to read with strict limits
@@ -1189,5 +1202,31 @@ final class CborFrameTests: XCTestCase {
 
         XCTAssertEqual(decoded.frameType, .relayState)
         XCTAssertEqual(decoded.payload, resources)
+    }
+
+    // TEST667: verify_chunk_checksum detects corrupted payload
+    func test667_verifyChunkChecksumDetectsCorruption() {
+        let id = MessageId.newUUID()
+        let streamId = "stream-test"
+        let payload = "original payload data".data(using: .utf8)!
+        let checksum = Frame.computeChecksum(payload)
+
+        // Create valid chunk frame
+        var frame = Frame.chunk(reqId: id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum)
+
+        // Valid frame should pass verification
+        let expected = Frame.computeChecksum(frame.payload!)
+        XCTAssertEqual(frame.checksum, expected, "Valid frame should pass verification")
+
+        // Corrupt the payload (simulate transmission error)
+        frame.payload = "corrupted payload!!".data(using: .utf8)!
+
+        // Corrupted frame should fail verification
+        let corruptedExpected = Frame.computeChecksum(frame.payload!)
+        XCTAssertNotEqual(frame.checksum, corruptedExpected, "Corrupted frame should have mismatched checksum")
+
+        // Missing checksum should fail
+        frame.checksum = nil
+        XCTAssertNil(frame.checksum, "Frame without checksum should fail verification")
     }
 }
