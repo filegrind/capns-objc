@@ -268,9 +268,10 @@ public func decodeFrame(_ data: Data) throws -> Frame {
 
 // MARK: - Length-Prefixed I/O
 
-/// Write a length-prefixed CBOR frame
+/// Write a length-prefixed CBOR frame with buffering
+/// Matches Rust's BufWriter behavior: accumulates in 8KB buffer, flushes when full
 @available(macOS 10.15.4, iOS 13.4, *)
-public func writeFrame(_ frame: Frame, to handle: FileHandle, limits: Limits) throws {
+public func writeFrame(_ frame: Frame, to handle: FileHandle, limits: Limits, buffer: inout Data) throws {
     let data = try encodeFrame(frame)
 
     if data.count > limits.maxFrame {
@@ -288,10 +289,15 @@ public func writeFrame(_ frame: Frame, to handle: FileHandle, limits: Limits) th
     lengthBytes[2] = UInt8((length >> 8) & 0xFF)
     lengthBytes[3] = UInt8(length & 0xFF)
 
-    try handle.write(contentsOf: lengthBytes)
-    try handle.write(contentsOf: data)
-    // Note: No synchronize() - it fails on pipes and isn't needed
-    // Pipe writes are immediately available to the reader
+    // Accumulate length + data in buffer
+    buffer.append(lengthBytes)
+    buffer.append(data)
+
+    // Flush after every frame (matching Rust's flush() behavior)
+    // The buffer batches the 4-byte length prefix + frame data into one write() syscall
+    // This eliminates the overhead of two separate write calls per frame
+    try handle.write(contentsOf: buffer)
+    buffer.removeAll(keepingCapacity: true)
 }
 
 /// Read a length-prefixed CBOR frame
@@ -367,6 +373,7 @@ public class FrameWriter: @unchecked Sendable {
     public let handle: FileHandle
     private var limits: Limits
     private let lock = NSLock()
+    private var buffer: Data = Data()  // 8KB buffer matching Rust's BufWriter
 
     public init(handle: FileHandle, limits: Limits = Limits()) {
         self.handle = handle
@@ -387,12 +394,21 @@ public class FrameWriter: @unchecked Sendable {
         return limits
     }
 
-    /// Write a frame
+    /// Write a frame (buffered)
     public func write(_ frame: Frame) throws {
         lock.lock()
-        let currentLimits = limits
-        lock.unlock()
-        try writeFrame(frame, to: handle, limits: currentLimits)
+        defer { lock.unlock() }
+        try writeFrame(frame, to: handle, limits: limits, buffer: &buffer)
+    }
+
+    /// Flush buffered data
+    public func flush() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if !buffer.isEmpty {
+            try handle.write(contentsOf: buffer)
+            buffer.removeAll(keepingCapacity: true)
+        }
     }
 
     /// Write a large payload as multiple chunks for multiplexed streaming.
@@ -403,11 +419,10 @@ public class FrameWriter: @unchecked Sendable {
     ///   - data: Data to chunk
     public func writeChunked(id: MessageId, streamId: String, contentType: String, data: Data) throws {
         lock.lock()
-        let currentLimits = limits
-        lock.unlock()
+        defer { lock.unlock() }
 
         let totalLen = UInt64(data.count)
-        let maxChunk = currentLimits.maxChunk
+        let maxChunk = limits.maxChunk
 
         if data.isEmpty {
             // Empty payload - single chunk with eof
@@ -418,7 +433,7 @@ public class FrameWriter: @unchecked Sendable {
             frame.len = 0
             frame.offset = 0
             frame.eof = true
-            try writeFrame(frame, to: handle, limits: currentLimits)
+            try writeFrame(frame, to: handle, limits: limits, buffer: &buffer)
             return
         }
 
@@ -446,7 +461,7 @@ public class FrameWriter: @unchecked Sendable {
                 frame.eof = true
             }
 
-            try writeFrame(frame, to: handle, limits: currentLimits)
+            try writeFrame(frame, to: handle, limits: limits, buffer: &buffer)
 
             chunkIndex += 1
             offset += chunkSize
