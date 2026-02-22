@@ -404,7 +404,14 @@ public final class RelaySwitch: @unchecked Sendable {
     ///
     /// REQ frames: Assigned XID if absent, routed by cap URN.
     /// Continuation frames: Routed by (XID, RID) pair.
-    public func sendToMaster(_ frame: Frame) throws {
+    ///
+    /// - Parameters:
+    ///   - frame: The frame to send
+    ///   - preferredCap: Optional capability URN for exact routing.
+    ///                   When provided, uses comparable matching and prefers masters
+    ///                   whose registered cap is equivalent to this URN.
+    ///                   When nil, uses standard accepts + closest-specificity routing.
+    public func sendToMaster(_ frame: Frame, preferredCap: String? = nil) throws {
         lock.lock()
         defer { lock.unlock() }
 
@@ -412,7 +419,7 @@ public final class RelaySwitch: @unchecked Sendable {
 
         switch frame.frameType {
         case .req:
-            guard let cap = frame.cap, let destIdx = findMasterForCap(cap) else {
+            guard let cap = frame.cap, let destIdx = findMasterForCap(cap, preferredCap: preferredCap) else {
                 throw RelaySwitchError.noHandler(frame.cap ?? "nil")
             }
 
@@ -558,34 +565,62 @@ public final class RelaySwitch: @unchecked Sendable {
     /// Prefers the match whose specificity is CLOSEST to the request's specificity.
     /// This ensures generic requests (e.g., identity) route to generic handlers,
     /// and specific requests route to specific handlers.
-    private func findMasterForCap(_ capUrn: String) -> Int? {
+    ///
+    /// - Parameters:
+    ///   - capUrn: The capability URN to find a handler for
+    ///   - preferredCap: Optional capability URN for exact routing.
+    ///                   When provided, uses comparable matching (broader) and prefers
+    ///                   masters whose registered cap is equivalent to this URN.
+    ///                   When nil, uses standard accepts + closest-specificity routing.
+    private func findMasterForCap(_ capUrn: String, preferredCap: String? = nil) -> Int? {
         guard let requestUrn = try? CSCapUrn.fromString(capUrn) else {
             return nil
         }
 
-        let requestSpecificity = requestUrn.specificity()
+        let requestSpecificity = Int(requestUrn.specificity())
+
+        // Parse preferred cap URN if provided
+        let preferredUrn = preferredCap.flatMap { try? CSCapUrn.fromString($0) }
 
         // Collect ALL matching masters with their specificity scores
-        var matches: [(masterIdx: Int, specificity: Int)] = []
+        // When preferredCap is set, use comparable (broader); otherwise accepts (standard)
+        var matches: [(masterIdx: Int, specificity: Int, isPreferred: Bool)] = []
 
         for (registeredCap, masterIdx) in capTable {
             guard let registeredUrn = try? CSCapUrn.fromString(registeredCap) else {
                 continue
             }
 
-            if requestUrn.accepts(registeredUrn) {
-                matches.append((masterIdx: masterIdx, specificity: Int(registeredUrn.specificity())))
+            // Determine if this is a match
+            let isMatch: Bool
+            if preferredUrn != nil {
+                // Comparable: either side accepts the other (broader match set)
+                isMatch = (requestUrn.accepts(registeredUrn) || registeredUrn.accepts(requestUrn))
+            } else {
+                // Standard: request is pattern, registered cap is instance
+                isMatch = requestUrn.accepts(registeredUrn)
+            }
+
+            if isMatch {
+                let specificity = Int(registeredUrn.specificity())
+                // Check if this registered cap is equivalent to the preferred cap
+                let isPreferred = preferredUrn.map { pref in
+                    pref.accepts(registeredUrn) && registeredUrn.accepts(pref)
+                } ?? false
+                matches.append((masterIdx: masterIdx, specificity: specificity, isPreferred: isPreferred))
             }
         }
 
         if matches.isEmpty { return nil }
 
-        // Prefer the match with specificity closest to the request's specificity.
-        // Ties broken by first match (deterministic).
-        let reqSpec = Int(requestSpecificity)
-        let minDistance = matches.map { abs($0.specificity - reqSpec) }.min()!
+        // If any match is preferred, pick the first preferred match
+        if let preferred = matches.first(where: { $0.isPreferred }) {
+            return preferred.masterIdx
+        }
 
-        return matches.first { abs($0.specificity - reqSpec) == minDistance }?.masterIdx
+        // Fall back to closest-specificity (ties broken by first match)
+        let minDistance = matches.map { abs($0.specificity - requestSpecificity) }.min()!
+        return matches.first { abs($0.specificity - requestSpecificity) == minDistance }?.masterIdx
     }
 
     /// Handle a frame arriving from a master (plugin → engine direction).
@@ -600,8 +635,8 @@ public final class RelaySwitch: @unchecked Sendable {
 
         switch frame.frameType {
         case .req:
-            // Peer request: plugin → plugin via switch
-            guard let cap = frame.cap, let destIdx = findMasterForCap(cap) else {
+            // Peer request: plugin → plugin via switch (no preference)
+            guard let cap = frame.cap, let destIdx = findMasterForCap(cap, preferredCap: nil) else {
                 throw RelaySwitchError.noHandler(frame.cap ?? "nil")
             }
 
