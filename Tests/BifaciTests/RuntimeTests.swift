@@ -60,6 +60,22 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         return Frame.helloWithManifest(limits: limits, manifest: manifest)
     }
 
+    /// Helper to write a frame with routingId (XID) stamped — required for frames entering via relay
+    nonisolated static func writeWithXid(_ writer: FrameWriter, _ frame: Frame, xid: MessageId) throws {
+        var f = frame
+        f.routingId = xid
+        try writer.write(f)
+    }
+
+    /// Helper to read next protocol frame, skipping relayNotify frames
+    /// (host.run() sends relayNotify as first frame when outbound writer is set)
+    nonisolated static func readProtocolFrame(_ reader: FrameReader) throws -> Frame? {
+        while true {
+            guard let frame = try reader.read() else { return nil }
+            if frame.frameType != .relayNotify { return frame }
+        }
+    }
+
     /// Helper to write a chunk with proper checksum
     nonisolated static func writeChunk(writer: FrameWriter, reqId: MessageId, streamId: String, seq: UInt64, payload: Data, chunkIndex: UInt64) throws {
         let checksum = Frame.computeChecksum(payload)
@@ -368,20 +384,21 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
-        // Send argument stream
+        let xid = MessageId.newUUID()
+        // Frames from relay must have routingId (XID) — RelaySwitch stamps these in real deployment
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"), xid: xid)
         let sid = "arg-0"
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:"))
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:"), xid: xid)
         let payload1 = "request-data".data(using: .utf8)!
         let checksum1 = Frame.computeChecksum(payload1)
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: payload1, chunkIndex: 0, checksum: checksum1))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: sid, chunkCount: 1))
-        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
+        try Self.writeWithXid(engineWriter, Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: payload1, chunkIndex: 0, checksum: checksum1), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: reqId, streamId: sid, chunkCount: 1), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.end(id: reqId, finalPayload: nil), xid: xid)
 
-        // Read response from plugin (via host relay)
+        // Read response from plugin (via host relay) — skip relayNotify
         var responseData = Data()
         while true {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             if frame.frameType == .chunk {
                 responseData.append(frame.payload ?? Data())
             }
@@ -439,25 +456,26 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ) { Data() }
         }
 
-        // Engine sends REQ
+        // Engine sends REQ with XID
         let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"))
+        let xid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=test", payload: Data(), contentType: "application/cbor"), xid: xid)
         let sid = "arg-0"
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:"))
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: reqId, streamId: sid, mediaUrn: "media:"), xid: xid)
         let emptyPayload = Data()
         let emptyChecksum = Frame.computeChecksum(emptyPayload)
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: emptyChecksum))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: sid, chunkCount: 1))
-        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
+        try Self.writeWithXid(engineWriter, Frame.chunk(reqId: reqId, streamId: sid, seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: emptyChecksum), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: reqId, streamId: sid, chunkCount: 1), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.end(id: reqId, finalPayload: nil), xid: xid)
 
-        // Read response — should NOT contain any heartbeat frames
+        // Read response — should NOT contain any heartbeat frames (skip relayNotify)
         var gotHeartbeat = false
         var responseData = Data()
         while true {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             if frame.frameType == .heartbeat { gotHeartbeat = true }
             if frame.frameType == .chunk { responseData.append(frame.payload ?? Data()) }
             if frame.frameType == .end { break }
@@ -522,29 +540,39 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        // Send REQ for alpha
+        // Send REQ for alpha (with XID)
         let alphaId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: alphaId, capUrn: "cap:op=alpha", payload: Data(), contentType: "application/cbor"))
-        try engineWriter.write(Frame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:"))
-        try Self.writeChunk(writer: engineWriter, reqId: alphaId, streamId: "a0", seq: 0, payload: Data(), chunkIndex: 0)
-        try Self.writeStreamEnd(writer: engineWriter, reqId: alphaId, streamId: "a0", chunkCount: 1)
-        try engineWriter.write(Frame.end(id: alphaId, finalPayload: nil))
+        let alphaXid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: alphaId, capUrn: "cap:op=alpha", payload: Data(), contentType: "application/cbor"), xid: alphaXid)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: alphaId, streamId: "a0", mediaUrn: "media:"), xid: alphaXid)
+        var alphaChunk = Frame.chunk(reqId: alphaId, streamId: "a0", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        alphaChunk.routingId = alphaXid
+        try engineWriter.write(alphaChunk)
+        var alphaEnd1 = Frame.streamEnd(reqId: alphaId, streamId: "a0", chunkCount: 1)
+        alphaEnd1.routingId = alphaXid
+        try engineWriter.write(alphaEnd1)
+        try Self.writeWithXid(engineWriter, Frame.end(id: alphaId, finalPayload: nil), xid: alphaXid)
 
-        // Send REQ for beta
+        // Send REQ for beta (with XID)
         let betaId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: betaId, capUrn: "cap:op=beta", payload: Data(), contentType: "application/cbor"))
-        try engineWriter.write(Frame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:"))
+        let betaXid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: betaId, capUrn: "cap:op=beta", payload: Data(), contentType: "application/cbor"), xid: betaXid)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: betaId, streamId: "b0", mediaUrn: "media:"), xid: betaXid)
         let betaPayload = Data()
-        try engineWriter.write(Frame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: betaPayload, chunkIndex: 0, checksum: Frame.computeChecksum(betaPayload)))
-        try engineWriter.write(Frame.streamEnd(reqId: betaId, streamId: "b0", chunkCount: 1))
-        try engineWriter.write(Frame.end(id: betaId, finalPayload: nil))
+        var betaChunk = Frame.chunk(reqId: betaId, streamId: "b0", seq: 0, payload: betaPayload, chunkIndex: 0, checksum: Frame.computeChecksum(betaPayload))
+        betaChunk.routingId = betaXid
+        try engineWriter.write(betaChunk)
+        var betaStreamEnd = Frame.streamEnd(reqId: betaId, streamId: "b0", chunkCount: 1)
+        betaStreamEnd.routingId = betaXid
+        try engineWriter.write(betaStreamEnd)
+        try Self.writeWithXid(engineWriter, Frame.end(id: betaId, finalPayload: nil), xid: betaXid)
 
-        // Read responses
+        // Read responses (skip relayNotify)
         var alphaData = Data()
         var betaData = Data()
         var ends = 0
         while ends < 2 {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             if frame.frameType == .chunk {
                 if frame.id == alphaId { alphaData.append(frame.payload ?? Data()) }
                 else if frame.id == betaId { betaData.append(frame.payload ?? Data()) }
@@ -595,12 +623,13 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineWriter = FrameWriter(handle: engineToHost.fileHandleForWriting)
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
-        // Send REQ for unknown cap
+        // Send REQ for unknown cap (with XID — relay always stamps XID)
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=nonexistent", payload: Data(), contentType: "text/plain"))
+        let xid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=nonexistent", payload: Data(), contentType: "text/plain"), xid: xid)
 
-        // Should receive ERR with NO_HANDLER
-        let frame = try engineReader.read()
+        // Should receive ERR with NO_HANDLER (skip relayNotify)
+        let frame = try Self.readProtocolFrame(engineReader)
         XCTAssertNotNil(frame)
         XCTAssertEqual(frame!.frameType, .err, "Unknown cap should return ERR")
         XCTAssertEqual(frame!.errorCode, "NO_HANDLER", "Error code should be NO_HANDLER")
@@ -646,9 +675,10 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=spawn-test", payload: Data(), contentType: "text/plain"))
+        let xid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=spawn-test", payload: Data(), contentType: "text/plain"), xid: xid)
 
-        let frame = try engineReader.read()
+        let frame = try Self.readProtocolFrame(engineReader)
         XCTAssertNotNil(frame, "Must receive ERR frame for failed spawn")
         XCTAssertEqual(frame!.frameType, .err, "Failed spawn must return ERR")
         XCTAssertEqual(frame!.errorCode, "SPAWN_FAILED", "Error code must be SPAWN_FAILED")
@@ -717,16 +747,19 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=cont", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:"))
+        let xid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=cont", payload: Data(), contentType: "text/plain"), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: reqId, streamId: "arg-0", mediaUrn: "media:"), xid: xid)
         let chunkPayload = "payload-data".data(using: .utf8)!
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload)))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "arg-0", chunkCount: 1))
-        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
+        var chunkFrame = Frame.chunk(reqId: reqId, streamId: "arg-0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload))
+        chunkFrame.routingId = xid
+        try engineWriter.write(chunkFrame)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: reqId, streamId: "arg-0", chunkCount: 1), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.end(id: reqId, finalPayload: nil), xid: xid)
 
         var responseData = Data()
         while true {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             if frame.frameType == .chunk { responseData.append(frame.payload ?? Data()) }
             if frame.frameType == .end { break }
         }
@@ -783,16 +816,19 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=fwd", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:"))
+        let xid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=fwd", payload: Data(), contentType: "text/plain"), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:"), xid: xid)
         let emptyPayload = Data()
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: Frame.computeChecksum(emptyPayload)))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1))
-        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
+        var chunkFrame = Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: emptyPayload, chunkIndex: 0, checksum: Frame.computeChecksum(emptyPayload))
+        chunkFrame.routingId = xid
+        try engineWriter.write(chunkFrame)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.end(id: reqId, finalPayload: nil), xid: xid)
 
         var receivedTypes: [FrameType] = []
         while true {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             receivedTypes.append(frame.frameType)
             if frame.frameType == .end { break }
         }
@@ -897,17 +933,20 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let engineReader = FrameReader(handle: hostToEngine.fileHandleForReading)
 
         let reqId = MessageId.newUUID()
-        try engineWriter.write(Frame.req(id: reqId, capUrn: "cap:op=die", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:"))
+        let xid = MessageId.newUUID()
+        try Self.writeWithXid(engineWriter, Frame.req(id: reqId, capUrn: "cap:op=die", payload: Data(), contentType: "text/plain"), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: reqId, streamId: "a0", mediaUrn: "media:"), xid: xid)
         let chunkPayload = "hello".data(using: .utf8)!
-        try engineWriter.write(Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload)))
-        try engineWriter.write(Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1))
-        try engineWriter.write(Frame.end(id: reqId, finalPayload: nil))
+        var chunkFrame = Frame.chunk(reqId: reqId, streamId: "a0", seq: 0, payload: chunkPayload, chunkIndex: 0, checksum: Frame.computeChecksum(chunkPayload))
+        chunkFrame.routingId = xid
+        try engineWriter.write(chunkFrame)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: reqId, streamId: "a0", chunkCount: 1), xid: xid)
+        try Self.writeWithXid(engineWriter, Frame.end(id: reqId, finalPayload: nil), xid: xid)
 
-        // Should receive ERR with PLUGIN_DIED
+        // Should receive ERR with PLUGIN_DIED (skip relayNotify)
         var errFrame: Frame?
         while true {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             if frame.frameType == .err {
                 errFrame = frame
                 break
@@ -967,28 +1006,34 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
 
         let id0 = MessageId.newUUID()
         let id1 = MessageId.newUUID()
+        let xid0 = MessageId.newUUID()
+        let xid1 = MessageId.newUUID()
 
-        // Send both requests
-        try engineWriter.write(Frame.req(id: id0, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:"))
+        // Send both requests with XIDs
+        try Self.writeWithXid(engineWriter, Frame.req(id: id0, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"), xid: xid0)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: id0, streamId: "a0", mediaUrn: "media:"), xid: xid0)
         let payload0 = Data()
-        try engineWriter.write(Frame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: payload0, chunkIndex: 0, checksum: Frame.computeChecksum(payload0)))
-        try engineWriter.write(Frame.streamEnd(reqId: id0, streamId: "a0", chunkCount: 1))
-        try engineWriter.write(Frame.end(id: id0, finalPayload: nil))
+        var chunk0 = Frame.chunk(reqId: id0, streamId: "a0", seq: 0, payload: payload0, chunkIndex: 0, checksum: Frame.computeChecksum(payload0))
+        chunk0.routingId = xid0
+        try engineWriter.write(chunk0)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: id0, streamId: "a0", chunkCount: 1), xid: xid0)
+        try Self.writeWithXid(engineWriter, Frame.end(id: id0, finalPayload: nil), xid: xid0)
 
-        try engineWriter.write(Frame.req(id: id1, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"))
-        try engineWriter.write(Frame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:"))
+        try Self.writeWithXid(engineWriter, Frame.req(id: id1, capUrn: "cap:op=conc", payload: Data(), contentType: "text/plain"), xid: xid1)
+        try Self.writeWithXid(engineWriter, Frame.streamStart(reqId: id1, streamId: "a1", mediaUrn: "media:"), xid: xid1)
         let payload1 = Data()
-        try engineWriter.write(Frame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: payload1, chunkIndex: 0, checksum: Frame.computeChecksum(payload1)))
-        try engineWriter.write(Frame.streamEnd(reqId: id1, streamId: "a1", chunkCount: 1))
-        try engineWriter.write(Frame.end(id: id1, finalPayload: nil))
+        var chunk1 = Frame.chunk(reqId: id1, streamId: "a1", seq: 0, payload: payload1, chunkIndex: 0, checksum: Frame.computeChecksum(payload1))
+        chunk1.routingId = xid1
+        try engineWriter.write(chunk1)
+        try Self.writeWithXid(engineWriter, Frame.streamEnd(reqId: id1, streamId: "a1", chunkCount: 1), xid: xid1)
+        try Self.writeWithXid(engineWriter, Frame.end(id: id1, finalPayload: nil), xid: xid1)
 
-        // Read both responses
+        // Read both responses (skip relayNotify)
         var data0 = Data()
         var data1 = Data()
         var ends = 0
         while ends < 2 {
-            guard let frame = try engineReader.read() else { break }
+            guard let frame = try Self.readProtocolFrame(engineReader) else { break }
             if frame.frameType == .chunk {
                 if frame.id == id0 { data0.append(frame.payload ?? Data()) }
                 else if frame.id == id1 { data1.append(frame.payload ?? Data()) }
