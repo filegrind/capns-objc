@@ -320,10 +320,12 @@ static NSString* testUrn(NSString *tags) {
     // Reverse: specific cap(op,ext) rejects general request missing ext
     XCTAssertFalse([cap1 accepts:cap4]);
 
-    // Different direction specs: neither accepts the other
+    // Different direction specs: cap1 has in=media:void (specific), cap5 has in=media: (wildcard)
     CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:form=map;textable\"" error:&error];
+    // cap1 (in=media:void) cannot accept cap5 (in=media:) - specific doesn't accept wildcard
     XCTAssertFalse([cap1 accepts:cap5]);
-    XCTAssertFalse([cap5 accepts:cap1]);
+    // cap5 (in=media:) CAN accept cap1 (in=media:void) - wildcard accepts specific
+    XCTAssertTrue([cap5 accepts:cap1]);
 }
 
 #pragma mark - Convenience Methods Tests

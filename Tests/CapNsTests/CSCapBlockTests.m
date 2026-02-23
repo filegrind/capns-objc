@@ -93,11 +93,12 @@
     XCTAssertNotNil(best, @"Should find best cap set");
     XCTAssertNil(error, @"Should not have error");
 
-    // Plugin registry has specificity 4 (in, op, out, ext)
-    // Provider registry has specificity 3 (in, op, out)
+    // Plugin registry has specificity 3 (ext=pdf, op, out=media:binary has 1 tag)
+    // Provider registry has specificity 2 (op, out=media:binary has 1 tag)
+    // in=media: is wildcard (0), op contributes 1, out=media:binary contributes 1 (binary tag)
     // Plugin should win even though providers were added first
     XCTAssertEqualObjects(best.registryName, @"plugins", @"More specific plugin should win over less specific provider");
-    XCTAssertEqual(best.specificity, 4, @"Plugin cap has 4 specific tags");
+    XCTAssertEqual(best.specificity, 3, @"Plugin cap has 3 specific tags (ext, op, out)");
     XCTAssertEqualObjects(best.cap.title, @"Plugin PDF Thumbnail Generator (specific)", @"Should get plugin cap");
 }
 
@@ -222,10 +223,10 @@
     XCTAssertNotNil(best, @"Should find best cap set");
     XCTAssertNil(error, @"Should not have error");
 
-    // Plugin (specificity 4) should beat provider (specificity 3)
+    // Plugin (specificity 3) should beat provider (specificity 2)
     XCTAssertEqualObjects(best.registryName, @"plugins", @"Plugin should win");
     XCTAssertEqualObjects(best.cap.title, @"PDF Thumbnail Plugin", @"Should get plugin cap");
-    XCTAssertEqual(best.specificity, 4, @"Plugin has specificity 4");
+    XCTAssertEqual(best.specificity, 3, @"Plugin has specificity 3");
 
     // Also test that for a different file type, provider wins
     NSString *requestWav = @"cap:ext=wav;in=media:;op=generate_thumbnail;out=media:binary";

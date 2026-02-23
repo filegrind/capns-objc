@@ -57,14 +57,14 @@
     // MediaSpecs array with schema
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:user-data.v1",
+            @"urn": @"my:user-data.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/user-data",
             @"schema": schema
         }
     ];
 
-    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1;textable;form=map"
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--user"]]
                                        argDescription:@"User data object"
@@ -97,14 +97,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:user-data.v1",
+            @"urn": @"my:user-data.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/user-data",
             @"schema": schema
         }
     ];
 
-    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1"
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:user-data.v1;textable;form=map"
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--user"]]
                                        argDescription:@"User data object"
@@ -124,7 +124,7 @@
 
     CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
     XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeMediaValidation);
-    XCTAssertEqualObjects(schemaError.argumentName, @"my:user-data.v1");
+    XCTAssertEqualObjects(schemaError.argumentName, @"my:user-data.v1;textable;form=map");
 }
 
 // TEST053: Test input validation fails with InvalidArgumentType when wrong type provided
@@ -192,14 +192,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:query-results.v1",
+            @"urn": @"my:query-results.v1;textable;form=list",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/query-results",
             @"schema": schema
         }
     ];
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1;textable;form=list"
                                          outputDescription:@"Query results"];
 
     // Valid output data
@@ -231,14 +231,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:query-results.v1",
+            @"urn": @"my:query-results.v1;textable;form=list",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/query-results",
             @"schema": schema
         }
     ];
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:query-results.v1;textable;form=list"
                                          outputDescription:@"Query results"];
 
     // Invalid data - negative count
@@ -262,7 +262,8 @@
 
 - (void)testIntegrationWithInputValidation {
     // Create cap with schema-enabled arguments
-    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:void"] outSpec:@"media:object"] tag:@"op" value:@"process"] tag:@"target" value:@"user"] build:nil];
+    // Use media:form=map;textable instead of media:object to indicate textable object data
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:void"] outSpec:@"media:form=map;textable"] tag:@"op" value:@"process"] tag:@"target" value:@"user"] build:nil];
 
     NSDictionary *userSchema = @{
         @"type": @"object",
@@ -276,14 +277,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:user.v1",
+            @"urn": @"my:user.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/user",
             @"schema": userSchema
         }
     ];
 
-    CSCapArg *userArg = [CSCapArg argWithMediaUrn:@"my:user.v1"
+    CSCapArg *userArg = [CSCapArg argWithMediaUrn:@"my:user.v1;textable;form=map"
                                             required:YES
                                              sources:@[[CSArgSource cliFlagSource:@"--user"]]
                                       argDescription:@"User object"
@@ -331,7 +332,8 @@
 
 - (void)testIntegrationWithOutputValidation {
     // Create cap with schema-enabled output
-    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:void"] outSpec:@"media:object"] tag:@"op" value:@"query"] tag:@"target" value:@"data"] build:nil];
+    // Use media:form=map;textable instead of media:object to indicate textable object data
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:void"] outSpec:@"media:form=map;textable"] tag:@"op" value:@"query"] tag:@"target" value:@"data"] build:nil];
 
     NSDictionary *resultSchema = @{
         @"type": @"array",
@@ -348,14 +350,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:results-array.v1",
+            @"urn": @"my:results-array.v1;textable;form=list",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/results-array",
             @"schema": resultSchema
         }
     ];
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:results-array.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:results-array.v1;textable;form=list"
                                          outputDescription:@"Query results array"];
 
     CSCap *cap = [CSCap capWithUrn:urn
@@ -430,14 +432,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:payload.v1",
+            @"urn": @"my:payload.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/payload",
             @"schema": complexSchema
         }
     ];
 
-    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:payload.v1"
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:payload.v1;textable;form=map"
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--payload"]]
                                        argDescription:@"Complex payload"
@@ -500,14 +502,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:test-arg.v1",
+            @"urn": @"my:test-arg.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/test-arg",
             @"schema": schema
         }
     ];
 
-    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:test-arg.v1"
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:test-arg.v1;textable;form=map"
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--test"]]
                                        argDescription:@"Test argument"
@@ -527,7 +529,7 @@
 
     CSSchemaValidationError *schemaError = (CSSchemaValidationError *)error;
     XCTAssertEqual(schemaError.schemaErrorType, CSSchemaValidationErrorTypeMediaValidation);
-    XCTAssertEqualObjects(schemaError.argumentName, @"my:test-arg.v1");
+    XCTAssertEqualObjects(schemaError.argumentName, @"my:test-arg.v1;textable;form=map");
     XCTAssertNotNil(schemaError.validationErrors);
     XCTAssertTrue(schemaError.validationErrors.count > 0, @"Should have validation error details");
 }
@@ -592,13 +594,13 @@
     // Test that media spec definitions without schema skip schema validation
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:text-input.v1",
+            @"urn": @"my:text-input.v1;textable;form=scalar",
             @"media_type": @"text/plain",
             @"profile_uri": @"https://example.com/schema/text-input"
         }
     ];
 
-    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:text-input.v1"
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:text-input.v1;textable;form=scalar"
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--input"]]
                                        argDescription:@"Text input"
@@ -637,14 +639,14 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:large-data.v1",
+            @"urn": @"my:large-data.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/large-data",
             @"schema": schema
         }
     ];
 
-    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:large-data.v1"
+    CSCapArg *argument = [CSCapArg argWithMediaUrn:@"my:large-data.v1;textable;form=map"
                                              required:YES
                                               sources:@[[CSArgSource cliFlagSource:@"--data"]]
                                        argDescription:@"Large data set"
@@ -674,8 +676,9 @@
 
 - (void)testFullCapValidationWithMediaSpecs {
     // Test complete cap validation flow with mediaSpecs resolution
+    // Use media:form=map;textable instead of media:object to indicate textable object data
     NSError *error = nil;
-    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:void"] outSpec:@"media:object"] tag:@"format" value:@"json"] tag:@"op" value:@"transform"] build:&error];
+    CSCapUrn *urn = [[[[[[CSCapUrnBuilder builder] inSpec:@"media:void"] outSpec:@"media:form=map;textable"] tag:@"format" value:@"json"] tag:@"op" value:@"transform"] build:&error];
     XCTAssertNotNil(urn);
 
     NSDictionary *inputSchema = @{
@@ -704,26 +707,26 @@
 
     NSArray<NSDictionary *> *mediaSpecs = @[
         @{
-            @"urn": @"my:transform-input.v1",
+            @"urn": @"my:transform-input.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/transform-input",
             @"schema": inputSchema
         },
         @{
-            @"urn": @"my:transform-output.v1",
+            @"urn": @"my:transform-output.v1;textable;form=map",
             @"media_type": @"application/json",
             @"profile_uri": @"https://example.com/schema/transform-output",
             @"schema": outputSchema
         }
     ];
 
-    CSCapArg *inputArg = [CSCapArg argWithMediaUrn:@"my:transform-input.v1"
+    CSCapArg *inputArg = [CSCapArg argWithMediaUrn:@"my:transform-input.v1;textable;form=map"
                                              required:YES
                                               sources:@[[CSArgSource positionSource:0], [CSArgSource cliFlagSource:@"--input"]]
                                        argDescription:@"Transformation input"
                                          defaultValue:nil];
 
-    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:transform-output.v1"
+    CSCapOutput *output = [CSCapOutput outputWithMediaUrn:@"my:transform-output.v1;textable;form=map"
                                          outputDescription:@"Transformation result"];
 
     CSCap *cap = [CSCap capWithUrn:urn

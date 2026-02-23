@@ -7,6 +7,7 @@
 
 import XCTest
 import Foundation
+import SwiftCBOR
 @testable import Bifaci
 @testable import CapNs
 
@@ -17,23 +18,19 @@ final class InProcessPluginHostTests: XCTestCase {
     /// Make a test cap from a URN string
     private func makeTestCap(_ urnStr: String) -> CSCap {
         let urn = try! CSCapUrn.fromString(urnStr)
-        return CSCap(
-            urn: urn,
-            title: "test",
-            capDescription: nil,
-            command: "",
-            args: []
-        )
+        return CSCap(urn: urn, title: "test", command: "")
     }
 
     /// Build a CBOR-encoded chunk payload from raw bytes (matching build_request_frames).
     private func cborBytesPayload(_ data: Data) -> Data {
-        return try! CBOREncoder().encode(CBOR.byteString([UInt8](data)))
+        return Data(CBOR.byteString([UInt8](data)).encode())
     }
 
     /// CBOR-decode a response chunk payload to extract raw bytes.
     private func decodeChunkPayload(_ payload: Data) -> Data {
-        let cbor = try! CBORDecoder().decode(payload)
+        guard let cbor = try? CBOR.decode([UInt8](payload)) else {
+            fatalError("Failed to decode CBOR from payload")
+        }
         switch cbor {
         case .byteString(let bytes):
             return Data(bytes)
@@ -61,7 +58,7 @@ final class InProcessPluginHostTests: XCTestCase {
     // MARK: - Test Handlers
 
     /// Echo handler: accumulates input, echoes raw bytes back (for TEST654, TEST657, TEST660)
-    class EchoHandler: FrameHandler {
+    final class EchoHandler: FrameHandler {
         func handleRequest(capUrn: String, inputStream: AsyncStream<Frame>, output: ResponseWriter) {
             Task {
                 do {
@@ -76,7 +73,7 @@ final class InProcessPluginHostTests: XCTestCase {
     }
 
     /// Fail handler: always returns error (for TEST659)
-    class FailHandler: FrameHandler {
+    final class FailHandler: FrameHandler {
         func handleRequest(capUrn: String, inputStream: AsyncStream<Frame>, output: ResponseWriter) {
             Task {
                 // Drain input
@@ -91,7 +88,7 @@ final class InProcessPluginHostTests: XCTestCase {
     }
 
     /// Tagged handler: returns its tag name (for TEST660)
-    class TaggedHandler: FrameHandler {
+    final class TaggedHandler: FrameHandler {
         let tag: String
 
         init(tag: String) {
@@ -137,14 +134,14 @@ final class InProcessPluginHostTests: XCTestCase {
         // First frame should be RelayNotify with manifest
         let notify = try! reader.read()!
         XCTAssertEqual(notify.frameType, .relayNotify)
-        let manifest = notify.relayNotifyManifest()!
+        let manifest = notify.relayNotifyManifest!
         let capUrns: [String] = try! JSONDecoder().decode([String].self, from: manifest)
         XCTAssertTrue(capUrns.count >= 2) // identity + echo cap
         XCTAssertEqual(capUrns[0], CSCapIdentity)
 
         // Send a REQ + STREAM_START + CHUNK (CBOR-encoded) + STREAM_END + END
-        let rid = MessageId.newUuid()
-        var req = Frame.req(id: rid, capUrn: capUrn, args: [], contentType: "application/cbor")
+        let rid = MessageId.newUUID()
+        var req = Frame.req(id: rid, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
         req.routingId = MessageId.uint(1)
         try! writer.write(req)
 
@@ -153,13 +150,13 @@ final class InProcessPluginHostTests: XCTestCase {
 
         let payload = cborBytesPayload("hello world".data(using: .utf8)!)
         let checksum = Frame.computeChecksum(payload)
-        let chunk = Frame.chunk(reqId: rid, streamId: "arg0", argIndex: 0, payload: payload, chunkIndex: 0, checksum: checksum)
+        let chunk = Frame.chunk(reqId: rid, streamId: "arg0", seq: 0, payload: payload, chunkIndex: 0, checksum: checksum)
         try! writer.write(chunk)
 
         let se = Frame.streamEnd(reqId: rid, streamId: "arg0", chunkCount: 1)
         try! writer.write(se)
 
-        let end = Frame.end(id: rid, error: nil)
+        let end = Frame.end(id: rid)
         try! writer.write(end)
 
         // Read response: STREAM_START + CHUNK (CBOR-encoded) + STREAM_END + END
@@ -206,8 +203,8 @@ final class InProcessPluginHostTests: XCTestCase {
         _ = try! reader.read()!
 
         // Send identity verification
-        let rid = MessageId.newUuid()
-        var req = Frame.req(id: rid, capUrn: CSCapIdentity, args: [], contentType: "application/cbor")
+        let rid = MessageId.newUUID()
+        var req = Frame.req(id: rid, capUrn: CSCapIdentity, payload: Data(), contentType: "application/cbor")
         req.routingId = MessageId.uint(0)
         try! writer.write(req)
 
@@ -217,13 +214,13 @@ final class InProcessPluginHostTests: XCTestCase {
         try! writer.write(ss)
 
         let checksum = Frame.computeChecksum(nonce)
-        let chunk = Frame.chunk(reqId: rid, streamId: "identity-verify", argIndex: 0, payload: nonce, chunkIndex: 0, checksum: checksum)
+        let chunk = Frame.chunk(reqId: rid, streamId: "identity-verify", seq: 0, payload: nonce, chunkIndex: 0, checksum: checksum)
         try! writer.write(chunk)
 
         let se = Frame.streamEnd(reqId: rid, streamId: "identity-verify", chunkCount: 1)
         try! writer.write(se)
 
-        let end = Frame.end(id: rid, error: nil)
+        let end = Frame.end(id: rid)
         try! writer.write(end)
 
         // Read echoed response — identity echoes raw bytes (no CBOR decode/encode)
@@ -262,23 +259,23 @@ final class InProcessPluginHostTests: XCTestCase {
         let writer = FrameWriter(handle: testWrite)
 
         // Skip RelayNotify
-        _ = try! reader.read()
+        _ = try! reader.read()!
 
-        let rid = MessageId.newUuid()
+        let rid = MessageId.newUUID()
         var req = Frame.req(
             id: rid,
             capUrn: "cap:in=\"media:pdf\";op=unknown;out=\"media:text\"",
-            args: [],
+            payload: Data(),
             contentType: "application/cbor"
         )
         req.routingId = MessageId.uint(1)
         try! writer.write(req)
 
         // Should get ERR back
-        let errFrame = try! reader.read()
+        let errFrame = try! reader.read()!
         XCTAssertEqual(errFrame.frameType, .err)
         XCTAssertEqual(errFrame.id, rid)
-        XCTAssertEqual(errFrame.errorCode(), "NO_HANDLER")
+        XCTAssertEqual(errFrame.errorCode, "NO_HANDLER")
 
         testWrite.closeFile()
         testRead.closeFile()
@@ -317,13 +314,13 @@ final class InProcessPluginHostTests: XCTestCase {
         let writer = FrameWriter(handle: testWrite)
 
         // Skip RelayNotify
-        _ = try! reader.read()
+        _ = try! reader.read()!
 
-        let hbId = MessageId.newUuid()
+        let hbId = MessageId.newUUID()
         let hb = Frame.heartbeat(id: hbId)
         try! writer.write(hb)
 
-        let resp = try! reader.read()
+        let resp = try! reader.read()!
         XCTAssertEqual(resp.frameType, .heartbeat)
         XCTAssertEqual(resp.id, hbId)
 
@@ -353,23 +350,23 @@ final class InProcessPluginHostTests: XCTestCase {
         let writer = FrameWriter(handle: testWrite)
 
         // Skip RelayNotify
-        _ = try! reader.read()
+        _ = try! reader.read()!
 
         // Send REQ + END (no streams, void input)
-        let rid = MessageId.newUuid()
-        var req = Frame.req(id: rid, capUrn: capUrn, args: [], contentType: "application/cbor")
+        let rid = MessageId.newUUID()
+        var req = Frame.req(id: rid, capUrn: capUrn, payload: Data(), contentType: "application/cbor")
         req.routingId = MessageId.uint(1)
         try! writer.write(req)
 
-        let end = Frame.end(id: rid, error: nil)
+        let end = Frame.end(id: rid)
         try! writer.write(end)
 
         // Should get ERR frame
-        let errFrame = try! reader.read()
+        let errFrame = try! reader.read()!
         XCTAssertEqual(errFrame.frameType, .err)
         XCTAssertEqual(errFrame.id, rid)
-        XCTAssertEqual(errFrame.errorCode(), "PROVIDER_ERROR")
-        XCTAssertTrue(errFrame.errorMessage()!.contains("provider crashed"))
+        XCTAssertEqual(errFrame.errorCode, "PROVIDER_ERROR")
+        XCTAssertTrue(errFrame.errorMessage!.contains("provider crashed"))
 
         testWrite.closeFile()
         testRead.closeFile()
@@ -404,30 +401,30 @@ final class InProcessPluginHostTests: XCTestCase {
         let writer = FrameWriter(handle: testWrite)
 
         // Skip RelayNotify
-        _ = try! reader.read()
+        _ = try! reader.read()!
 
         // Request with specific input (media:pdf) — should route to "specific" handler
-        let rid = MessageId.newUuid()
-        var req = Frame.req(id: rid, capUrn: specificUrn, args: [], contentType: "application/cbor")
+        let rid = MessageId.newUUID()
+        var req = Frame.req(id: rid, capUrn: specificUrn, payload: Data(), contentType: "application/cbor")
         req.routingId = MessageId.uint(1)
         try! writer.write(req)
 
-        let end = Frame.end(id: rid, error: nil)
+        let end = Frame.end(id: rid, finalPayload: nil)
         try! writer.write(end)
 
         // Read response
-        let respSs = try! reader.read()
+        let respSs = try! reader.read()!
         XCTAssertEqual(respSs.frameType, .streamStart)
 
-        let respChunk = try! reader.read()
+        let respChunk = try! reader.read()!
         XCTAssertEqual(respChunk.frameType, .chunk)
         let respData = decodeChunkPayload(respChunk.payload!)
         XCTAssertEqual(String(data: respData, encoding: .utf8), "specific")
 
-        let respSe = try! reader.read()
+        let respSe = try! reader.read()!
         XCTAssertEqual(respSe.frameType, .streamEnd)
 
-        let respEnd = try! reader.read()
+        let respEnd = try! reader.read()!
         XCTAssertEqual(respEnd.frameType, .end)
 
         testWrite.closeFile()

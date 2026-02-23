@@ -201,7 +201,7 @@
     XCTAssertEqualObjects([cap getTag:@"framerate"], @"30fps");
     XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
 
-    XCTAssertEqual([cap specificity], 10); // in + out + 8 tags
+    XCTAssertEqual([cap specificity], 8); // 8 non-wildcard tags (in/out as media: contribute 0)
 }
 
 - (void)testBuilderWildcards {
@@ -302,9 +302,10 @@
     XCTAssertNotNil(cap1);
     XCTAssertNotNil(cap2);
 
-    // They should NOT match due to different inSpec
+    // cap1 (in=media:string) should NOT accept cap2 (in=media:) - more specific doesn't accept less specific
     XCTAssertFalse([cap1 accepts:cap2]);
-    XCTAssertFalse([cap2 accepts:cap1]);
+    // cap2 (in=media:) SHOULD accept cap1 (in=media:string) - base accepts more specific
+    XCTAssertTrue([cap2 accepts:cap1]);
 }
 
 @end
