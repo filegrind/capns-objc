@@ -92,6 +92,24 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
     return reverse;
 }
 
+// MARK: - Builders
+
+- (CSMediaUrn *)withTag:(NSString *)key value:(NSString *)value {
+    CSTaggedUrn *modified = [self.inner withTag:key value:value];
+    NSError *error;
+    CSMediaUrn *result = [CSMediaUrn fromTaggedUrn:modified error:&error];
+    NSAssert(result != nil, @"CSMediaUrn withTag:value: failed — inner withTag produced invalid MediaUrn: %@", error);
+    return result;
+}
+
+- (CSMediaUrn *)withoutTag:(NSString *)key {
+    CSTaggedUrn *modified = [self.inner withoutTag:key];
+    NSError *error;
+    CSMediaUrn *result = [CSMediaUrn fromTaggedUrn:modified error:&error];
+    NSAssert(result != nil, @"CSMediaUrn withoutTag: failed — inner withoutTag produced invalid MediaUrn: %@", error);
+    return result;
+}
+
 // MARK: - Predicates
 
 - (BOOL)isBinary {

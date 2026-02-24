@@ -66,6 +66,18 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn is_equivalent(&self, other: &MediaUrn) -> Result<bool, MediaUrnError>
 - (BOOL)isEquivalentTo:(CSMediaUrn *)other;
 
+// MARK: - Builders (mirror Rust MediaUrn builders)
+
+/// Create a new MediaUrn with an added or replaced tag.
+/// Delegates to inner CSTaggedUrn withTag:value: and wraps result.
+/// Mirrors Rust: pub fn with_tag(&self, key: &str, value: &str) -> Result<MediaUrn>
+- (CSMediaUrn * _Nonnull)withTag:(NSString * _Nonnull)key value:(NSString * _Nonnull)value;
+
+/// Create a new MediaUrn without a specific tag.
+/// Delegates to inner CSTaggedUrn withoutTag: and wraps result.
+/// Mirrors Rust: pub fn without_tag(&self, key: &str) -> Self
+- (CSMediaUrn * _Nonnull)withoutTag:(NSString * _Nonnull)key;
+
 // MARK: - Predicates (mirror Rust MediaUrn predicates)
 
 /// Check if this represents binary data (textable marker tag absent).

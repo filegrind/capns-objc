@@ -49,7 +49,7 @@ fastlane/screenshots
 *.swo
 .idea/
 .vscode/
-.ws/
+.wsb/
 *.log
 
 diffs/
