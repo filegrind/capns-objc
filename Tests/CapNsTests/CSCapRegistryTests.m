@@ -48,8 +48,8 @@ static NSString *buildRegistryURL(NSString *urn) {
     CSCapRegistry *registry = [[CSCapRegistry alloc] init];
     
     // Test that registry checks if cap exists in cache
-    BOOL exists1 = [registry capExists:@"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata"];
-    BOOL exists2 = [registry capExists:@"cap:in=media:void;op=different;out=\"media:form=map;textable\""];
+    BOOL exists1 = [registry capExists:@"cap:in=media:void;op=extract;out=\"media:record;textable\";target=metadata"];
+    BOOL exists2 = [registry capExists:@"cap:in=media:void;op=different;out=\"media:record;textable\""];
     
     // These should both be NO since cache is empty initially
     XCTAssertFalse(exists1);
@@ -61,7 +61,7 @@ static NSString *buildRegistryURL(NSString *urn) {
 
 /// Test that URL construction keeps "cap:" literal and only encodes the tags part
 - (void)testURLKeepsCapPrefixLiteral {
-    NSString *urn = @"cap:in=media:string;op=test;out=\"media:form=map;textable\"";
+    NSString *urn = @"cap:in=media:string;op=test;out=\"media:record;textable\"";
     NSString *registryURL = buildRegistryURL(urn);
 
     // URL must contain literal "/cap:" not encoded
@@ -100,8 +100,8 @@ static NSString *buildRegistryURL(NSString *urn) {
 
 /// Test that different tag orders normalize to the same URL
 - (void)testNormalizeHandlesDifferentTagOrders {
-    NSString *urn1 = @"cap:op=test;in=media:string;out=\"media:form=map;textable\"";
-    NSString *urn2 = @"cap:in=media:string;out=\"media:form=map;textable\";op=test";
+    NSString *urn1 = @"cap:op=test;in=media:string;out=\"media:record;textable\"";
+    NSString *urn2 = @"cap:in=media:string;out=\"media:record;textable\";op=test";
 
     NSString *url1 = buildRegistryURL(urn1);
     NSString *url2 = buildRegistryURL(urn2);
@@ -117,12 +117,12 @@ static NSString *buildRegistryURL(NSString *urn) {
     
     XCTestExpectation *expectation = [self expectationWithDescription:@"Get cap definition"];
     
-    [registry getCapDefinition:@"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata" completion:^(CSRegistryCapDefinition *definition, NSError *error) {
+    [registry getCapDefinition:@"cap:in=media:void;op=extract;out=\"media:record;textable\";target=metadata" completion:^(CSRegistryCapDefinition *definition, NSError *error) {
         if (error) {
             NSLog(@"Skipping real registry test: %@", error);
         } else {
             XCTAssertNotNil(definition);
-            XCTAssertEqualObjects(definition.urn, @"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata");
+            XCTAssertEqualObjects(definition.urn, @"cap:in=media:void;op=extract;out=\"media:record;textable\";target=metadata");
             XCTAssertNotNil(definition.version);
             XCTAssertNotNil(definition.command);
         }
@@ -136,7 +136,7 @@ static NSString *buildRegistryURL(NSString *urn) {
     CSRegistryValidator *validator = [CSRegistryValidator validator];
     
     NSError *error;
-    CSCapUrn *urn = [CSCapUrn fromString:@"cap:in=media:void;op=extract;out=\"media:form=map;textable\";target=metadata" error:&error];
+    CSCapUrn *urn = [CSCapUrn fromString:@"cap:in=media:void;op=extract;out=\"media:record;textable\";target=metadata" error:&error];
     XCTAssertNotNil(urn);
     
     CSCap *cap = [CSCap capWithUrn:urn

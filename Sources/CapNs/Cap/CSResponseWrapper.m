@@ -188,12 +188,12 @@
 
     switch (self.contentType) {
         case CSResponseContentTypeJson:
-            // JSON response matches structured outputs (map/list)
-            return [mediaSpec isStructured];
+            // JSON response matches outputs with record marker (internal key-value structure) or json tag
+            return [mediaSpec isRecord] || [mediaSpec isJSON];
 
         case CSResponseContentTypeText:
-            // Text response matches non-binary, non-structured outputs (scalars)
-            return ![mediaSpec isBinary] && ![mediaSpec isStructured];
+            // Text response matches textable outputs that are opaque (no internal structure)
+            return [mediaSpec isText] && [mediaSpec isOpaque];
 
         case CSResponseContentTypeBinary:
             // Binary response matches binary outputs

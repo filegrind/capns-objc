@@ -15,16 +15,16 @@ NSErrorDomain const CSMediaSpecErrorDomain = @"CSMediaSpecErrorDomain";
 // BUILT-IN MEDIA URN CONSTANTS
 // ============================================================================
 
-NSString * const CSMediaString = @"media:textable;form=scalar";
-NSString * const CSMediaInteger = @"media:integer;textable;numeric;form=scalar";
-NSString * const CSMediaNumber = @"media:textable;numeric;form=scalar";
-NSString * const CSMediaBoolean = @"media:bool;textable;form=scalar";
-NSString * const CSMediaObject = @"media:form=map;textable";
-NSString * const CSMediaStringArray = @"media:textable;form=list";
-NSString * const CSMediaIntegerArray = @"media:integer;textable;numeric;form=list";
-NSString * const CSMediaNumberArray = @"media:textable;numeric;form=list";
-NSString * const CSMediaBooleanArray = @"media:bool;textable;form=list";
-NSString * const CSMediaObjectArray = @"media:form=list;textable";
+NSString * const CSMediaString = @"media:textable";
+NSString * const CSMediaInteger = @"media:integer;textable;numeric";
+NSString * const CSMediaNumber = @"media:textable;numeric";
+NSString * const CSMediaBoolean = @"media:bool;textable";
+NSString * const CSMediaObject = @"media:record";
+NSString * const CSMediaStringArray = @"media:list;textable";
+NSString * const CSMediaIntegerArray = @"media:integer;list;textable;numeric";
+NSString * const CSMediaNumberArray = @"media:list;textable;numeric";
+NSString * const CSMediaBooleanArray = @"media:bool;list;textable";
+NSString * const CSMediaObjectArray = @"media:list;record";
 NSString * const CSMediaBinary = @"media:";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
@@ -35,9 +35,6 @@ NSString * const CSMediaVideo = @"media:video";
 // Semantic AI input types
 NSString * const CSMediaAudioSpeech = @"media:audio;wav;speech";
 NSString * const CSMediaImageThumbnail = @"media:image;png;thumbnail";
-// Collection types
-NSString * const CSMediaCollection = @"media:collection;form=map";
-NSString * const CSMediaCollectionList = @"media:collection;form=list";
 // Document types (PRIMARY naming - type IS the format)
 NSString * const CSMediaPdf = @"media:pdf";
 NSString * const CSMediaEpub = @"media:epub";
@@ -48,35 +45,36 @@ NSString * const CSMediaRst = @"media:rst;textable";
 NSString * const CSMediaLog = @"media:log;textable";
 NSString * const CSMediaHtml = @"media:html;textable";
 NSString * const CSMediaXml = @"media:xml;textable";
-NSString * const CSMediaJson = @"media:json;textable;form=map";
-NSString * const CSMediaJsonSchema = @"media:json;json-schema;textable;form=map";
-NSString * const CSMediaYaml = @"media:yaml;textable;form=map";
+NSString * const CSMediaJson = @"media:json;record;textable";
+NSString * const CSMediaJsonSchema = @"media:json;json-schema;record;textable";
+NSString * const CSMediaYaml = @"media:record;textable;yaml";
 // Semantic input types
-NSString * const CSMediaModelSpec = @"media:model-spec;textable;form=scalar";
-NSString * const CSMediaModelRepo = @"media:model-repo;textable;form=map";
+NSString * const CSMediaModelSpec = @"media:model-spec;textable";
+NSString * const CSMediaModelRepo = @"media:model-repo;record;textable";
 // File path types
-NSString * const CSMediaFilePath = @"media:file-path;textable;form=scalar";
-NSString * const CSMediaFilePathArray = @"media:file-path;textable;form=list";
+NSString * const CSMediaFilePath = @"media:file-path;textable";
+NSString * const CSMediaFilePathArray = @"media:file-path;list;textable";
 // Semantic input types (continued)
-NSString * const CSMediaFrontmatterText = @"media:frontmatter;textable;form=scalar";
-NSString * const CSMediaMlxModelPath = @"media:mlx-model-path;textable;form=scalar";
+NSString * const CSMediaFrontmatterText = @"media:frontmatter;textable";
+NSString * const CSMediaMlxModelPath = @"media:mlx-model-path;textable";
 // Semantic output types
-NSString * const CSMediaModelDim = @"media:model-dim;integer;textable;numeric;form=scalar";
-NSString * const CSMediaDownloadOutput = @"media:download-result;textable;form=map";
-NSString * const CSMediaListOutput = @"media:model-list;textable;form=map";
-NSString * const CSMediaStatusOutput = @"media:model-status;textable;form=map";
-NSString * const CSMediaContentsOutput = @"media:model-contents;textable;form=map";
-NSString * const CSMediaAvailabilityOutput = @"media:model-availability;textable;form=map";
-NSString * const CSMediaPathOutput = @"media:model-path;textable;form=map";
-NSString * const CSMediaEmbeddingVector = @"media:embedding-vector;textable;form=map";
-NSString * const CSMediaLlmInferenceOutput = @"media:generated-text;textable;form=map";
-NSString * const CSMediaFileMetadata = @"media:file-metadata;textable;form=map";
-NSString * const CSMediaDocumentOutline = @"media:document-outline;textable;form=map";
-NSString * const CSMediaDisboundPage = @"media:disbound-page;textable;form=list";
-NSString * const CSMediaCaptionOutput = @"media:image-caption;textable;form=map";
-NSString * const CSMediaTranscriptionOutput = @"media:transcription;textable;form=map";
-NSString * const CSMediaDecision = @"media:decision;bool;textable;form=scalar";
-NSString * const CSMediaDecisionArray = @"media:decision;bool;textable;form=list";
+NSString * const CSMediaImageDescription = @"media:image-description;textable";
+NSString * const CSMediaModelDim = @"media:integer;model-dim;numeric;textable";
+NSString * const CSMediaDownloadOutput = @"media:download-result;record;textable";
+NSString * const CSMediaListOutput = @"media:model-list;record;textable";
+NSString * const CSMediaStatusOutput = @"media:model-status;record;textable";
+NSString * const CSMediaContentsOutput = @"media:model-contents;record;textable";
+NSString * const CSMediaAvailabilityOutput = @"media:model-availability;record;textable";
+NSString * const CSMediaPathOutput = @"media:model-path;record;textable";
+NSString * const CSMediaEmbeddingVector = @"media:embedding-vector;record;textable";
+NSString * const CSMediaLlmInferenceOutput = @"media:generated-text;record;textable";
+NSString * const CSMediaFileMetadata = @"media:file-metadata;record;textable";
+NSString * const CSMediaDocumentOutline = @"media:document-outline;record;textable";
+NSString * const CSMediaDisboundPage = @"media:disbound-page;list;textable";
+NSString * const CSMediaCaptionOutput = @"media:image-caption;record;textable";
+NSString * const CSMediaTranscriptionOutput = @"media:record;textable;transcription";
+NSString * const CSMediaDecision = @"media:bool;decision;textable";
+NSString * const CSMediaDecisionArray = @"media:bool;decision;list;textable";
 
 // ============================================================================
 // SCHEMA URL CONFIGURATION
@@ -151,18 +149,18 @@ static BOOL CSMediaUrnHasTag(NSString *mediaUrn, NSString *tagName) {
     return [parsed getTag:tagName] != nil;
 }
 
-/// Helper to check if a media URN has a tag with a specific value (e.g., form=map).
+/// Helper to check if a media URN has a marker tag (tag value is "*").
 /// Requires a valid, non-empty media URN - fails hard otherwise.
 /// Nil/empty/whitespace validation is handled by CSTaggedUrn.
-static BOOL CSMediaUrnHasTagValue(NSString *mediaUrn, NSString *tagKey, NSString *tagValue) {
+static BOOL CSMediaUrnHasMarkerTag(NSString *mediaUrn, NSString *tagName) {
     NSError *error = nil;
     CSTaggedUrn *parsed = [CSTaggedUrn fromString:mediaUrn error:&error];
     if (parsed == nil || error != nil) {
         [NSException raise:NSInvalidArgumentException
                     format:@"Failed to parse media URN '%@': %@ - this indicates the CSMediaSpec was not resolved via CSResolveMediaUrn", mediaUrn, error.localizedDescription];
     }
-    NSString *value = [parsed getTag:tagKey];
-    return value != nil && [value isEqualToString:tagValue];
+    NSString *value = [parsed getTag:tagName];
+    return value != nil && [value isEqualToString:@"*"];
 }
 
 /// Public function to check if a media URN represents binary data.
@@ -183,22 +181,28 @@ BOOL CSMediaUrnIsJson(NSString *mediaUrn) {
     return CSMediaUrnHasTag(mediaUrn, @"json");
 }
 
-/// Public function to check if a media URN represents a list (form=list).
+/// Public function to check if a media URN represents a list (has list marker tag).
 /// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsList(NSString *mediaUrn) {
-    return CSMediaUrnHasTagValue(mediaUrn, @"form", @"list");
+    return CSMediaUrnHasMarkerTag(mediaUrn, @"list");
 }
 
-/// Public function to check if a media URN represents a map (form=map).
+/// Public function to check if a media URN represents a record (has record marker tag).
 /// Validation is handled by CSTaggedUrn.
-BOOL CSMediaUrnIsMap(NSString *mediaUrn) {
-    return CSMediaUrnHasTagValue(mediaUrn, @"form", @"map");
+BOOL CSMediaUrnIsRecord(NSString *mediaUrn) {
+    return CSMediaUrnHasMarkerTag(mediaUrn, @"record");
 }
 
-/// Public function to check if a media URN represents a scalar (form=scalar).
+/// Public function to check if a media URN is opaque (no record marker tag).
+/// Validation is handled by CSTaggedUrn.
+BOOL CSMediaUrnIsOpaque(NSString *mediaUrn) {
+    return !CSMediaUrnHasMarkerTag(mediaUrn, @"record");
+}
+
+/// Public function to check if a media URN represents a scalar (no list marker tag).
 /// Validation is handled by CSTaggedUrn.
 BOOL CSMediaUrnIsScalar(NSString *mediaUrn) {
-    return CSMediaUrnHasTagValue(mediaUrn, @"form", @"scalar");
+    return !CSMediaUrnHasMarkerTag(mediaUrn, @"list");
 }
 
 /// Public function to check if a media URN represents image data.
@@ -284,20 +288,20 @@ BOOL CSMediaUrnIsBool(NSString *mediaUrn) {
     return !CSMediaUrnHasTag(self.mediaUrn, @"textable");
 }
 
-- (BOOL)isMap {
-    return CSMediaUrnHasTagValue(self.mediaUrn, @"form", @"map");
+- (BOOL)isRecord {
+    return CSMediaUrnHasMarkerTag(self.mediaUrn, @"record");
+}
+
+- (BOOL)isOpaque {
+    return !CSMediaUrnHasMarkerTag(self.mediaUrn, @"record");
 }
 
 - (BOOL)isScalar {
-    return CSMediaUrnHasTagValue(self.mediaUrn, @"form", @"scalar");
+    return !CSMediaUrnHasMarkerTag(self.mediaUrn, @"list");
 }
 
 - (BOOL)isList {
-    return CSMediaUrnHasTagValue(self.mediaUrn, @"form", @"list");
-}
-
-- (BOOL)isStructured {
-    return [self isMap] || [self isList];
+    return CSMediaUrnHasMarkerTag(self.mediaUrn, @"list");
 }
 
 - (BOOL)isJSON {

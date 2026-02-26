@@ -55,6 +55,10 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn conforms_to(&self, pattern: &MediaUrn) -> Result<bool, MediaUrnError>
 - (BOOL)conformsTo:(CSMediaUrn *)pattern error:(NSError **)error;
 
+/// Check if this instance conforms to (can be handled by) the given pattern - convenience without error.
+/// Throws assertion if comparison fails.
+- (BOOL)conformsTo:(CSMediaUrn *)pattern;
+
 /// Check if this pattern accepts the given instance.
 /// Equivalent to `instance.conformsTo(self)`.
 /// Mirrors Rust: pub fn accepts(&self, instance: &MediaUrn) -> Result<bool, MediaUrnError>
@@ -84,21 +88,29 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn is_binary(&self) -> bool
 - (BOOL)isBinary;
 
-/// Check if this represents a map/object form (form=map).
-/// Mirrors Rust: pub fn is_map(&self) -> bool
-- (BOOL)isMap;
+// MARK: - Cardinality (list marker)
 
-/// Check if this represents a scalar form (form=scalar).
-/// Mirrors Rust: pub fn is_scalar(&self) -> bool
-- (BOOL)isScalar;
-
-/// Check if this represents a list form (form=list).
+/// Returns true if this media is a list (has `list` marker tag).
+/// Returns false if scalar (no `list` marker = default).
 /// Mirrors Rust: pub fn is_list(&self) -> bool
 - (BOOL)isList;
 
-/// Check if this represents structured data (map or list).
-/// Mirrors Rust: pub fn is_structured(&self) -> bool
-- (BOOL)isStructured;
+/// Returns true if this media is a scalar (no `list` marker).
+/// Scalar is the default cardinality.
+/// Mirrors Rust: pub fn is_scalar(&self) -> bool
+- (BOOL)isScalar;
+
+// MARK: - Structure (record marker)
+
+/// Returns true if this media is a record (has `record` marker tag).
+/// A record has internal key-value structure (e.g., JSON object).
+/// Mirrors Rust: pub fn is_record(&self) -> bool
+- (BOOL)isRecord;
+
+/// Returns true if this media is opaque (no `record` marker).
+/// Opaque is the default structure - no internal fields recognized.
+/// Mirrors Rust: pub fn is_opaque(&self) -> bool
+- (BOOL)isOpaque;
 
 /// Check if this represents JSON data (json marker tag present).
 /// Mirrors Rust: pub fn is_json(&self) -> bool
@@ -144,9 +156,12 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn is_any_file_path(&self) -> bool
 - (BOOL)isAnyFilePath;
 
-/// Check if this represents a collection type (collection marker tag present).
-/// Mirrors Rust: pub fn is_collection(&self) -> bool
-- (BOOL)isCollection;
+// MARK: - Specificity
+
+/// Get the specificity score (number of tags).
+/// Higher specificity means more specific matching.
+/// Mirrors Rust: pub fn specificity(&self) -> usize
+- (NSInteger)specificity;
 
 @end
 

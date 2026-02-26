@@ -53,12 +53,12 @@
                 metadataJSON:nil];
 }
 
-// Helper for test URNs - media URNs with form=map must be quoted
+// Helper for test URNs - media URNs with record must be quoted
 - (NSString *)testUrnWithTags:(NSString *)tags {
     if (tags.length == 0) {
-        return @"cap:in=\"media:void\";out=\"media:form=map;textable\"";
+        return @"cap:in=\"media:void\";out=\"media:record;textable\"";
     }
-    return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:form=map;textable\";%@", tags];
+    return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:record;textable\";%@", tags];
 }
 
 - (void)testCapBlockMoreSpecificWins {

@@ -42,3 +42,11 @@ FOUNDATION_EXPORT const unsigned char CapNsVersionString[];
 // Plugin communication infrastructure
 #import "CSPacket.h"
 #import "CSMessage.h"
+
+// Planner module - execution planning and cardinality analysis
+#import "CSCardinality.h"
+#import "CSArgumentBinding.h"
+#import "CSCollectionInput.h"
+#import "CSPlan.h"
+#import "CSPlanBuilder.h"
+#import "CSExecutor.h"

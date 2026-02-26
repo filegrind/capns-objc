@@ -1,0 +1,21 @@
+
+
+// MARK: - Specificity
+
+- (NSInteger)specificity {
+    return [[self tags] count];
+}
+
+// MARK: - Convenience conformsTo without error
+
+- (BOOL)conformsTo:(CSMediaUrn *)pattern {
+    NSError *error = nil;
+    BOOL result = [self conformsTo:pattern error:&error];
+    if (error) {
+        [NSException raise:NSInternalInconsistencyException
+                    format:@"MediaUrn conformsTo failed: %@", error.localizedDescription];
+    }
+    return result;
+}
+
+@end

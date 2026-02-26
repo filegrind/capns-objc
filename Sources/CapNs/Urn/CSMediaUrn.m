@@ -110,29 +110,39 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
     return result;
 }
 
+// MARK: - Helper: Check for marker tag presence
+
+/// Check if a marker tag (tag with wildcard/no value) is present.
+/// A marker tag is stored as key="*" in the tagged URN.
+- (BOOL)hasMarkerTag:(NSString *)tagName {
+    NSString *value = [self getTag:tagName];
+    return value != nil && [value isEqualToString:@"*"];
+}
+
 // MARK: - Predicates
 
 - (BOOL)isBinary {
     return [self getTag:@"textable"] == nil;
 }
 
-- (BOOL)isMap {
-    NSString *form = [self getTag:@"form"];
-    return form != nil && [form isEqualToString:@"map"];
+// MARK: - Cardinality (list marker)
+
+- (BOOL)isList {
+    return [self hasMarkerTag:@"list"];
 }
 
 - (BOOL)isScalar {
-    NSString *form = [self getTag:@"form"];
-    return form != nil && [form isEqualToString:@"scalar"];
+    return ![self hasMarkerTag:@"list"];
 }
 
-- (BOOL)isList {
-    NSString *form = [self getTag:@"form"];
-    return form != nil && [form isEqualToString:@"list"];
+// MARK: - Structure (record marker)
+
+- (BOOL)isRecord {
+    return [self hasMarkerTag:@"record"];
 }
 
-- (BOOL)isStructured {
-    return [self isMap] || [self isList];
+- (BOOL)isOpaque {
+    return ![self hasMarkerTag:@"record"];
 }
 
 - (BOOL)isJson {
@@ -168,19 +178,33 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
 }
 
 - (BOOL)isFilePath {
-    return [self getTag:@"file-path"] != nil && ![self isList];
+    return [self hasMarkerTag:@"file-path"] && ![self isList];
 }
 
 - (BOOL)isFilePathArray {
-    return [self getTag:@"file-path"] != nil && [self isList];
+    return [self hasMarkerTag:@"file-path"] && [self isList];
 }
 
 - (BOOL)isAnyFilePath {
-    return [self isFilePath] || [self isFilePathArray];
+    return [self hasMarkerTag:@"file-path"];
 }
 
-- (BOOL)isCollection {
-    return [self getTag:@"collection"] != nil;
+// MARK: - Specificity
+
+- (NSInteger)specificity {
+    return [[self tags] count];
+}
+
+// MARK: - Convenience conformsTo without error
+
+- (BOOL)conformsTo:(CSMediaUrn *)pattern {
+    NSError *error = nil;
+    BOOL result = [self conformsTo:pattern error:&error];
+    if (error) {
+        [NSException raise:NSInternalInconsistencyException
+                    format:@"MediaUrn conformsTo failed: %@", error.localizedDescription];
+    }
+    return result;
 }
 
 @end

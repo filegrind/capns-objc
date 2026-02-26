@@ -266,10 +266,10 @@ final class PluginRuntimeTests: XCTestCase {
 
     // TEST261: extract_effective_payload with CBOR content extracts matching argument value
     func test261_extractEffectivePayloadCborMatch() throws {
-        // Build CBOR: [{media_urn: "media:string;textable;form=scalar", value: bytes("hello")}]
+        // Build CBOR: [{media_urn: "media:string;textable", value: bytes("hello")}]
         let cborArray: CBOR = .array([
             .map([
-                .utf8String("media_urn"): .utf8String("media:string;textable;form=scalar"),
+                .utf8String("media_urn"): .utf8String("media:string;textable"),
                 .utf8String("value"): .byteString([UInt8]("hello".utf8))
             ])
         ])
@@ -278,7 +278,7 @@ final class PluginRuntimeTests: XCTestCase {
         let result = try extractEffectivePayload(
             payload: payload,
             contentType: "application/cbor",
-            capUrn: "cap:in=media:string;textable;form=scalar;op=test;out=*"
+            capUrn: "cap:in=media:string;textable;op=test;out=*"
         )
         XCTAssertEqual(String(data: result, encoding: .utf8), "hello")
     }
@@ -296,7 +296,7 @@ final class PluginRuntimeTests: XCTestCase {
         XCTAssertThrowsError(try extractEffectivePayload(
             payload: payload,
             contentType: "application/cbor",
-            capUrn: "cap:in=media:string;textable;form=scalar;op=test;out=*"
+            capUrn: "cap:in=media:string;textable;op=test;out=*"
         )) { error in
             if let runtimeError = error as? PluginRuntimeError,
                case .deserializationError(let msg) = runtimeError {
@@ -363,7 +363,7 @@ final class PluginRuntimeTests: XCTestCase {
                 .utf8String("value"): .byteString([UInt8]("wrong".utf8))
             ]),
             .map([
-                .utf8String("media_urn"): .utf8String("media:model-spec;textable;form=scalar"),
+                .utf8String("media_urn"): .utf8String("media:model-spec;textable"),
                 .utf8String("value"): .byteString([UInt8]("correct".utf8))
             ]),
         ])
@@ -372,7 +372,7 @@ final class PluginRuntimeTests: XCTestCase {
         let result = try extractEffectivePayload(
             payload: payload,
             contentType: "application/cbor",
-            capUrn: "cap:in=media:model-spec;textable;form=scalar;op=infer;out=*"
+            capUrn: "cap:in=media:model-spec;textable;op=infer;out=*"
         )
         XCTAssertEqual(String(data: result, encoding: .utf8), "correct")
     }
@@ -436,10 +436,10 @@ final class CapArgumentValueTests: XCTestCase {
     // TEST274: CapArgumentValue stores media_urn and raw byte value
     func test274_capArgumentValueNew() {
         let arg = CapArgumentValue(
-            mediaUrn: "media:model-spec;textable;form=scalar",
+            mediaUrn: "media:model-spec;textable",
             value: "gpt-4".data(using: .utf8)!
         )
-        XCTAssertEqual(arg.mediaUrn, "media:model-spec;textable;form=scalar")
+        XCTAssertEqual(arg.mediaUrn, "media:model-spec;textable")
         XCTAssertEqual(arg.value, "gpt-4".data(using: .utf8)!)
     }
 
@@ -560,7 +560,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Process PDF",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:pdf"),
@@ -614,7 +614,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [.positional(0)]  // NO stdin source!
             )]
@@ -649,7 +649,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Process",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:pdf"),
@@ -693,7 +693,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Batch",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -750,7 +750,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:pdf"),
@@ -783,7 +783,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),  // First
@@ -822,7 +822,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -848,14 +848,14 @@ final class CborFilePathConversionTests: XCTestCase {
     func test343_non_file_path_args_unaffected() throws {
         // Arg with different media type should NOT trigger file reading
         let cap = createCap(
-            urn: "cap:in=\"media:model-spec;textable;form=scalar\";op=test;out=\"media:void\"",
+            urn: "cap:in=\"media:model-spec;textable\";op=test;out=\"media:void\"",
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:model-spec;textable;form=scalar",  // NOT file-path
+                mediaUrn: "media:model-spec;textable",  // NOT file-path
                 required: true,
                 sources: [
-                    .stdin("media:model-spec;textable;form=scalar"),
+                    .stdin("media:model-spec;textable"),
                     .positional(0)
                 ]
             )]
@@ -882,7 +882,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -916,7 +916,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -960,7 +960,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -993,7 +993,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1026,7 +1026,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .positional(0),         // First
@@ -1059,7 +1059,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .cliFlag("--file"),     // First (not provided)
@@ -1094,7 +1094,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Process PDF",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:pdf"),
@@ -1159,7 +1159,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: false,  // Not required
                 sources: [
                     .stdin("media:"),
@@ -1204,7 +1204,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1236,7 +1236,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:text;textable;form=scalar",
+                mediaUrn: "media:text;textable",
                 required: true,
                 sources: [
                     .stdin("media:text;textable"),
@@ -1279,7 +1279,7 @@ final class CborFilePathConversionTests: XCTestCase {
             XCTFail("Should have media_urn key with string value")
             return
         }
-        XCTAssertEqual(urnStr, "media:text;textable;form=scalar")
+        XCTAssertEqual(urnStr, "media:text;textable")
 
         // Check value key
         let valueKey = CBOR.utf8String("value")
@@ -1300,7 +1300,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1351,7 +1351,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1410,7 +1410,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1476,7 +1476,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1512,7 +1512,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "test",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1540,7 +1540,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Test",
             command: "batch",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=list",
+                mediaUrn: "media:file-path;textable;list",
                 required: true,
                 sources: [
                     .stdin("media:"),
@@ -1581,7 +1581,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Process",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:pdf"),
@@ -1771,7 +1771,7 @@ final class CborFilePathConversionTests: XCTestCase {
             title: "Process",
             command: "process",
             args: [createArg(
-                mediaUrn: "media:file-path;textable;form=scalar",
+                mediaUrn: "media:file-path;textable",
                 required: true,
                 sources: [
                     .stdin("media:pdf"),
@@ -1949,7 +1949,7 @@ final class CborFilePathConversionTests: XCTestCase {
 
         // Build CBOR arguments with file-path URN
         let args = [CapArgumentValue(
-            mediaUrn: "media:file-path;textable;form=scalar",
+            mediaUrn: "media:file-path;textable",
             value: Data(testFile.path.utf8)
         )]
         let cborArgs: [CBOR] = args.map { arg in
@@ -1994,7 +1994,7 @@ final class CborFilePathConversionTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(mediaUrn, "media:file-path;textable;form=scalar", "Expected media:file-path URN")
+        XCTAssertEqual(mediaUrn, "media:file-path;textable", "Expected media:file-path URN")
         XCTAssertEqual(value, Data(testFile.path.utf8), "Expected file path as value")
     }
 }

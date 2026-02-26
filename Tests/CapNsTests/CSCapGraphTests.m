@@ -62,7 +62,7 @@
     // Add caps that form a graph:
     // binary -> str -> obj
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:string" title:@"Binary to String"];
-    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"String to Object"];
+    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:record;textable" title:@"String to Object"];
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
@@ -92,7 +92,7 @@
 
     // binary -> str, binary -> obj
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:string" title:@"Binary to String"];
-    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:form=map;textable" title:@"Binary to Object"];
+    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:record;textable" title:@"Binary to Object"];
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
@@ -110,7 +110,7 @@
     XCTAssertEqual(incoming.count, 1, @"Expected 1 incoming edge to str");
 
     // obj has 1 incoming edge
-    incoming = [graph getIncoming:@"media:form=map;textable"];
+    incoming = [graph getIncoming:@"media:record;textable"];
     XCTAssertEqual(incoming.count, 1, @"Expected 1 incoming edge to obj");
 }
 
@@ -121,7 +121,7 @@
 
     // binary -> str -> obj
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:string" title:@"Binary to String"];
-    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"String to Object"];
+    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:record;textable" title:@"String to Object"];
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
@@ -132,16 +132,16 @@
 
     // Direct conversions
     XCTAssertTrue([graph canConvert:@"media:" toSpec:@"media:string"], @"Should convert binary to str");
-    XCTAssertTrue([graph canConvert:@"media:string" toSpec:@"media:form=map;textable"], @"Should convert str to obj");
+    XCTAssertTrue([graph canConvert:@"media:string" toSpec:@"media:record;textable"], @"Should convert str to obj");
 
     // Transitive conversion
-    XCTAssertTrue([graph canConvert:@"media:" toSpec:@"media:form=map;textable"], @"Should convert binary to obj transitively");
+    XCTAssertTrue([graph canConvert:@"media:" toSpec:@"media:record;textable"], @"Should convert binary to obj transitively");
 
     // Same spec
     XCTAssertTrue([graph canConvert:@"media:" toSpec:@"media:"], @"Should convert same spec");
 
     // Impossible conversions
-    XCTAssertFalse([graph canConvert:@"media:form=map;textable" toSpec:@"media:"], @"Should not convert obj to binary");
+    XCTAssertFalse([graph canConvert:@"media:record;textable" toSpec:@"media:"], @"Should not convert obj to binary");
     XCTAssertFalse([graph canConvert:@"std:nonexistent.v1" toSpec:@"media:string"], @"Should not convert nonexistent");
 }
 
@@ -152,7 +152,7 @@
 
     // binary -> str -> obj
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:string" title:@"Binary to String"];
-    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"String to Object"];
+    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:record;textable" title:@"String to Object"];
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2] error:nil];
 
@@ -167,14 +167,14 @@
     XCTAssertEqual(path.count, 1, @"Expected path length 1");
 
     // Transitive path
-    path = [graph findPath:@"media:" toSpec:@"media:form=map;textable"];
+    path = [graph findPath:@"media:" toSpec:@"media:record;textable"];
     XCTAssertNotNil(path, @"Should find path from binary to obj");
     XCTAssertEqual(path.count, 2, @"Expected path length 2");
     XCTAssertEqualObjects(path[0].cap.title, @"Binary to String", @"First edge");
     XCTAssertEqualObjects(path[1].cap.title, @"String to Object", @"Second edge");
 
     // No path
-    path = [graph findPath:@"media:form=map;textable" toSpec:@"media:"];
+    path = [graph findPath:@"media:record;textable" toSpec:@"media:"];
     XCTAssertNil(path, @"Should not find impossible path");
 
     // Same spec
@@ -192,8 +192,8 @@
     // binary -> str -> obj
     // binary -> obj (direct)
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:string" title:@"Binary to String"];
-    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"String to Object"];
-    CSCap *cap3 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:form=map;textable" title:@"Binary to Object (direct)"];
+    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:record;textable" title:@"String to Object"];
+    CSCap *cap3 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:record;textable" title:@"Binary to Object (direct)"];
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2, cap3] error:nil];
 
@@ -203,7 +203,7 @@
     CSCapGraph *graph = [cube graph];
 
     // Find all paths from binary to obj
-    NSArray<NSArray<CSCapGraphEdge *> *> *paths = [graph findAllPaths:@"media:" toSpec:@"media:form=map;textable" maxDepth:3];
+    NSArray<NSArray<CSCapGraphEdge *> *> *paths = [graph findAllPaths:@"media:" toSpec:@"media:record;textable" maxDepth:3];
 
     XCTAssertEqual(paths.count, 2, @"Expected 2 paths");
 
@@ -261,7 +261,7 @@
     // binary -> str -> obj
     //         \-> json
     CSCap *cap1 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:string" title:@"Binary to String"];
-    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"String to Object"];
+    CSCap *cap2 = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:record;textable" title:@"String to Object"];
     CSCap *cap3 = [self makeGraphCapWithInSpec:@"media:" outSpec:@"media:json" title:@"Binary to JSON"];
 
     [registry registerCapSet:@"converter" host:host capabilities:@[cap1, cap2, cap3] error:nil];
@@ -298,7 +298,7 @@
     [providerRegistry registerCapSet:@"provider" host:providerHost capabilities:@[providerCap] error:nil];
 
     // Plugin: str -> obj
-    CSCap *pluginCap = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:form=map;textable" title:@"Plugin String to Object"];
+    CSCap *pluginCap = [self makeGraphCapWithInSpec:@"media:string" outSpec:@"media:record;textable" title:@"Plugin String to Object"];
     [pluginRegistry registerCapSet:@"plugin" host:pluginHost capabilities:@[pluginCap] error:nil];
 
     CSCapBlock *cube = [CSCapBlock cube];
@@ -308,9 +308,9 @@
     CSCapGraph *graph = [cube graph];
 
     // Should be able to convert binary -> obj through both registries
-    XCTAssertTrue([graph canConvert:@"media:" toSpec:@"media:form=map;textable"], @"Should convert across registries");
+    XCTAssertTrue([graph canConvert:@"media:" toSpec:@"media:record;textable"], @"Should convert across registries");
 
-    NSArray<CSCapGraphEdge *> *path = [graph findPath:@"media:" toSpec:@"media:form=map;textable"];
+    NSArray<CSCapGraphEdge *> *path = [graph findPath:@"media:" toSpec:@"media:record;textable"];
     XCTAssertNotNil(path, @"Should find path");
     XCTAssertEqual(path.count, 2, @"Expected path length 2");
 

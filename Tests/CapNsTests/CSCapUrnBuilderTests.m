@@ -17,7 +17,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     [builder inSpec:@"media:void"];
-    [builder outSpec:@"media:form=map;textable"];
+    [builder outSpec:@"media:record;textable"];
     [builder tag:@"type" value:@"data_processing"];
     [builder tag:@"op" value:@"transform"];
     [builder tag:@"format" value:@"json"];
@@ -26,13 +26,13 @@
     XCTAssertNotNil(capUrn);
     XCTAssertNil(error);
     // Alphabetical order: format, in, op, out, type
-    XCTAssertEqualObjects([capUrn toString], @"cap:format=json;in=media:void;op=transform;out=\"media:form=map;textable\";type=data_processing");
+    XCTAssertEqualObjects([capUrn toString], @"cap:format=json;in=media:void;op=transform;out=\"media:record;textable\";type=data_processing");
 }
 
 - (void)testBuilderFluentAPI {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
-    [[[[[[builder inSpec:@"media:void"] outSpec:@"media:form=map;textable"]
+    [[[[[[builder inSpec:@"media:void"] outSpec:@"media:record;textable"]
         tag:@"op" value:@"generate"]
        tag:@"target" value:@"thumbnail"]
       tag:@"format" value:@"pdf"]
@@ -47,7 +47,7 @@
     XCTAssertEqualObjects([cap getTag:@"format"], @"pdf");
     XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
     XCTAssertEqualObjects([cap getInSpec], @"media:void");
-    XCTAssertEqualObjects([cap getOutSpec], @"media:form=map;textable");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:record;textable");
 }
 
 - (void)testBuilderDirectionAccess {
@@ -71,7 +71,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     [builder inSpec:@"media:void"];
-    [builder outSpec:@"media:form=map;textable"];
+    [builder outSpec:@"media:record;textable"];
     [builder tag:@"engine" value:@"v2"];
     [builder tag:@"quality" value:@"high"];
     [builder tag:@"op" value:@"compress"];
@@ -89,7 +89,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     [builder inSpec:@"media:void"];
-    [builder outSpec:@"media:form=map;textable"];
+    [builder outSpec:@"media:record;textable"];
     [builder tag:@"op" value:@"old"];
     [builder tag:@"op" value:@"convert"]; // Override
     [builder tag:@"format" value:@"jpg"];
@@ -106,7 +106,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     // Only set outSpec, not inSpec
-    [builder outSpec:@"media:form=map;textable"];
+    [builder outSpec:@"media:record;textable"];
     [builder tag:@"op" value:@"test"];
     CSCapUrn *cap = [builder build:&error];
 
@@ -141,7 +141,7 @@
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     [builder inSpec:@"media:void"];
-    [builder outSpec:@"media:form=map;textable"];
+    [builder outSpec:@"media:record;textable"];
     // Trying to set in/out via tag should be silently ignored
     [builder tag:@"in" value:@"different"];
     [builder tag:@"out" value:@"different"];
@@ -152,20 +152,20 @@
     XCTAssertNil(error);
     // Direction should be from inSpec/outSpec, not from tag calls
     XCTAssertEqualObjects([cap getInSpec], @"media:void");
-    XCTAssertEqualObjects([cap getOutSpec], @"media:form=map;textable");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:record;textable");
 }
 
 - (void)testBuilderMinimalValid {
     NSError *error;
     CSCapUrnBuilder *builder = [CSCapUrnBuilder builder];
     [builder inSpec:@"media:void"];
-    [builder outSpec:@"media:form=map;textable"];
+    [builder outSpec:@"media:record;textable"];
     // No other tags
     CSCapUrn *cap = [builder build:&error];
 
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
-    XCTAssertEqualObjects([cap toString], @"cap:in=media:void;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([cap toString], @"cap:in=media:void;out=\"media:record;textable\"");
     XCTAssertEqual(cap.tags.count, 0);
     XCTAssertEqual([cap specificity], 3); // void(1) + object(2)
 }
@@ -243,7 +243,7 @@
     // Create a specific cap (handler/instance)
     CSCapUrnBuilder *builder1 = [CSCapUrnBuilder builder];
     [builder1 inSpec:@"media:void"];
-    [builder1 outSpec:@"media:form=map;textable"];
+    [builder1 outSpec:@"media:record;textable"];
     [builder1 tag:@"op" value:@"generate"];
     [builder1 tag:@"target" value:@"thumbnail"];
     [builder1 tag:@"format" value:@"pdf"];
@@ -253,14 +253,14 @@
     // Create a more general request (same direction)
     CSCapUrnBuilder *builder2 = [CSCapUrnBuilder builder];
     [builder2 inSpec:@"media:void"];
-    [builder2 outSpec:@"media:form=map;textable"];
+    [builder2 outSpec:@"media:record;textable"];
     [builder2 tag:@"op" value:@"generate"];
     CSCapUrn *generalRequest = [builder2 build:&error];
 
     // Create a wildcard request (same direction)
     CSCapUrnBuilder *builder3 = [CSCapUrnBuilder builder];
     [builder3 inSpec:@"media:void"];
-    [builder3 outSpec:@"media:form=map;textable"];
+    [builder3 outSpec:@"media:record;textable"];
     [builder3 tag:@"op" value:@"generate"];
     [builder3 tag:@"target" value:@"thumbnail"];
     [builder3 tag:@"ext" value:@"*"];
@@ -289,13 +289,13 @@
     // Create caps with different directions
     CSCapUrnBuilder *builder1 = [CSCapUrnBuilder builder];
     [builder1 inSpec:@"media:string"];
-    [builder1 outSpec:@"media:form=map;textable"];
+    [builder1 outSpec:@"media:record;textable"];
     [builder1 tag:@"op" value:@"process"];
     CSCapUrn *cap1 = [builder1 build:&error];
 
     CSCapUrnBuilder *builder2 = [CSCapUrnBuilder builder];
     [builder2 inSpec:@"media:"]; // Different inSpec
-    [builder2 outSpec:@"media:form=map;textable"];
+    [builder2 outSpec:@"media:record;textable"];
     [builder2 tag:@"op" value:@"process"];
     CSCapUrn *cap2 = [builder2 build:&error];
 

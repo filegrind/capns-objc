@@ -17,12 +17,12 @@
 
 // Helper function to create test URNs with default direction
 // Use media:void for in (no input) and media:object for out by default
-// Media URNs with form=map must be quoted because they contain = sign
+// Media URNs with record must be quoted because they contain = sign
 static NSString* testUrn(NSString *tags) {
     if (tags == nil || tags.length == 0) {
-        return @"cap:in=\"media:void\";out=\"media:form=map;textable\"";
+        return @"cap:in=\"media:void\";out=\"media:record;textable\"";
     }
-    return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:form=map;textable\";%@", tags];
+    return [NSString stringWithFormat:@"cap:in=\"media:void\";out=\"media:record;textable\";%@", tags];
 }
 
 #pragma mark - Basic Creation Tests
@@ -41,9 +41,9 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([capUrn getTag:@"format"], @"json");
     // Direction should be accessible
     XCTAssertEqualObjects([capUrn getTag:@"in"], @"media:void");
-    XCTAssertEqualObjects([capUrn getTag:@"out"], @"media:form=map;textable");
+    XCTAssertEqualObjects([capUrn getTag:@"out"], @"media:record;textable");
     XCTAssertEqualObjects([capUrn getInSpec], @"media:void");
-    XCTAssertEqualObjects([capUrn getOutSpec], @"media:form=map;textable");
+    XCTAssertEqualObjects([capUrn getOutSpec], @"media:record;textable");
 }
 
 // TEST011: Test that serialization uses smart quoting (no quotes for simple lowercase, quotes for special chars/uppercase)
@@ -56,14 +56,14 @@ static NSString* testUrn(NSString *tags) {
 
     // Should be sorted alphabetically: ext, in, op, out, target
     // Note: out value contains ; so it must be quoted in the canonical form
-    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:form=map;textable\";target=thumbnail");
+    XCTAssertEqualObjects([capUrn toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:record;textable\";target=thumbnail");
 }
 
 // TEST015: Test that cap: prefix is required and case-insensitive
 - (void)testCapPrefixRequired {
     NSError *error;
     // Missing cap: prefix should fail
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"in=media:void;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"in=media:void;op=generate;out=\"media:record;textable\"" error:&error];
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorMissingCapPrefix);
@@ -115,7 +115,7 @@ static NSString* testUrn(NSString *tags) {
     NSError *error;
     // Value-less tags are now valid (parsed as wildcards)
     // Cap URN with valid in/out and a value-less tag should succeed
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=media:void;optimize;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=media:void;optimize;out=\"media:record;textable\"" error:&error];
 
     XCTAssertNotNil(capUrn);
     XCTAssertNil(error);
@@ -124,7 +124,7 @@ static NSString* testUrn(NSString *tags) {
 
     // Test value-less tag at end of input
     error = nil;
-    capUrn = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\";flag" error:&error];
+    capUrn = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:record;textable\";flag" error:&error];
     XCTAssertNotNil(capUrn);
     XCTAssertNil(error);
     XCTAssertEqualObjects([capUrn getTag:@"flag"], @"*");
@@ -133,7 +133,7 @@ static NSString* testUrn(NSString *tags) {
 // TEST003: Invalid format/character test
 - (void)testInvalidCharacters {
     NSError *error;
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=media:void;type@invalid=value;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:in=media:void;type@invalid=value;out=\"media:record;textable\"" error:&error];
 
     XCTAssertNil(capUrn);
     XCTAssertNotNil(error);
@@ -146,11 +146,11 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMissingInSpecDefaultsToWildcard {
     NSError *error = nil;
     // Missing 'in' defaults to media:
-    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=\"media:form=map;textable\";op=generate" error:&error];
+    CSCapUrn *capUrn = [CSCapUrn fromString:@"cap:out=\"media:record;textable\";op=generate" error:&error];
     XCTAssertNotNil(capUrn, @"Missing in should default to media:");
     XCTAssertNil(error);
     XCTAssertEqualObjects([capUrn getInSpec], @"media:");
-    XCTAssertEqualObjects([capUrn getOutSpec], @"media:form=map;textable");
+    XCTAssertEqualObjects([capUrn getOutSpec], @"media:record;textable");
 }
 
 // TEST002: Missing 'out' defaults to media:
@@ -188,11 +188,11 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMinimalValidCapUrn {
     NSError *error = nil;
     // Minimal valid cap URN has just in and out
-    CSCapUrn *minimal = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *minimal = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(minimal);
     XCTAssertNil(error);
     XCTAssertEqualObjects([minimal getInSpec], @"media:void");
-    XCTAssertEqualObjects([minimal getOutSpec], @"media:form=map;textable");
+    XCTAssertEqualObjects([minimal getOutSpec], @"media:record;textable");
     XCTAssertEqual(minimal.tags.count, 0); // No extra tags
 }
 
@@ -200,14 +200,14 @@ static NSString* testUrn(NSString *tags) {
 - (void)testDirectionMismatchNoMatch {
     NSError *error = nil;
     // Different inSpec should not match
-    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap1);
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:;op=test;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:;op=test;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertFalse([cap1 accepts:cap2]);
 
     // Different outSpec should not match
-    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap3);
     CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=media:void;op=test;out=media:binary" error:&error];
     XCTAssertNotNil(cap4);
@@ -218,9 +218,9 @@ static NSString* testUrn(NSString *tags) {
 - (void)testDirectionWildcardMatches {
     NSError *error = nil;
     // Wildcard inSpec matches any
-    CSCapUrn *wildcardIn = [CSCapUrn fromString:@"cap:in=*;op=test;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *wildcardIn = [CSCapUrn fromString:@"cap:in=*;op=test;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(wildcardIn);
-    CSCapUrn *specificIn = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *specificIn = [CSCapUrn fromString:@"cap:in=media:string;op=test;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(specificIn);
     XCTAssertTrue([wildcardIn accepts:specificIn]);
 
@@ -321,7 +321,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertFalse([cap1 accepts:cap4]);
 
     // Different direction specs: cap1 has in=media:void (specific), cap5 has in=media: (wildcard)
-    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap5 = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:record;textable\"" error:&error];
     // cap1 (in=media:void) cannot accept cap5 (in=media:) - specific doesn't accept wildcard
     XCTAssertFalse([cap1 accepts:cap5]);
     // cap5 (in=media:) CAN accept cap1 (in=media:void) - wildcard accepts specific
@@ -341,7 +341,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getTag:@"output"], @"binary");
     // Direction via getTag
     XCTAssertEqualObjects([cap getTag:@"in"], @"media:void");
-    XCTAssertEqualObjects([cap getTag:@"out"], @"media:form=map;textable");
+    XCTAssertEqualObjects([cap getTag:@"out"], @"media:record;textable");
 }
 
 // TEST036: Test with_tag preserves value case
@@ -351,10 +351,10 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *modified = [original withTag:@"ext" value:@"pdf"];
 
     // Direction preserved, new tag added in alphabetical order
-    XCTAssertEqualObjects([modified toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([modified toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:record;textable\"");
 
     // Original should be unchanged
-    XCTAssertEqualObjects([original toString], @"cap:in=media:void;op=generate;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([original toString], @"cap:in=media:void;op=generate;out=\"media:record;textable\"");
 }
 
 // TEST036: with_tag ignores in/out (use with_in_spec/with_out_spec instead)
@@ -387,7 +387,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *modified = [original withOutSpec:@"media:"];
 
     XCTAssertEqualObjects([modified getOutSpec], @"media:");
-    XCTAssertEqualObjects([original getOutSpec], @"media:form=map;textable"); // Original unchanged
+    XCTAssertEqualObjects([original getOutSpec], @"media:record;textable"); // Original unchanged
 }
 
 // TEST036: Test without_tag removes tag
@@ -396,10 +396,10 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *original = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
     CSCapUrn *modified = [original withoutTag:@"ext"];
 
-    XCTAssertEqualObjects([modified toString], @"cap:in=media:void;op=generate;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([modified toString], @"cap:in=media:void;op=generate;out=\"media:record;textable\"");
 
     // Original should be unchanged
-    XCTAssertEqualObjects([original toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([original toString], @"cap:ext=pdf;in=media:void;op=generate;out=\"media:record;textable\"");
 }
 
 // TEST036: without_tag ignores in/out
@@ -450,13 +450,13 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *subset = [cap subset:@[@"type", @"ext"]];
 
     // Direction is always preserved, only ext from the list
-    XCTAssertEqualObjects([subset toString], @"cap:ext=pdf;in=media:void;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([subset toString], @"cap:ext=pdf;in=media:void;out=\"media:record;textable\"");
 }
 
 // TEST026: Test merge
 - (void)testMerge {
     NSError *error;
-    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:void;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap1 = [CSCapUrn fromString:@"cap:in=media:void;op=generate;out=\"media:record;textable\"" error:&error];
     CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:ext=pdf;in=media:string;out=media:;output=binary" error:&error];
     CSCapUrn *merged = [cap1 merge:cap2];
 
@@ -475,7 +475,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
     CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
     CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"op=generate;image") error:&error];
-    CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:form=map;textable\"" error:&error]; // Different in
+    CSCapUrn *cap4 = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:record;textable\"" error:&error]; // Different in
 
     XCTAssertEqualObjects(cap1, cap2);
     XCTAssertNotEqualObjects(cap1, cap3);
@@ -502,7 +502,7 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertNotNil(decoded);
     XCTAssertEqualObjects(original, decoded);
     XCTAssertEqualObjects([decoded getInSpec], @"media:void");
-    XCTAssertEqualObjects([decoded getOutSpec], @"media:form=map;textable");
+    XCTAssertEqualObjects([decoded getOutSpec], @"media:record;textable");
 }
 
 // Obj-C specific: NSCopying support
@@ -523,7 +523,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testExtendedCharacterSupport {
     NSError *error = nil;
     // Test forward slashes and colons in tag components
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\";url=https://example_org/api;path=/some/file" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:record;textable\";url=https://example_org/api;path=/some/file" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"url"], @"https://example_org/api");
@@ -534,7 +534,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testWildcardRestrictions {
     NSError *error = nil;
     // Wildcard should be rejected in keys
-    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:form=map;textable\";*=value" error:&error];
+    CSCapUrn *invalidKey = [CSCapUrn fromString:@"cap:in=media:void;out=\"media:record;textable\";*=value" error:&error];
     XCTAssertNil(invalidKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidCharacter);
@@ -553,7 +553,7 @@ static NSString* testUrn(NSString *tags) {
 - (void)testDuplicateKeyRejection {
     NSError *error = nil;
     // Duplicate keys should be rejected
-    CSCapUrn *duplicate = [CSCapUrn fromString:@"cap:in=media:void;key=value1;key=value2;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *duplicate = [CSCapUrn fromString:@"cap:in=media:void;key=value1;key=value2;out=\"media:record;textable\"" error:&error];
     XCTAssertNil(duplicate);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorDuplicateKey);
@@ -564,7 +564,7 @@ static NSString* testUrn(NSString *tags) {
     NSError *error = nil;
 
     // Pure numeric keys should be rejected
-    CSCapUrn *numericKey = [CSCapUrn fromString:@"cap:in=media:void;123=value;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *numericKey = [CSCapUrn fromString:@"cap:in=media:void;123=value;out=\"media:record;textable\"" error:&error];
     XCTAssertNil(numericKey);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorNumericKey);
@@ -597,7 +597,7 @@ static NSString* testUrn(NSString *tags) {
     NSError *error = nil;
     // Unquoted values are normalized to lowercase
     // Note: in/out values must be quoted since media URNs contain special chars
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:EXT=PDF;IN=\"media:void\";OP=Generate;OUT=\"media:form=map;textable\";Target=Thumbnail" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:EXT=PDF;IN=\"media:void\";OP=Generate;OUT=\"media:record;textable\";Target=Thumbnail" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
 
@@ -621,14 +621,14 @@ static NSString* testUrn(NSString *tags) {
 - (void)testQuotedValuesPreserveCase {
     NSError *error = nil;
     // Quoted values preserve their case
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"Value With Spaces\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"Value With Spaces\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"key"], @"Value With Spaces");
 
     // Key is still lowercase
     error = nil;
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:void;KEY=\"Value With Spaces\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:void;KEY=\"Value With Spaces\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"Value With Spaces");
@@ -638,7 +638,7 @@ static NSString* testUrn(NSString *tags) {
     CSCapUrn *unquoted = [CSCapUrn fromString:testUrn(@"key=UPPERCASE") error:&error];
     XCTAssertNotNil(unquoted);
     error = nil;
-    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=media:void;key=\"UPPERCASE\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=media:void;key=\"UPPERCASE\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(quoted);
 
     XCTAssertEqualObjects([unquoted getTag:@"key"], @"uppercase"); // lowercase
@@ -650,21 +650,21 @@ static NSString* testUrn(NSString *tags) {
 - (void)testQuotedValueSpecialChars {
     NSError *error = nil;
     // Semicolons in quoted values
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"value;with;semicolons\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"value;with;semicolons\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"key"], @"value;with;semicolons");
 
     // Equals in quoted values
     error = nil;
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:void;key=\"value=with=equals\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:void;key=\"value=with=equals\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"value=with=equals");
 
     // Spaces in quoted values
     error = nil;
-    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=media:void;key=\"hello world\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap3 = [CSCapUrn fromString:@"cap:in=media:void;key=\"hello world\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap3);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap3 getTag:@"key"], @"hello world");
@@ -674,14 +674,14 @@ static NSString* testUrn(NSString *tags) {
 - (void)testQuotedValueEscapeSequences {
     NSError *error = nil;
     // Escaped quotes
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"value\\\"quoted\\\"\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"value\\\"quoted\\\"\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"key"], @"value\"quoted\"");
 
     // Escaped backslashes
     error = nil;
-    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:void;key=\"path\\\\file\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:@"cap:in=media:void;key=\"path\\\\file\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap2);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap2 getTag:@"key"], @"path\\file");
@@ -690,7 +690,7 @@ static NSString* testUrn(NSString *tags) {
 // TEST008: Test that mixed quoted and unquoted values in same URN parse correctly
 - (void)testMixedQuotedUnquoted {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:a=\"Quoted\";b=simple;in=media:void;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:a=\"Quoted\";b=simple;in=media:void;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap);
     XCTAssertNil(error);
     XCTAssertEqualObjects([cap getTag:@"a"], @"Quoted");
@@ -700,7 +700,7 @@ static NSString* testUrn(NSString *tags) {
 // TEST009: Test that unterminated quote produces UnterminatedQuote error
 - (void)testUnterminatedQuoteError {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"unterminated;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"unterminated;out=\"media:record;textable\"" error:&error];
     XCTAssertNil(cap);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorUnterminatedQuote);
@@ -709,7 +709,7 @@ static NSString* testUrn(NSString *tags) {
 // TEST010: Test that invalid escape sequences (like \n, \x) produce InvalidEscapeSequence error
 - (void)testInvalidEscapeSequenceError {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"bad\\n\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"bad\\n\";out=\"media:record;textable\"" error:&error];
     XCTAssertNil(cap);
     XCTAssertNotNil(error);
     XCTAssertEqual(error.code, CSCapUrnErrorInvalidEscapeSequence);
@@ -730,7 +730,7 @@ static NSString* testUrn(NSString *tags) {
 // TEST013: Test that quoted values round-trip preserving case and spaces
 - (void)testRoundTripQuoted {
     NSError *error = nil;
-    NSString *original = @"cap:in=media:void;key=\"Value With Spaces\";out=\"media:form=map;textable\"";
+    NSString *original = @"cap:in=media:void;key=\"Value With Spaces\";out=\"media:record;textable\"";
     CSCapUrn *cap = [CSCapUrn fromString:original error:&error];
     XCTAssertNotNil(cap);
     NSString *serialized = [cap toString];
@@ -743,7 +743,7 @@ static NSString* testUrn(NSString *tags) {
 // TEST035: Test has_tag is case-sensitive for values, case-insensitive for keys, works for in/out
 - (void)testHasTagCaseSensitive {
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"Value\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:void;key=\"Value\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap);
 
     // Exact case match works
@@ -760,7 +760,7 @@ static NSString* testUrn(NSString *tags) {
     // hasTag works for direction too
     XCTAssertTrue([cap hasTag:@"in" withValue:@"media:void"]);
     XCTAssertTrue([cap hasTag:@"IN" withValue:@"media:void"]);
-    XCTAssertTrue([cap hasTag:@"out" withValue:@"media:form=map;textable"]);
+    XCTAssertTrue([cap hasTag:@"out" withValue:@"media:record;textable"]);
 }
 
 // TEST038: Test semantic equivalence of unquoted and quoted simple lowercase values
@@ -769,13 +769,13 @@ static NSString* testUrn(NSString *tags) {
     // Unquoted and quoted simple lowercase values are equivalent
     CSCapUrn *unquoted = [CSCapUrn fromString:testUrn(@"key=simple") error:&error];
     XCTAssertNotNil(unquoted);
-    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=media:void;key=\"simple\";out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *quoted = [CSCapUrn fromString:@"cap:in=media:void;key=\"simple\";out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(quoted);
     XCTAssertEqualObjects(unquoted, quoted);
 
     // Both serialize the same way (unquoted)
-    XCTAssertEqualObjects([unquoted toString], @"cap:in=media:void;key=simple;out=\"media:form=map;textable\"");
-    XCTAssertEqualObjects([quoted toString], @"cap:in=media:void;key=simple;out=\"media:form=map;textable\"");
+    XCTAssertEqualObjects([unquoted toString], @"cap:in=media:void;key=simple;out=\"media:record;textable\"");
+    XCTAssertEqualObjects([quoted toString], @"cap:in=media:void;key=simple;out=\"media:record;textable\"");
 }
 
 #pragma mark - Matching Semantics Specification Tests
@@ -902,10 +902,10 @@ static NSString* testUrn(NSString *tags) {
 - (void)testMatchingSemantics_Test10_DirectionMismatch {
     // Test 10: Direction mismatch prevents match even with matching tags
     NSError *error = nil;
-    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=media:string;op=generate;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(cap);
 
-    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:form=map;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=media:;op=generate;out=\"media:record;textable\"" error:&error];
     XCTAssertNotNil(request);
 
     XCTAssertFalse([cap accepts:request], @"Test 10: Direction mismatch should prevent match");

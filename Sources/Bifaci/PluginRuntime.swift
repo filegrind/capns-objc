@@ -729,7 +729,7 @@ internal func demuxMultiStream(frameIterator: AnyIterator<Frame>) -> InputPackag
 
 /// Unified argument for cap invocation - arguments are identified by media_urn.
 public struct CapArgumentValue: Sendable {
-    /// Semantic identifier, e.g., "media:model-spec;textable;form=scalar"
+    /// Semantic identifier, e.g., "media:model-spec;textable"
     public let mediaUrn: String
     /// Value bytes (UTF-8 for text, raw for binary)
     public let value: Data
@@ -2010,7 +2010,7 @@ public final class PluginRuntime: @unchecked Sendable {
 
     /// Extract a key name from a media URN for JSON object.
     private func extractArgKey(from mediaUrn: String) -> String {
-        // media:model-spec;textable;form=scalar -> model_spec
+        // media:model-spec;textable -> model_spec
         var key = mediaUrn
         if key.hasPrefix("media:") {
             key = String(key.dropFirst(6))
