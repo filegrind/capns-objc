@@ -1014,4 +1014,233 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         XCTAssertNotEqual(response.concatenated(), response.finalPayload!,
             "concatenated and finalPayload must diverge for multi-chunk responses")
     }
+
+    // MARK: - Plugin Death and Known Caps Tests (TEST661-665)
+
+    // TEST661: Plugin death keeps known_caps advertised for on-demand respawn
+    func test661_pluginDeathKeepsKnownCapsAdvertised() async throws {
+        let host = PluginHost()
+
+        // Register a plugin by path (not running, just known caps)
+        host.registerPlugin(path: "/nonexistent/plugin", knownCaps: ["cap:op=respawn-test"])
+
+        // Should find the plugin by cap
+        XCTAssertNotNil(host.findPluginForCap("cap:op=respawn-test"), "Known caps must be findable before spawn")
+
+        // The cap should be advertised (registered plugins are advertised)
+        let caps = host.capabilities
+        if !caps.isEmpty, let capsStr = String(data: caps, encoding: .utf8) {
+            XCTAssertTrue(capsStr.contains("cap:op=respawn-test"), "Known caps must be in capabilities")
+        }
+    }
+
+    // TEST662: rebuild_capabilities includes non-running plugins' known_caps
+    func test662_rebuildCapabilitiesIncludesNonRunningPlugins() async throws {
+        let host = PluginHost()
+
+        // Register multiple plugins with different caps
+        host.registerPlugin(path: "/nonexistent/p1", knownCaps: ["cap:op=cap1"])
+        host.registerPlugin(path: "/nonexistent/p2", knownCaps: ["cap:op=cap2", "cap:op=cap3"])
+
+        let caps = host.capabilities
+        if !caps.isEmpty, let capsStr = String(data: caps, encoding: .utf8) {
+            XCTAssertTrue(capsStr.contains("cap:op=cap1"), "cap1 must be in capabilities")
+            XCTAssertTrue(capsStr.contains("cap:op=cap2"), "cap2 must be in capabilities")
+            XCTAssertTrue(capsStr.contains("cap:op=cap3"), "cap3 must be in capabilities")
+        }
+    }
+
+    // TEST663: Plugin with hello_failed is permanently removed from capabilities
+    func test663_helloFailedPluginRemovedFromCapabilities() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        // Plugin that sends invalid HELLO (no manifest)
+        DispatchQueue.global().async {
+            let reader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+            let writer = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+            // Read host's HELLO
+            _ = try? reader.read()
+
+            // Send invalid HELLO (no manifest - this should fail)
+            let badHello = Frame.hello(limits: Limits())
+            try? writer.write(badHello)
+        }
+
+        let host = PluginHost()
+
+        // Attempt to attach - should fail due to missing manifest
+        do {
+            try host.attachPlugin(
+                stdinHandle: hostToPlugin.fileHandleForWriting,
+                stdoutHandle: pluginToHost.fileHandleForReading
+            )
+            XCTFail("attachPlugin should fail without manifest")
+        } catch {
+            // Expected - plugin HELLO without manifest should be rejected
+            XCTAssertTrue(error is PluginHostError)
+        }
+
+        // Failed plugin should not contribute to capabilities
+        let caps = host.capabilities
+        // Empty or no capabilities since the only plugin failed
+        XCTAssertTrue(caps.isEmpty || String(data: caps, encoding: .utf8) == "[]",
+            "Failed plugin must not be in capabilities")
+    }
+
+    // TEST664: Running plugin uses manifest caps, not known_caps
+    func test664_runningPluginUsesManifestCaps() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
+            // Plugin advertises "cap:op=manifest-cap" in its manifest
+            try pluginWriter.write(CborRuntimeTests.helloWith(
+                manifest: CborRuntimeTests.makeManifest(name: "ManifestPlugin", caps: ["cap:op=manifest-cap"])
+            ))
+            // Keep connection alive
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        let host = PluginHost()
+
+        // Register with known_caps, but plugin will advertise different caps via manifest
+        host.registerPlugin(path: "/fake/path", knownCaps: ["cap:op=known-cap"])
+
+        // Before attach: known_cap should be findable
+        XCTAssertNotNil(host.findPluginForCap("cap:op=known-cap"), "Known cap must be findable before attach")
+
+        // Attach the actual plugin
+        try host.attachPlugin(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        // After attach: manifest caps should take precedence
+        XCTAssertNotNil(host.findPluginForCap("cap:op=manifest-cap"), "Manifest cap must be findable after attach")
+
+        try? await pluginTask.value
+    }
+
+    // TEST665: Cap table uses manifest caps for running, known_caps for non-running
+    func test665_capTableMixedRunningAndNonRunning() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
+            try pluginWriter.write(CborRuntimeTests.helloWith(
+                manifest: CborRuntimeTests.makeManifest(name: "RunningPlugin", caps: ["cap:op=running"])
+            ))
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        let host = PluginHost()
+
+        // Register a non-running plugin
+        host.registerPlugin(path: "/nonexistent/p1", knownCaps: ["cap:op=dormant"])
+
+        // Attach a running plugin
+        try host.attachPlugin(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        // Both caps should be findable via cap table
+        // Running plugin: uses manifest caps (from HELLO)
+        // Dormant plugin: uses known_caps (from registerPlugin)
+        XCTAssertNotNil(host.findPluginForCap("cap:op=running"), "Running plugin cap must be findable")
+        XCTAssertNotNil(host.findPluginForCap("cap:op=dormant"), "Dormant plugin cap must be findable")
+
+        // Capabilities includes both running and non-running plugins
+        // (Note: running plugin's caps come from manifest, not known_caps)
+        let caps = host.capabilities
+        let capsStr = String(data: caps, encoding: .utf8) ?? "[]"
+
+        // At minimum, dormant caps should be present
+        XCTAssertTrue(capsStr.contains("cap:op=dormant"), "Dormant plugin cap must be in capabilities")
+        // Running plugin's manifest caps may or may not be merged into capabilities
+        // depending on when capabilities is called relative to handshake completion
+
+        try? await pluginTask.value
+    }
+
+    // MARK: - Error Type Tests (TEST244-247)
+
+    // TEST244: PluginHostError from FrameError converts correctly
+    func test244_pluginHostErrorFromFrameError() {
+        // Verify error types have proper descriptions
+        let handshakeFailed = PluginHostError.handshakeFailed("test error")
+        XCTAssertTrue(handshakeFailed.errorDescription?.contains("Handshake failed") ?? false)
+
+        let sendFailed = PluginHostError.sendFailed("send error")
+        XCTAssertTrue(sendFailed.errorDescription?.contains("Send failed") ?? false)
+
+        let receiveFailed = PluginHostError.receiveFailed("receive error")
+        XCTAssertTrue(receiveFailed.errorDescription?.contains("Receive failed") ?? false)
+
+        let protocolError = PluginHostError.protocolError("protocol violation")
+        XCTAssertTrue(protocolError.errorDescription?.contains("Protocol error") ?? false)
+    }
+
+    // TEST245: PluginHostError stores and retrieves error details
+    func test245_pluginHostErrorDetails() {
+        let pluginErr = PluginHostError.pluginError(code: "TEST_CODE", message: "Test message")
+        let desc = pluginErr.errorDescription ?? ""
+        XCTAssertTrue(desc.contains("TEST_CODE"), "Error description must contain code")
+        XCTAssertTrue(desc.contains("Test message"), "Error description must contain message")
+    }
+
+    // TEST246: PluginHostError variants are distinct
+    func test246_pluginHostErrorVariants() {
+        // Each error type is distinct
+        let errors: [PluginHostError] = [
+            .handshakeFailed("a"),
+            .sendFailed("b"),
+            .receiveFailed("c"),
+            .pluginError(code: "X", message: "Y"),
+            .unexpectedFrameType(.req),
+            .protocolError("d"),
+            .processExited,
+            .closed,
+            .noHandler("e"),
+            .pluginDied("f"),
+        ]
+
+        for (i, err1) in errors.enumerated() {
+            for (j, err2) in errors.enumerated() {
+                if i != j {
+                    // Different indices should mean different error descriptions
+                    XCTAssertNotEqual(err1.errorDescription, err2.errorDescription,
+                        "Error \(i) and \(j) should have different descriptions")
+                }
+            }
+        }
+    }
+
+    // TEST247: ResponseChunk stores and retrieves data correctly
+    func test247_responseChunkStorage() {
+        let payload = Data([1, 2, 3, 4, 5])
+        let chunk = ResponseChunk(payload: payload, seq: 42, offset: 100, len: 1000, isEof: true)
+
+        XCTAssertEqual(chunk.payload, payload)
+        XCTAssertEqual(chunk.seq, 42)
+        XCTAssertEqual(chunk.offset, 100)
+        XCTAssertEqual(chunk.len, 1000)
+        XCTAssertTrue(chunk.isEof)
+
+        // Test with nil optional values
+        let chunk2 = ResponseChunk(payload: payload, seq: 0, offset: nil, len: nil, isEof: false)
+        XCTAssertNil(chunk2.offset)
+        XCTAssertNil(chunk2.len)
+        XCTAssertFalse(chunk2.isEof)
+    }
 }

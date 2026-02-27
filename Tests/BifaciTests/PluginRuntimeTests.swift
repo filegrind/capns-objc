@@ -425,6 +425,72 @@ final class PluginRuntimeTests: XCTestCase {
         XCTAssertTrue((err6.errorDescription ?? "").contains("timeout"))
     }
 
+    // MARK: - Typed Handler Tests (TEST250-251, 253, 266)
+
+    // TEST250: Op handler can be registered and invoked
+    func test250_typedHandlerRegistration() throws {
+        // Verify Op handlers can be constructed and registered
+        // Op protocol requires: typealias Output, perform(dry:wet:), metadata()
+
+        // Create an Op-conforming type
+        let op = EchoAllBytesOp()
+
+        // Verify it has the expected metadata
+        let meta = op.metadata()
+        XCTAssertEqual(meta.name, "EchoAllBytesOp")
+
+        // Verify AnyOp can wrap it
+        let anyOp = AnyOp(op)
+        // AnyOp wraps the op correctly if we get here without error
+        XCTAssertNotNil(anyOp)
+    }
+
+    // TEST251: Op handler errors propagate through RuntimeError::Handler
+    func test251_typedHandlerErrorPropagation() {
+        // Verify that errors thrown from handlers are wrapped correctly
+        let error = PluginRuntimeError.handlerError("test handler error")
+        XCTAssertTrue((error.errorDescription ?? "").contains("Handler"))
+
+        // Verify error types are distinct
+        let handlerErr = PluginRuntimeError.handlerError("x")
+        let protocolErr = PluginRuntimeError.protocolError("x")
+        XCTAssertNotEqual(handlerErr.errorDescription, protocolErr.errorDescription)
+    }
+
+    // TEST253: Op handler can be used across threads (Send + Sync equivalent)
+    func test253_handlerIsSendable() async throws {
+        // Verify AnyOp is Sendable (can be sent across actor boundaries)
+        // EchoAllBytesOp is marked @unchecked Sendable
+        let op = AnyOp(EchoAllBytesOp())
+
+        // Use in Task context (requires Sendable)
+        let result = await Task.detached {
+            // Access the wrapped op - if AnyOp isn't Sendable, this won't compile
+            return op
+        }.value
+
+        // Verify we got the same op back
+        XCTAssertNotNil(result)
+    }
+
+    // TEST266: CliFrameSender construction with ndjson mode (matching Rust)
+    func test266_cliFrameSenderConstruction() {
+        // Default CLI sender uses NDJSON mode
+        let sender = CliFrameSender()
+        XCTAssertTrue(sender.ndjson, "default CLI sender must use NDJSON")
+
+        // Can create without NDJSON
+        let sender2 = CliFrameSender.withoutNdjson()
+        XCTAssertFalse(sender2.ndjson, "withoutNdjson must disable NDJSON")
+
+        // Explicit ndjson parameter
+        let sender3 = CliFrameSender(ndjson: false)
+        XCTAssertFalse(sender3.ndjson)
+
+        let sender4 = CliFrameSender(ndjson: true)
+        XCTAssertTrue(sender4.ndjson)
+    }
+
 }
 
 // =============================================================================

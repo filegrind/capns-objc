@@ -576,6 +576,219 @@ final class CborRelaySwitchTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Preferred Cap Routing Tests (TEST437-439)
+
+    // TEST437: find_master_for_cap with preferred_cap routes to exact match
+    // NOTE: The Swift implementation requires exact cap URN match or conforms check
+    func test437_preferredCapRoutesToExactMatch() throws {
+        let pair1 = FileHandle.socketPair()
+        let pair2 = FileHandle.socketPair()
+
+        let done = DispatchSemaphore(value: 0)
+
+        // Master advertises the exact cap being requested
+        DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2.read)
+            let writer = FrameWriter(handle: pair1.write)
+            let caps: [String] = ["cap:in=media:;out=media:"]  // This cap accepts media:text
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
+            done.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
+
+            // Respond to requests
+            while let frame = try? reader.read() {
+                if frame.frameType == .req {
+                    var response = Frame.end(id: frame.id, finalPayload: Data("matched".utf8))
+                    response.routingId = frame.routingId
+                    try! writer.write(response)
+                }
+            }
+        }
+
+        XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
+
+        let switch_ = try RelaySwitch(sockets: [SocketPair(read: pair1.read, write: pair2.write)])
+
+        // Request with the exact registered cap should route successfully
+        let req = Frame.req(id: MessageId.uint(1), capUrn: "cap:in=media:;out=media:", payload: Data(), contentType: "text/plain")
+        try switch_.sendToMaster(req)
+        let resp = try switch_.readFromMasters()
+        XCTAssertEqual(resp?.payload, Data("matched".utf8))
+    }
+
+    // TEST438: find_master_for_cap with exact match works
+    func test438_preferredCapExactMatch() throws {
+        let pair1 = FileHandle.socketPair()
+        let pair2 = FileHandle.socketPair()
+
+        let done = DispatchSemaphore(value: 0)
+
+        // Master advertises specific cap (with identity required)
+        DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2.read)
+            let writer = FrameWriter(handle: pair1.write)
+            let caps: [String] = ["cap:in=media:;out=media:", "cap:in=media:text;out=media:text"]  // Identity + specific
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
+            done.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
+
+            while let frame = try? reader.read() {
+                if frame.frameType == .req {
+                    var response = Frame.end(id: frame.id, finalPayload: Data("specific".utf8))
+                    response.routingId = frame.routingId
+                    try! writer.write(response)
+                }
+            }
+        }
+
+        XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
+
+        let switch_ = try RelaySwitch(sockets: [SocketPair(read: pair1.read, write: pair2.write)])
+
+        // Request for the exact registered cap should succeed
+        let req = Frame.req(id: MessageId.uint(1), capUrn: "cap:in=media:text;out=media:text", payload: Data(), contentType: "text/plain")
+        try switch_.sendToMaster(req)
+        let resp = try switch_.readFromMasters()
+        XCTAssertEqual(resp?.payload, Data("specific".utf8))
+    }
+
+    // TEST439: Specific request without matching handler returns noHandler
+    func test439_specificRequestNoMatchingHandler() throws {
+        let pair1 = FileHandle.socketPair()
+        let pair2 = FileHandle.socketPair()
+
+        let done = DispatchSemaphore(value: 0)
+
+        // Master advertises a different specific cap (with identity required)
+        DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2.read)
+            let writer = FrameWriter(handle: pair1.write)
+            // Advertise identity + a specific cap that doesn't match the request
+            let caps: [String] = ["cap:in=media:;out=media:", "cap:in=media:image;out=media:image"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
+            done.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
+        }
+
+        XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
+
+        let switch_ = try RelaySwitch(sockets: [SocketPair(read: pair1.read, write: pair2.write)])
+
+        // Request for a cap that doesn't match should throw noHandler
+        let req = Frame.req(id: MessageId.uint(1), capUrn: "cap:in=media:text;out=media:text", payload: Data(), contentType: "text/plain")
+
+        XCTAssertThrowsError(try switch_.sendToMaster(req)) { error in
+            guard case RelaySwitchError.noHandler = error else {
+                XCTFail("Expected noHandler error, got \(error)")
+                return
+            }
+        }
+    }
+
+    // MARK: - Identity Verification in RelaySwitch Tests (TEST487-489)
+
+    // TEST487: RelaySwitch construction verifies identity through relay chain
+    func test487_relaySwitchIdentityVerificationSucceeds() throws {
+        let pair1 = FileHandle.socketPair()
+        let pair2 = FileHandle.socketPair()
+
+        let done = DispatchSemaphore(value: 0)
+
+        // Master that passes identity verification
+        DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2.read)
+            let writer = FrameWriter(handle: pair1.write)
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
+            done.signal()
+
+            // Handle identity verification correctly (echo back)
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
+        }
+
+        XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
+
+        // Should succeed - identity verification passes
+        let switch_ = try RelaySwitch(sockets: [SocketPair(read: pair1.read, write: pair2.write)])
+        XCTAssertNotNil(switch_)
+    }
+
+    // TEST488: RelaySwitch construction fails when master's identity verification fails
+    func test488_relaySwitchIdentityVerificationFails() throws {
+        let pair1 = FileHandle.socketPair()
+        let pair2 = FileHandle.socketPair()
+
+        let done = DispatchSemaphore(value: 0)
+
+        // Master that fails identity verification
+        DispatchQueue.global().async {
+            let reader = FrameReader(handle: pair2.read)
+            let writer = FrameWriter(handle: pair1.write)
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
+            done.signal()
+
+            // Read identity request and return ERR
+            if let req = try? reader.read() {
+                if req.frameType == .req {
+                    try! writer.write(Frame.err(id: req.id, code: "IDENTITY_FAILED", message: "Rejected"))
+                }
+            }
+        }
+
+        XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
+
+        // Should fail - identity verification returns error
+        XCTAssertThrowsError(try RelaySwitch(sockets: [SocketPair(read: pair1.read, write: pair2.write)])) { error in
+            // Should get an error about identity verification
+            XCTAssertTrue(error is RelaySwitchError)
+        }
+    }
+
+    // TEST489: add_master dynamically connects new host to running switch
+    func test489_addMasterDynamic() throws {
+        // Start with empty switch
+        let switch_ = try RelaySwitch(sockets: [])
+        XCTAssertEqual(String(data: switch_.capabilities(), encoding: .utf8), "[]")
+
+        // Add master dynamically
+        let pair1 = FileHandle.socketPair()
+        let pair2 = FileHandle.socketPair()
+
+        let done = DispatchSemaphore(value: 0)
+
+        DispatchQueue.global().async {
+            var reader = FrameReader(handle: pair2.read)
+            let writer = FrameWriter(handle: pair1.write)
+            let caps: [String] = ["cap:in=media:;out=media:"]
+            try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
+            done.signal()
+            try! self.handleIdentityVerification(reader: reader, writer: writer)
+
+            while let frame = try? reader.read() {
+                if frame.frameType == .req {
+                    var response = Frame.end(id: frame.id, finalPayload: Data("dynamic".utf8))
+                    response.routingId = frame.routingId
+                    try! writer.write(response)
+                }
+            }
+        }
+
+        XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
+
+        _ = try switch_.addMaster(SocketPair(read: pair1.read, write: pair2.write))
+
+        // Should now have the cap
+        let capList = try JSONSerialization.jsonObject(with: switch_.capabilities()) as! [String]
+        XCTAssertTrue(capList.contains("cap:in=media:;out=media:"))
+
+        // Should be able to route requests
+        let req = Frame.req(id: MessageId.uint(1), capUrn: "cap:in=media:;out=media:", payload: Data(), contentType: "")
+        try switch_.sendToMaster(req)
+        let resp = try switch_.readFromMasters()
+        XCTAssertEqual(resp?.payload, Data("dynamic".utf8))
+    }
 }
 
 // Helper extension for creating socket pairs

@@ -802,11 +802,30 @@ public struct NoPeerInvoker: PeerInvoker {
 
 /// CLI-mode frame sender that extracts and writes raw content to stdout.
 /// Used by OutputStream in CLI mode.
+///
+/// Supports NDJSON mode (default: true) which adds newlines after each emit,
+/// matching Rust's CliStreamEmitter behavior.
 final class CliFrameSender: FrameSender, @unchecked Sendable {
     private let stdoutHandle: FileHandle
 
+    /// Whether to add newlines after each emit (NDJSON style)
+    let ndjson: Bool
+
+    /// Create a new CLI sender with NDJSON formatting (newline after each emit)
     init() {
         self.stdoutHandle = FileHandle.standardOutput
+        self.ndjson = true
+    }
+
+    /// Create a CLI sender with explicit ndjson setting
+    init(ndjson: Bool) {
+        self.stdoutHandle = FileHandle.standardOutput
+        self.ndjson = ndjson
+    }
+
+    /// Create a CLI sender without NDJSON formatting
+    static func withoutNdjson() -> CliFrameSender {
+        return CliFrameSender(ndjson: false)
     }
 
     func send(_ frame: Frame) throws {
@@ -822,11 +841,17 @@ final class CliFrameSender: FrameSender, @unchecked Sendable {
         }
 
         // Extract and write raw content
-        extractAndWrite(value, to: stdoutHandle)
+        try extractAndWrite(value, to: stdoutHandle)
+
+        // Add newline in NDJSON mode
+        if ndjson {
+            stdoutHandle.write(Data("\n".utf8))
+        }
     }
 
     /// Recursively extract and write raw content from CBOR values
-    private func extractAndWrite(_ value: CBOR, to handle: FileHandle) {
+    /// Throws on unsupported types - no fallbacks
+    private func extractAndWrite(_ value: CBOR, to handle: FileHandle) throws {
         switch value {
         case .byteString(let bytes):
             handle.write(Data(bytes))
@@ -837,20 +862,21 @@ final class CliFrameSender: FrameSender, @unchecked Sendable {
         case .array(let items):
             // Emit each element's raw content
             for item in items {
-                extractAndWrite(item, to: handle)
+                try extractAndWrite(item, to: handle)
             }
 
         case .map(let m):
             // Extract "value" field if present
             if let val = m[.utf8String("value")] {
-                extractAndWrite(val, to: handle)
+                try extractAndWrite(val, to: handle)
             } else {
-                // No value field - write nothing (map structures are metadata)
+                // No value field - fail hard (no fallback)
+                throw PluginRuntimeError.handlerError("Map in CLI output has no 'value' field")
             }
 
         default:
-            // Other types - encode as CBOR bytes
-            handle.write(Data(value.encode()))
+            // Unsupported type - fail hard (no fallback)
+            throw PluginRuntimeError.handlerError("CLI output does not support CBOR type")
         }
     }
 }

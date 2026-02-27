@@ -387,6 +387,146 @@ public final class RelaySwitch: @unchecked Sendable {
         }
     }
 
+    // MARK: - Dynamic Master Management
+
+    /// Add a new master to a running switch.
+    /// Performs identity verification before adding the master.
+    ///
+    /// - Parameter socket: Socket pair for the new master
+    /// - Returns: Index of the new master
+    /// - Throws: RelaySwitchError if identity verification fails
+    public func addMaster(_ socket: SocketPair) throws -> Int {
+        var socketReader = FrameReader(handle: socket.read)
+        let socketWriter = FrameWriter(handle: socket.write)
+
+        lock.lock()
+        let masterIdx = masters.count
+        lock.unlock()
+
+        // Read initial RelayNotify (blocking)
+        guard let notifyFrame = try socketReader.read() else {
+            throw RelaySwitchError.protocolError("new master \(masterIdx): connection closed before RelayNotify")
+        }
+
+        guard notifyFrame.frameType == .relayNotify else {
+            throw RelaySwitchError.protocolError("new master \(masterIdx): expected RelayNotify, got \(notifyFrame.frameType)")
+        }
+
+        guard var capsPayload = notifyFrame.relayNotifyManifest,
+              var masterLimits = notifyFrame.relayNotifyLimits else {
+            throw RelaySwitchError.protocolError("new master \(masterIdx): RelayNotify missing manifest or limits")
+        }
+
+        var caps = try Self.parseCapabilitiesFromManifest(capsPayload)
+
+        // Verify identity
+        let seqAssigner = SeqAssigner()
+        lock.lock()
+        xidCounter += 1
+        let xid = MessageId.uint(xidCounter)
+        lock.unlock()
+
+        let nonce = identityNonce()
+        let reqId = MessageId.newUUID()
+        let streamId = "identity-verify"
+
+        // Send identity verification
+        var req = Frame.req(id: reqId, capUrn: CSCapIdentity as String, payload: Data(), contentType: "application/cbor")
+        req.routingId = xid
+        seqAssigner.assign(&req)
+        try socketWriter.write(req)
+
+        var ss = Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: "media:")
+        ss.routingId = xid
+        seqAssigner.assign(&ss)
+        try socketWriter.write(ss)
+
+        let checksum = Frame.computeChecksum(nonce)
+        var chunk = Frame.chunk(reqId: reqId, streamId: streamId, seq: 0, payload: nonce, chunkIndex: 0, checksum: checksum)
+        chunk.routingId = xid
+        seqAssigner.assign(&chunk)
+        try socketWriter.write(chunk)
+
+        var se = Frame.streamEnd(reqId: reqId, streamId: streamId, chunkCount: 1)
+        se.routingId = xid
+        seqAssigner.assign(&se)
+        try socketWriter.write(se)
+
+        var end = Frame.end(id: reqId)
+        end.routingId = xid
+        seqAssigner.assign(&end)
+        try socketWriter.write(end)
+
+        seqAssigner.remove(FlowKey(rid: reqId, xid: xid))
+
+        // Read response
+        var accumulated = Data()
+        while true {
+            guard let frame = try socketReader.read() else {
+                throw RelaySwitchError.protocolError("new master \(masterIdx): connection closed during identity verification")
+            }
+
+            switch frame.frameType {
+            case .relayNotify:
+                if let manifest = frame.relayNotifyManifest {
+                    capsPayload = manifest
+                    caps = try Self.parseCapabilitiesFromManifest(capsPayload)
+                }
+                if let newLimits = frame.relayNotifyLimits {
+                    masterLimits = newLimits
+                }
+            case .streamStart:
+                break
+            case .chunk:
+                if let payload = frame.payload {
+                    accumulated.append(payload)
+                }
+            case .streamEnd:
+                break
+            case .end:
+                if accumulated != nonce {
+                    throw RelaySwitchError.protocolError(
+                        "new master \(masterIdx): identity verification payload mismatch")
+                }
+                break
+            case .err:
+                let code = frame.errorCode ?? "UNKNOWN"
+                let msg = frame.errorMessage ?? "no message"
+                throw RelaySwitchError.protocolError("new master \(masterIdx): identity verification failed: [\(code)] \(msg)")
+            default:
+                throw RelaySwitchError.protocolError("new master \(masterIdx): identity verification: unexpected frame type \(frame.frameType)")
+            }
+
+            if frame.frameType == .end { break }
+        }
+
+        // Add master
+        lock.lock()
+        let masterConn = MasterConnection(
+            socketWriter: socketWriter,
+            seqAssigner: seqAssigner,
+            manifest: capsPayload,
+            limits: masterLimits,
+            caps: caps,
+            healthy: true
+        )
+        let newIdx = masters.count
+        masters.append(masterConn)
+
+        // Spawn reader thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.readerLoop(masterIdx: newIdx, reader: socketReader)
+        }
+
+        // Rebuild tables
+        rebuildCapTable()
+        rebuildCapabilities()
+        rebuildLimits()
+        lock.unlock()
+
+        return newIdx
+    }
+
     // MARK: - Public API
 
     /// Get aggregate capabilities (union of all masters)
