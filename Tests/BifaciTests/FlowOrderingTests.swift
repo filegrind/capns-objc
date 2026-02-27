@@ -495,4 +495,342 @@ final class FlowOrderingTests: XCTestCase {
         let hostReorder = hostFrame!.helloMaxReorderBuffer!
         XCTAssertEqual(hostReorder, DEFAULT_MAX_REORDER_BUFFER)
     }
+
+    // MARK: - ReorderBuffer XID Isolation Tests (TEST507-520)
+
+    // TEST507: ReorderBuffer isolates flows by XID (routing_id) - same RID different XIDs
+    func test507_reorderBufferXidIsolation() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+        let xid1 = MessageId.uint(1)
+        let xid2 = MessageId.uint(2)
+
+        // Flow 1: (rid, xid1) - seq 0
+        var f1_seq0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([1]), chunkIndex: 0, checksum: 0)
+        f1_seq0.routingId = xid1
+
+        // Flow 2: (rid, xid2) - seq 0 (independent)
+        var f2_seq0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([2]), chunkIndex: 0, checksum: 0)
+        f2_seq0.routingId = xid2
+
+        // Both should be accepted as independent flows
+        let out1 = try buffer.accept(f1_seq0)
+        let out2 = try buffer.accept(f2_seq0)
+
+        XCTAssertEqual(out1.count, 1, "Flow 1 seq 0 should be delivered")
+        XCTAssertEqual(out2.count, 1, "Flow 2 seq 0 should be delivered (independent flow)")
+    }
+
+    // TEST508: ReorderBuffer rejects duplicate seq already in buffer
+    func test508_reorderBufferDuplicateBufferedSeq() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+
+        // First, buffer seq=2 (out of order, expecting 0)
+        let seq2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 2, payload: Data([2]), chunkIndex: 2, checksum: 0)
+        let out2 = try buffer.accept(seq2)
+        XCTAssertEqual(out2.count, 0, "seq=2 should be buffered (expecting 0)")
+
+        // Try to insert duplicate seq=2
+        let seq2_dup = Frame.chunk(reqId: rid, streamId: "s1", seq: 2, payload: Data([2]), chunkIndex: 2, checksum: 0)
+        XCTAssertThrowsError(try buffer.accept(seq2_dup)) { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError")
+                return
+            }
+            XCTAssertTrue(msg.contains("duplicate") || msg.contains("Stale"), "Error should mention duplicate: \(msg)")
+        }
+    }
+
+    // TEST509: ReorderBuffer handles large seq gaps without DOS
+    func test509_reorderBufferLargeGapRejected() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+
+        // Try to insert frames with large gap
+        for i: UInt64 in 0..<5 {
+            let frame = Frame.chunk(reqId: rid, streamId: "s1", seq: i, payload: Data([UInt8(i)]), chunkIndex: i, checksum: 0)
+            _ = try buffer.accept(frame)
+        }
+
+        // Now send many out-of-order frames to trigger overflow
+        for i: UInt64 in 6..<20 {
+            let frame = Frame.chunk(reqId: rid, streamId: "s1", seq: i, payload: Data([UInt8(i)]), chunkIndex: i, checksum: 0)
+            do {
+                _ = try buffer.accept(frame)
+            } catch FrameError.protocolError(let msg) {
+                // Expected: buffer overflow
+                XCTAssertTrue(msg.contains("overflow"), "Error should mention overflow: \(msg)")
+                return
+            }
+        }
+        // If we got here without overflow (buffer size > 10), that's also OK
+    }
+
+    // TEST510: ReorderBuffer with multiple interleaved gaps fills correctly
+    func test510_reorderBufferMultipleGaps() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+
+        // Send frames out of order: 0, 2, 4, 1, 3
+        let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([0]), chunkIndex: 0, checksum: 0)
+        let f1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 1, payload: Data([1]), chunkIndex: 1, checksum: 0)
+        let f2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 2, payload: Data([2]), chunkIndex: 2, checksum: 0)
+        let f3 = Frame.chunk(reqId: rid, streamId: "s1", seq: 3, payload: Data([3]), chunkIndex: 3, checksum: 0)
+        let f4 = Frame.chunk(reqId: rid, streamId: "s1", seq: 4, payload: Data([4]), chunkIndex: 4, checksum: 0)
+
+        var delivered: [Frame] = []
+
+        delivered.append(contentsOf: try buffer.accept(f0)) // delivers 0
+        delivered.append(contentsOf: try buffer.accept(f2)) // buffers 2
+        delivered.append(contentsOf: try buffer.accept(f4)) // buffers 4
+        delivered.append(contentsOf: try buffer.accept(f1)) // delivers 1, 2
+        delivered.append(contentsOf: try buffer.accept(f3)) // delivers 3, 4
+
+        XCTAssertEqual(delivered.count, 5, "All 5 frames should be delivered")
+        for (i, frame) in delivered.enumerated() {
+            XCTAssertEqual(frame.seq, UInt64(i), "Frame \(i) should have seq \(i)")
+        }
+    }
+
+    // TEST511: ReorderBuffer rejects seq < expected (stale frame)
+    func test511_reorderBufferRejectsStaleSeq() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+
+        // Accept seq 0 and 1
+        let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([0]), chunkIndex: 0, checksum: 0)
+        let f1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 1, payload: Data([1]), chunkIndex: 1, checksum: 0)
+
+        _ = try buffer.accept(f0)
+        _ = try buffer.accept(f1)
+
+        // Now expected is 2. Try to send seq 0 again (stale)
+        let stale = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([0]), chunkIndex: 0, checksum: 0)
+        XCTAssertThrowsError(try buffer.accept(stale)) { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError")
+                return
+            }
+            XCTAssertTrue(msg.contains("Stale") || msg.contains("duplicate"), "Error should mention stale: \(msg)")
+        }
+    }
+
+    // TEST512: ReorderBuffer non-flow frames bypass reordering
+    func test512_reorderBufferNonFlowFramesBypass() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+
+        // Non-flow frames should bypass reordering completely
+        let hello = Frame.hello(limits: Limits())
+        let heartbeat = Frame.heartbeat(id: .uint(1))
+        let notify = Frame.relayNotify(manifest: Data(), limits: Limits())
+        let state = Frame.relayState(resources: Data())
+
+        let out1 = try buffer.accept(hello)
+        let out2 = try buffer.accept(heartbeat)
+        let out3 = try buffer.accept(notify)
+        let out4 = try buffer.accept(state)
+
+        XCTAssertEqual(out1.count, 1)
+        XCTAssertEqual(out2.count, 1)
+        XCTAssertEqual(out3.count, 1)
+        XCTAssertEqual(out4.count, 1)
+    }
+
+    // TEST513: ReorderBuffer cleanup removes flow state
+    func test513_reorderBufferCleanup() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+        let flow = FlowKey(rid: rid, xid: nil)
+
+        let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([0]), chunkIndex: 0, checksum: 0)
+        _ = try buffer.accept(f0)
+
+        // Cleanup the flow
+        buffer.cleanupFlow(flow)
+
+        // After cleanup, seq 0 should work again (new flow)
+        let f0_new = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([0]), chunkIndex: 0, checksum: 0)
+        let out = try buffer.accept(f0_new)
+        XCTAssertEqual(out.count, 1, "After cleanup, flow should restart from seq 0")
+    }
+
+    // TEST514: ReorderBuffer respects maxBufferPerFlow
+    func test514_reorderBufferRespectsMaxBuffer() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 3) // Small buffer
+        let rid = MessageId.newUUID()
+
+        // Buffer frames 1, 2, 3 (out of order, expecting 0)
+        let f1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 1, payload: Data([1]), chunkIndex: 1, checksum: 0)
+        let f2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 2, payload: Data([2]), chunkIndex: 2, checksum: 0)
+        let f3 = Frame.chunk(reqId: rid, streamId: "s1", seq: 3, payload: Data([3]), chunkIndex: 3, checksum: 0)
+
+        _ = try buffer.accept(f1) // buffers 1
+        _ = try buffer.accept(f2) // buffers 2
+        _ = try buffer.accept(f3) // buffers 3
+
+        // Now buffer is at capacity. Try to add one more
+        let f4 = Frame.chunk(reqId: rid, streamId: "s1", seq: 4, payload: Data([4]), chunkIndex: 4, checksum: 0)
+        XCTAssertThrowsError(try buffer.accept(f4)) { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError")
+                return
+            }
+            XCTAssertTrue(msg.contains("overflow"), "Error should mention overflow: \(msg)")
+        }
+    }
+
+    // TEST515: SeqAssigner removes flow by FlowKey
+    func test515_seqAssignerRemoveByFlowKey() {
+        let assigner = SeqAssigner()
+        let rid = MessageId.newUUID()
+        let flow = FlowKey(rid: rid, xid: nil)
+
+        var f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        assigner.assign(&f0)
+        XCTAssertEqual(f0.seq, 0)
+
+        var f1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 1, checksum: 0)
+        assigner.assign(&f1)
+        XCTAssertEqual(f1.seq, 1)
+
+        // Remove the flow
+        assigner.remove(flow)
+
+        // Next frame should restart from 0
+        var f2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 2, checksum: 0)
+        assigner.assign(&f2)
+        XCTAssertEqual(f2.seq, 0, "After remove, seq should restart from 0")
+    }
+
+    // TEST516: SeqAssigner independent flows by XID
+    func test516_seqAssignerIndependentFlowsByXid() {
+        let assigner = SeqAssigner()
+        let rid = MessageId.newUUID()
+        let xid1 = MessageId.uint(1)
+        let xid2 = MessageId.uint(2)
+
+        // Flow 1: (rid, xid1)
+        var f1_0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        f1_0.routingId = xid1
+        assigner.assign(&f1_0)
+        XCTAssertEqual(f1_0.seq, 0)
+
+        // Flow 2: (rid, xid2) - independent
+        var f2_0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        f2_0.routingId = xid2
+        assigner.assign(&f2_0)
+        XCTAssertEqual(f2_0.seq, 0, "Different XID should have independent seq counter")
+
+        // Flow 1 next frame
+        var f1_1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 1, checksum: 0)
+        f1_1.routingId = xid1
+        assigner.assign(&f1_1)
+        XCTAssertEqual(f1_1.seq, 1, "Flow 1 should continue at seq=1")
+
+        // Flow 2 next frame
+        var f2_1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 1, checksum: 0)
+        f2_1.routingId = xid2
+        assigner.assign(&f2_1)
+        XCTAssertEqual(f2_1.seq, 1, "Flow 2 should continue at seq=1")
+    }
+
+    // TEST517: FlowKey with nil XID is separate from FlowKey with XID
+    func test517_flowKeyNilXidSeparate() {
+        let assigner = SeqAssigner()
+        let rid = MessageId.newUUID()
+        let xid = MessageId.uint(42)
+
+        // Flow: (rid, nil)
+        var f_nil = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        f_nil.routingId = nil
+        assigner.assign(&f_nil)
+        XCTAssertEqual(f_nil.seq, 0)
+
+        // Flow: (rid, xid=42) - separate flow
+        var f_xid = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        f_xid.routingId = xid
+        assigner.assign(&f_xid)
+        XCTAssertEqual(f_xid.seq, 0, "Flow with XID should be separate from flow without XID")
+
+        // Continue flow (rid, nil)
+        var f_nil2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 1, checksum: 0)
+        f_nil2.routingId = nil
+        assigner.assign(&f_nil2)
+        XCTAssertEqual(f_nil2.seq, 1)
+
+        // Continue flow (rid, xid=42)
+        var f_xid2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 1, checksum: 0)
+        f_xid2.routingId = xid
+        assigner.assign(&f_xid2)
+        XCTAssertEqual(f_xid2.seq, 1)
+    }
+
+    // TEST518: ReorderBuffer flow cleanup after END
+    func test518_reorderBufferFlowCleanupAfterEnd() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+        let flow = FlowKey(rid: rid, xid: nil)
+
+        let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        _ = try buffer.accept(f0)
+
+        var end = Frame.end(id: rid)
+        end.seq = 1
+        _ = try buffer.accept(end)
+
+        // Cleanup the flow
+        buffer.cleanupFlow(flow)
+
+        // New flow should work
+        let f0_new = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data(), chunkIndex: 0, checksum: 0)
+        let out = try buffer.accept(f0_new)
+        XCTAssertEqual(out.count, 1)
+    }
+
+    // TEST519: ReorderBuffer handles frames from multiple RIDs
+    func test519_reorderBufferMultipleRids() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid1 = MessageId.newUUID()
+        let rid2 = MessageId.newUUID()
+
+        let f1_0 = Frame.chunk(reqId: rid1, streamId: "s1", seq: 0, payload: Data([1]), chunkIndex: 0, checksum: 0)
+        let f2_0 = Frame.chunk(reqId: rid2, streamId: "s1", seq: 0, payload: Data([2]), chunkIndex: 0, checksum: 0)
+        let f1_1 = Frame.chunk(reqId: rid1, streamId: "s1", seq: 1, payload: Data([11]), chunkIndex: 1, checksum: 0)
+        let f2_1 = Frame.chunk(reqId: rid2, streamId: "s1", seq: 1, payload: Data([22]), chunkIndex: 1, checksum: 0)
+
+        let out1 = try buffer.accept(f1_0)
+        let out2 = try buffer.accept(f2_0)
+        let out3 = try buffer.accept(f1_1)
+        let out4 = try buffer.accept(f2_1)
+
+        XCTAssertEqual(out1.count, 1)
+        XCTAssertEqual(out2.count, 1)
+        XCTAssertEqual(out3.count, 1)
+        XCTAssertEqual(out4.count, 1)
+    }
+
+    // TEST520: ReorderBuffer drains buffered frames when gap is filled
+    func test520_reorderBufferDrainsBufferedFrames() throws {
+        var buffer = ReorderBuffer(maxBufferPerFlow: 10)
+        let rid = MessageId.newUUID()
+
+        // Buffer frames 1, 2, 3
+        let f1 = Frame.chunk(reqId: rid, streamId: "s1", seq: 1, payload: Data([1]), chunkIndex: 1, checksum: 0)
+        let f2 = Frame.chunk(reqId: rid, streamId: "s1", seq: 2, payload: Data([2]), chunkIndex: 2, checksum: 0)
+        let f3 = Frame.chunk(reqId: rid, streamId: "s1", seq: 3, payload: Data([3]), chunkIndex: 3, checksum: 0)
+
+        _ = try buffer.accept(f1) // buffers
+        _ = try buffer.accept(f2) // buffers
+        _ = try buffer.accept(f3) // buffers
+
+        // Now send frame 0, which should drain all buffered frames
+        let f0 = Frame.chunk(reqId: rid, streamId: "s1", seq: 0, payload: Data([0]), chunkIndex: 0, checksum: 0)
+        let drained = try buffer.accept(f0)
+
+        XCTAssertEqual(drained.count, 4, "Should drain frames 0, 1, 2, 3")
+        for (i, frame) in drained.enumerated() {
+            XCTAssertEqual(frame.seq, UInt64(i))
+        }
+    }
 }

@@ -171,11 +171,14 @@ public final class RelaySwitch: @unchecked Sendable {
     /// Identity verification sends CAP_IDENTITY request with nonce, expects echo response.
     /// Updated RelayNotify frames during verification are captured (hosts send full caps after plugin startup).
     ///
-    /// - Parameter sockets: Array of socket pairs (one per master)
+    /// - Parameter sockets: Array of socket pairs (one per master). Can be empty — use add_master later.
     /// - Throws: RelaySwitchError if construction or identity verification fails
     public init(sockets: [SocketPair]) throws {
-        guard !sockets.isEmpty else {
-            throw RelaySwitchError.protocolError("RelaySwitch requires at least one master")
+        // Allow empty sockets — creates empty switch. Use addMaster() to add masters later.
+        // Matches Rust TEST432: Empty masters list creates empty switch, add_master works.
+        if sockets.isEmpty {
+            aggregateCapabilities = Data("[]".utf8)
+            return
         }
 
         // Phase 1: For each master, read RelayNotify and verify identity (blocking).

@@ -410,14 +410,20 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(response?.payload, Data([42]))
     }
 
-    // TEST432: Empty masters list returns error
-    func test432_empty_masters_list_error() throws {
-        XCTAssertThrowsError(try RelaySwitch(sockets: [])) { error in
-            guard case RelaySwitchError.protocolError(let msg) = error else {
-                XCTFail("Expected protocolError")
+    // TEST432: Empty masters list creates empty switch (matching Rust behavior)
+    func test432_empty_masters_allowed() throws {
+        let sw = try RelaySwitch(sockets: [])
+
+        // Empty switch has no caps
+        let capsJson = sw.capabilities()
+        XCTAssertEqual(String(data: capsJson, encoding: .utf8), "[]", "empty switch should have empty caps JSON")
+
+        // No handler for any cap — sendToMaster throws noHandler
+        XCTAssertThrowsError(try sw.sendToMaster(Frame.req(id: .newUUID(), capUrn: "cap:in=media:;out=media:", payload: Data(), contentType: ""))) { error in
+            guard case RelaySwitchError.noHandler = error else {
+                XCTFail("Expected noHandler error, got \(error)")
                 return
             }
-            XCTAssertTrue(msg.contains("at least one master"))
         }
     }
 

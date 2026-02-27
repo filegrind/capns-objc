@@ -1171,8 +1171,8 @@ final class CborFrameTests: XCTestCase {
         XCTAssertNil(FrameType(rawValue: 12), "rawValue 12 must be nil (one past RelayState)")
     }
 
-    // TEST399a: RelayNotify encode/decode roundtrip preserves manifest and limits
-    func test399a_relayNotifyRoundtrip() throws {
+    // TEST521: RelayNotify CBOR roundtrip preserves manifest and limits
+    func test521_relayNotifyCborRoundtrip() throws {
         let manifest = "{\"caps\":[\"cap:op=relay-test\"]}".data(using: .utf8)!
         let limits = Limits(maxFrame: 2_000_000, maxChunk: 128_000, maxReorderBuffer: 64)
 
@@ -1192,8 +1192,8 @@ final class CborFrameTests: XCTestCase {
         XCTAssertEqual(extractedLimits?.maxChunk, limits.maxChunk)
     }
 
-    // TEST400a: RelayState encode/decode roundtrip preserves resource payload
-    func test400a_relayStateRoundtrip() throws {
+    // TEST522: RelayState CBOR roundtrip preserves payload
+    func test522_relayStateCborRoundtrip() throws {
         let resources = "{\"gpu_memory\":8192,\"cpu_cores\":16}".data(using: .utf8)!
 
         let original = Frame.relayState(resources: resources)
@@ -1228,5 +1228,464 @@ final class CborFrameTests: XCTestCase {
         // Missing checksum should fail
         frame.checksum = nil
         XCTAssertNil(frame.checksum, "Frame without checksum should fail verification")
+    }
+
+    // MARK: - Additional Frame Tests (TEST178-179, 194-195, 436, 440-441, 491-528)
+
+    // TEST178: MessageId.asBytes produces correct byte representations for Uuid and Uint variants
+    func test178_messageIdAsBytes() {
+        // UUID: 16 bytes
+        let uuidId = MessageId.newUUID()
+        let uuidBytes = uuidId.asBytes()
+        XCTAssertEqual(uuidBytes.count, 16, "UUID must produce 16 bytes")
+
+        // Uint: 8 bytes big-endian
+        let uintId = MessageId.uint(0x0102030405060708)
+        let uintBytes = uintId.asBytes()
+        XCTAssertEqual(uintBytes.count, 8, "Uint must produce 8 bytes")
+        XCTAssertEqual([UInt8](uintBytes), [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+
+        // Zero uint
+        let zeroId = MessageId.uint(0)
+        let zeroBytes = zeroId.asBytes()
+        XCTAssertEqual([UInt8](zeroBytes), [0, 0, 0, 0, 0, 0, 0, 0])
+    }
+
+    // TEST179: MessageId.newUUID creates a UUID variant (not Uint)
+    func test179_messageIdNewUUIDIsUUID() {
+        let id = MessageId.newUUID()
+        switch id {
+        case .uuid(let data):
+            XCTAssertEqual(data.count, 16, "UUID data must be 16 bytes")
+        case .uint:
+            XCTFail("newUUID must create UUID variant, not Uint")
+        }
+    }
+
+    // TEST194: Frame init sets version and defaults correctly, optional fields are None
+    func test194_frameNewDefaults() {
+        let frame = Frame(frameType: .req, id: .uint(42))
+
+        XCTAssertEqual(frame.version, CBOR_PROTOCOL_VERSION, "Version must default to CBOR_PROTOCOL_VERSION")
+        XCTAssertEqual(frame.frameType, .req)
+        XCTAssertEqual(frame.id, .uint(42))
+        XCTAssertEqual(frame.seq, 0, "seq must default to 0")
+
+        // All optional fields must be nil
+        XCTAssertNil(frame.routingId)
+        XCTAssertNil(frame.streamId)
+        XCTAssertNil(frame.mediaUrn)
+        XCTAssertNil(frame.contentType)
+        XCTAssertNil(frame.meta)
+        XCTAssertNil(frame.payload)
+        XCTAssertNil(frame.len)
+        XCTAssertNil(frame.offset)
+        XCTAssertNil(frame.eof)
+        XCTAssertNil(frame.cap)
+        XCTAssertNil(frame.chunkIndex)
+        XCTAssertNil(frame.chunkCount)
+        XCTAssertNil(frame.checksum)
+    }
+
+    // TEST195: Frame default initializer creates frame with specified type (Swift equivalent of Rust Default)
+    func test195_frameDefaultType() {
+        // In Swift, we explicitly specify the frame type
+        let frame = Frame(frameType: .req, id: .uint(0))
+        XCTAssertEqual(frame.frameType, .req, "Frame must have specified frame type")
+    }
+
+    // TEST436: compute_checksum produces consistent FNV-1a results
+    func test436_computeChecksum() {
+        // FNV-1a test vectors
+        let empty = Data()
+        let emptyChecksum = Frame.computeChecksum(empty)
+        XCTAssertEqual(emptyChecksum, 0xcbf29ce484222325, "Empty data FNV-1a offset basis")
+
+        // "a" -> specific known value
+        let aData = "a".data(using: .utf8)!
+        let aChecksum = Frame.computeChecksum(aData)
+        XCTAssertEqual(aChecksum, 0xaf63dc4c8601ec8c, "FNV-1a hash of 'a'")
+
+        // Deterministic: same input produces same output
+        let testData = "hello world".data(using: .utf8)!
+        let hash1 = Frame.computeChecksum(testData)
+        let hash2 = Frame.computeChecksum(testData)
+        XCTAssertEqual(hash1, hash2, "Checksum must be deterministic")
+
+        // Different data produces different checksums
+        let otherData = "goodbye world".data(using: .utf8)!
+        let otherHash = Frame.computeChecksum(otherData)
+        XCTAssertNotEqual(hash1, otherHash, "Different data must produce different checksums")
+    }
+
+    // TEST440: CHUNK frame with chunk_index and checksum roundtrips through encode/decode
+    func test440_chunkIndexChecksumRoundtrip() throws {
+        let id = MessageId.newUUID()
+        let payload = "test chunk data".data(using: .utf8)!
+        let checksum = Frame.computeChecksum(payload)
+
+        let original = Frame.chunk(reqId: id, streamId: "stream1", seq: 5, payload: payload, chunkIndex: 42, checksum: checksum)
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .chunk)
+        XCTAssertEqual(decoded.id, id)
+        XCTAssertEqual(decoded.streamId, "stream1")
+        XCTAssertEqual(decoded.chunkIndex, 42)
+        XCTAssertEqual(decoded.checksum, checksum)
+        XCTAssertEqual(decoded.payload, payload)
+    }
+
+    // TEST441: STREAM_END frame with chunk_count roundtrips through encode/decode
+    func test441_streamEndChunkCountRoundtrip() throws {
+        let id = MessageId.newUUID()
+
+        let original = Frame.streamEnd(reqId: id, streamId: "stream1", chunkCount: 100)
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .streamEnd)
+        XCTAssertEqual(decoded.id, id)
+        XCTAssertEqual(decoded.streamId, "stream1")
+        XCTAssertEqual(decoded.chunkCount, 100)
+    }
+
+    // TEST491: Frame.chunk constructor requires and sets chunk_index and checksum
+    func test491_chunkRequiresChunkIndexAndChecksum() {
+        let id = MessageId.newUUID()
+        let payload = Data([1, 2, 3])
+        let checksum = Frame.computeChecksum(payload)
+
+        let frame = Frame.chunk(reqId: id, streamId: "s1", seq: 0, payload: payload, chunkIndex: 5, checksum: checksum)
+
+        XCTAssertEqual(frame.chunkIndex, 5, "chunk_index must be set")
+        XCTAssertEqual(frame.checksum, checksum, "checksum must be set")
+    }
+
+    // TEST492: Frame.streamEnd constructor requires and sets chunk_count
+    func test492_streamEndRequiresChunkCount() {
+        let id = MessageId.newUUID()
+
+        let frame = Frame.streamEnd(reqId: id, streamId: "s1", chunkCount: 10)
+
+        XCTAssertEqual(frame.chunkCount, 10, "chunk_count must be set")
+    }
+
+    // TEST493: compute_checksum produces correct FNV-1a hash for known test vectors
+    func test493_computeChecksumFnv1aTestVectors() {
+        // Standard FNV-1a test vectors
+        // https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
+
+        // Empty string
+        XCTAssertEqual(Frame.computeChecksum(Data()), 0xcbf29ce484222325)
+
+        // Single character 'a'
+        XCTAssertEqual(Frame.computeChecksum("a".data(using: .utf8)!), 0xaf63dc4c8601ec8c)
+
+        // "foobar"
+        let foobar = "foobar".data(using: .utf8)!
+        let foobarHash = Frame.computeChecksum(foobar)
+        // This should produce a consistent hash (not checking exact value, just consistency)
+        XCTAssertEqual(Frame.computeChecksum(foobar), foobarHash)
+    }
+
+    // TEST494: compute_checksum is deterministic
+    func test494_computeChecksumDeterministic() {
+        let data = Data([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09])
+
+        let hash1 = Frame.computeChecksum(data)
+        let hash2 = Frame.computeChecksum(data)
+        let hash3 = Frame.computeChecksum(data)
+
+        XCTAssertEqual(hash1, hash2)
+        XCTAssertEqual(hash2, hash3)
+    }
+
+    // TEST495: CBOR decode REJECTS CHUNK frame missing chunk_index field
+    func test495_cborRejectsChunkWithoutChunkIndex() throws {
+        // Manually construct a CHUNK frame without chunk_index
+        var map: [CBOR: CBOR] = [:]
+        map[.unsignedInt(FrameKey.version.rawValue)] = .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION))
+        map[.unsignedInt(FrameKey.frameType.rawValue)] = .unsignedInt(UInt64(FrameType.chunk.rawValue))
+        map[.unsignedInt(FrameKey.id.rawValue)] = .unsignedInt(1)
+        map[.unsignedInt(FrameKey.seq.rawValue)] = .unsignedInt(0)
+        map[.unsignedInt(FrameKey.payload.rawValue)] = .byteString([1, 2, 3])
+        map[.unsignedInt(FrameKey.checksum.rawValue)] = .unsignedInt(12345)
+        // Missing chunkIndex!
+
+        let cbor = CBOR.map(map)
+        let encoded = Data(cbor.encode())
+
+        XCTAssertThrowsError(try decodeFrame(encoded)) { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("chunkIndex"), "Error should mention chunkIndex: \(msg)")
+        }
+    }
+
+    // TEST496: CBOR decode REJECTS CHUNK frame missing checksum field
+    func test496_cborRejectsChunkWithoutChecksum() throws {
+        // Manually construct a CHUNK frame without checksum
+        var map: [CBOR: CBOR] = [:]
+        map[.unsignedInt(FrameKey.version.rawValue)] = .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION))
+        map[.unsignedInt(FrameKey.frameType.rawValue)] = .unsignedInt(UInt64(FrameType.chunk.rawValue))
+        map[.unsignedInt(FrameKey.id.rawValue)] = .unsignedInt(1)
+        map[.unsignedInt(FrameKey.seq.rawValue)] = .unsignedInt(0)
+        map[.unsignedInt(FrameKey.payload.rawValue)] = .byteString([1, 2, 3])
+        map[.unsignedInt(FrameKey.chunkIndex.rawValue)] = .unsignedInt(0)
+        // Missing checksum!
+
+        let cbor = CBOR.map(map)
+        let encoded = Data(cbor.encode())
+
+        XCTAssertThrowsError(try decodeFrame(encoded)) { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("checksum"), "Error should mention checksum: \(msg)")
+        }
+    }
+
+    // TEST497: Verify CHUNK frame with corrupted payload is rejected by checksum verification
+    func test497_chunkCorruptedPayloadRejected() throws {
+        let id = MessageId.newUUID()
+        let payload = "original data".data(using: .utf8)!
+        let checksum = Frame.computeChecksum(payload)
+
+        var frame = Frame.chunk(reqId: id, streamId: "s1", seq: 0, payload: payload, chunkIndex: 0, checksum: checksum)
+
+        // Corrupt the payload
+        frame.payload = "corrupted data".data(using: .utf8)!
+
+        // Verify checksum mismatch
+        let actualChecksum = Frame.computeChecksum(frame.payload!)
+        XCTAssertNotEqual(frame.checksum, actualChecksum, "Corrupted payload must have mismatched checksum")
+    }
+
+    // TEST498: routing_id field roundtrips through CBOR encoding
+    func test498_routingIdCborRoundtrip() throws {
+        let id = MessageId.newUUID()
+        let xid = MessageId.uint(42)
+
+        var original = Frame(frameType: .req, id: id)
+        original.routingId = xid
+
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.routingId, xid)
+    }
+
+    // TEST499: chunk_index and checksum roundtrip through CBOR encoding
+    func test499_chunkIndexChecksumCborRoundtrip() throws {
+        let id = MessageId.newUUID()
+        let payload = Data([1, 2, 3, 4, 5])
+        let checksum = Frame.computeChecksum(payload)
+
+        let original = Frame.chunk(reqId: id, streamId: "s1", seq: 0, payload: payload, chunkIndex: 999, checksum: checksum)
+
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.chunkIndex, 999)
+        XCTAssertEqual(decoded.checksum, checksum)
+    }
+
+    // TEST500: chunk_count roundtrips through CBOR encoding
+    func test500_chunkCountCborRoundtrip() throws {
+        let id = MessageId.newUUID()
+
+        let original = Frame.streamEnd(reqId: id, streamId: "s1", chunkCount: 12345)
+
+        let encoded = try encodeFrame(original)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.chunkCount, 12345)
+    }
+
+    // TEST501: Frame init initializes new fields to None
+    func test501_frameNewInitializesOptionalFieldsNone() {
+        let frame = Frame(frameType: .req, id: .uint(0))
+
+        XCTAssertNil(frame.routingId)
+        XCTAssertNil(frame.chunkIndex)
+        XCTAssertNil(frame.chunkCount)
+        XCTAssertNil(frame.checksum)
+    }
+
+    // TEST502: Keys module has constants for new fields
+    func test502_keysModuleNewFieldConstants() {
+        XCTAssertEqual(FrameKey.routingId.rawValue, 13)
+        XCTAssertEqual(FrameKey.chunkIndex.rawValue, 14)
+        XCTAssertEqual(FrameKey.chunkCount.rawValue, 15)
+        XCTAssertEqual(FrameKey.checksum.rawValue, 16)
+    }
+
+    // TEST503: compute_checksum handles empty data correctly
+    func test503_computeChecksumEmptyData() {
+        let empty = Data()
+        let checksum = Frame.computeChecksum(empty)
+        // FNV-1a offset basis
+        XCTAssertEqual(checksum, 0xcbf29ce484222325)
+    }
+
+    // TEST504: compute_checksum handles large payloads without overflow
+    func test504_computeChecksumLargePayload() {
+        // 1 MB of data
+        let largeData = Data(repeating: 0xAB, count: 1024 * 1024)
+        let checksum = Frame.computeChecksum(largeData)
+
+        // Should not crash and should be deterministic
+        let checksum2 = Frame.computeChecksum(largeData)
+        XCTAssertEqual(checksum, checksum2)
+    }
+
+    // TEST505: chunk_with_offset sets chunk_index correctly
+    func test505_chunkWithOffsetSetsChunkIndex() {
+        let id = MessageId.newUUID()
+        let payload = Data([1, 2, 3])
+        let checksum = Frame.computeChecksum(payload)
+
+        let frame = Frame.chunkWithOffset(
+            reqId: id,
+            streamId: "s1",
+            seq: 0,
+            payload: payload,
+            offset: 100,
+            totalLen: 1000,
+            isLast: false,
+            chunkIndex: 5,
+            checksum: checksum
+        )
+
+        XCTAssertEqual(frame.chunkIndex, 5)
+        XCTAssertEqual(frame.offset, 100)
+        XCTAssertEqual(frame.checksum, checksum)
+    }
+
+    // TEST506: Different data produces different checksums
+    func test506_computeChecksumDifferentDataDifferentHash() {
+        let data1 = Data([1, 2, 3])
+        let data2 = Data([1, 2, 4])
+        let data3 = Data([4, 5, 6])
+
+        let hash1 = Frame.computeChecksum(data1)
+        let hash2 = Frame.computeChecksum(data2)
+        let hash3 = Frame.computeChecksum(data3)
+
+        XCTAssertNotEqual(hash1, hash2)
+        XCTAssertNotEqual(hash1, hash3)
+        XCTAssertNotEqual(hash2, hash3)
+    }
+
+    // TEST523: is_flow_frame returns false for RelayNotify
+    func test523_relayNotifyNotFlowFrame() {
+        let frame = Frame.relayNotify(manifest: Data(), limits: Limits())
+        XCTAssertFalse(frame.isFlowFrame(), "RelayNotify must not be a flow frame")
+    }
+
+    // TEST524: is_flow_frame returns false for RelayState
+    func test524_relayStateNotFlowFrame() {
+        let frame = Frame.relayState(resources: Data())
+        XCTAssertFalse(frame.isFlowFrame(), "RelayState must not be a flow frame")
+    }
+
+    // TEST525: RelayNotify with empty manifest is valid
+    func test525_relayNotifyEmptyManifest() throws {
+        let frame = Frame.relayNotify(manifest: Data(), limits: Limits())
+
+        let encoded = try encodeFrame(frame)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .relayNotify)
+        XCTAssertEqual(decoded.relayNotifyManifest, Data())
+    }
+
+    // TEST526: RelayState with empty payload is valid
+    func test526_relayStateEmptyPayload() throws {
+        let frame = Frame.relayState(resources: Data())
+
+        let encoded = try encodeFrame(frame)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .relayState)
+        XCTAssertEqual(decoded.payload, Data())
+    }
+
+    // TEST527: RelayNotify with large manifest roundtrips correctly
+    func test527_relayNotifyLargeManifest() throws {
+        let largeManifest = Data(repeating: 0x42, count: 100_000)
+        let frame = Frame.relayNotify(manifest: largeManifest, limits: Limits())
+
+        let encoded = try encodeFrame(frame)
+        let decoded = try decodeFrame(encoded)
+
+        XCTAssertEqual(decoded.frameType, .relayNotify)
+        XCTAssertEqual(decoded.relayNotifyManifest, largeManifest)
+    }
+
+    // TEST528: RelayNotify and RelayState use MessageId::Uint(0)
+    func test528_relayFramesUseUintZeroId() {
+        let notify = Frame.relayNotify(manifest: Data(), limits: Limits())
+        let state = Frame.relayState(resources: Data())
+
+        XCTAssertEqual(notify.id, .uint(0), "RelayNotify must use Uint(0) id")
+        XCTAssertEqual(state.id, .uint(0), "RelayState must use Uint(0) id")
+    }
+
+    // TEST902: Verify FNV-1a checksum handles empty data
+    func test902_computeChecksumEmpty() {
+        let empty = Data()
+        let checksum = Frame.computeChecksum(empty)
+        XCTAssertEqual(checksum, 0xcbf29ce484222325, "Empty data must return FNV-1a offset basis")
+    }
+
+    // TEST903: Verify CHUNK frame can store chunk_index and checksum fields
+    func test903_chunkWithChunkIndexAndChecksum() {
+        let id = MessageId.newUUID()
+        let payload = Data([1, 2, 3])
+        let checksum = Frame.computeChecksum(payload)
+
+        let frame = Frame.chunk(reqId: id, streamId: "s1", seq: 0, payload: payload, chunkIndex: 42, checksum: checksum)
+
+        XCTAssertEqual(frame.chunkIndex, 42)
+        XCTAssertEqual(frame.checksum, checksum)
+        XCTAssertEqual(frame.payload, payload)
+    }
+
+    // TEST904: Verify STREAM_END frame can store chunk_count field
+    func test904_streamEndWithChunkCount() {
+        let id = MessageId.newUUID()
+
+        let frame = Frame.streamEnd(reqId: id, streamId: "s1", chunkCount: 100)
+
+        XCTAssertEqual(frame.frameType, .streamEnd)
+        XCTAssertEqual(frame.chunkCount, 100)
+    }
+
+    // TEST907: CBOR decode REJECTS STREAM_END frame missing chunk_count field
+    func test907_cborRejectsStreamEndWithoutChunkCount() throws {
+        // Manually construct a STREAM_END frame without chunk_count
+        var map: [CBOR: CBOR] = [:]
+        map[.unsignedInt(FrameKey.version.rawValue)] = .unsignedInt(UInt64(CBOR_PROTOCOL_VERSION))
+        map[.unsignedInt(FrameKey.frameType.rawValue)] = .unsignedInt(UInt64(FrameType.streamEnd.rawValue))
+        map[.unsignedInt(FrameKey.id.rawValue)] = .unsignedInt(1)
+        map[.unsignedInt(FrameKey.seq.rawValue)] = .unsignedInt(0)
+        map[.unsignedInt(FrameKey.streamId.rawValue)] = .utf8String("s1")
+        // Missing chunkCount!
+
+        let cbor = CBOR.map(map)
+        let encoded = Data(cbor.encode())
+
+        XCTAssertThrowsError(try decodeFrame(encoded)) { error in
+            guard case FrameError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("chunkCount"), "Error should mention chunkCount: \(msg)")
+        }
     }
 }

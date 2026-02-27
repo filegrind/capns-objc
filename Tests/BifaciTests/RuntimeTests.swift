@@ -159,60 +159,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try writer.write(Frame.end(id: reqId, finalPayload: nil))
     }
 
-    // MARK: - Handshake Tests (TEST284, TEST290, TEST231-232)
-
-    // TEST284: attachPlugin exchanges HELLO frames, negotiates limits, extracts manifest
-    func test284_attachPluginHandshake() async throws {
-        let hostToPlugin = Pipe()
-        let pluginToHost = Pipe()
-
-        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
-        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
-
-        let pluginTask = Task.detached { @Sendable in
-            guard let hostHello = try pluginReader.read() else {
-                throw PluginHostError.receiveFailed("No HELLO from host")
-            }
-            guard hostHello.frameType == .hello else {
-                throw PluginHostError.handshakeFailed("Expected HELLO, got \(hostHello.frameType)")
-            }
-            try pluginWriter.write(CborRuntimeTests.helloWithManifest())
-        }
-
-        let host = PluginHost()
-        let idx = try host.attachPlugin(
-            stdinHandle: hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pluginToHost.fileHandleForReading
-        )
-        XCTAssertEqual(idx, 0, "First plugin should be index 0")
-
-        try await pluginTask.value
-    }
-
-    // TEST290: attachPlugin limit negotiation picks minimum of host and plugin values
-    func test290_attachPluginLimitsNegotiation() async throws {
-        let hostToPlugin = Pipe()
-        let pluginToHost = Pipe()
-
-        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading, limits: Limits())
-        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting, limits: Limits())
-
-        let pluginTask = Task.detached { @Sendable in
-            guard let _ = try pluginReader.read() else {
-                throw PluginHostError.receiveFailed("NO HELLO")
-            }
-            let limits = Limits(maxFrame: 500_000, maxChunk: 100_000, maxReorderBuffer: 64)
-            try pluginWriter.write(Frame.helloWithManifest(limits: limits, manifest: CborRuntimeTests.testManifestData))
-        }
-
-        let host = PluginHost()
-        try host.attachPlugin(
-            stdinHandle: hostToPlugin.fileHandleForWriting,
-            stdoutHandle: pluginToHost.fileHandleForReading
-        )
-
-        try await pluginTask.value
-    }
+    // MARK: - Handshake Tests (TEST231-232)
+    // NOTE: TEST284 and TEST290 are tested at the protocol level in IntegrationTests.swift
 
     // TEST232: attachPlugin fails when plugin HELLO is missing required manifest
     func test232_attachPluginFailsOnMissingManifest() async throws {
@@ -590,8 +538,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         try? await hostTask.value
     }
 
-    // TEST432: REQ for unknown cap returns ERR (NoHandler)
-    func test432_reqForUnknownCapReturnsErr() async throws {
+    // TEST901: REQ for unknown cap returns ERR (NoHandler) — not fatal, just per-request error
+    func test901_reqForUnknownCapReturnsErr() async throws {
         let hostToPlugin = Pipe()
         let pluginToHost = Pipe()
         let engineToHost = Pipe()

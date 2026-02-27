@@ -79,6 +79,27 @@ public enum MessageId: Equatable, Hashable, Sendable {
     public var uuidString: String? {
         return uuid?.uuidString
     }
+
+    /// Get the byte representation of this message ID
+    /// - For UUID: returns 16 bytes
+    /// - For Uint: returns 8 bytes (big-endian)
+    public func asBytes() -> Data {
+        switch self {
+        case .uuid(let data):
+            return data
+        case .uint(let n):
+            var bytes = Data(count: 8)
+            bytes[0] = UInt8((n >> 56) & 0xFF)
+            bytes[1] = UInt8((n >> 48) & 0xFF)
+            bytes[2] = UInt8((n >> 40) & 0xFF)
+            bytes[3] = UInt8((n >> 32) & 0xFF)
+            bytes[4] = UInt8((n >> 24) & 0xFF)
+            bytes[5] = UInt8((n >> 16) & 0xFF)
+            bytes[6] = UInt8((n >> 8) & 0xFF)
+            bytes[7] = UInt8(n & 0xFF)
+            return bytes
+        }
+    }
 }
 
 extension MessageId: CustomStringConvertible {
