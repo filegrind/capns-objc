@@ -358,6 +358,9 @@ public final class PluginHost: @unchecked Sendable {
         // Parse caps from manifest (validates CAP_IDENTITY presence)
         let caps = try Self.extractCaps(from: manifest)
 
+        // Perform identity verification - send nonce, expect echo
+        try Self.verifyPluginIdentity(reader: reader, writer: writer)
+
         // Create managed plugin
         let plugin = ManagedPlugin.attached(manifest: manifest, limits: negotiatedLimits, caps: caps)
         plugin.stdinHandle = stdinHandle
@@ -911,6 +914,79 @@ public final class PluginHost: @unchecked Sendable {
         }
 
         return capUrns
+    }
+
+    /// Generate identity verification nonce — CBOR-encoded "bifaci" text.
+    private static func identityNonce() -> Data {
+        return Data(CBOR.utf8String("bifaci").encode())
+    }
+
+    /// Verify plugin identity by sending nonce and expecting echo response.
+    ///
+    /// This proves the transport works end-to-end and the plugin correctly
+    /// implements the identity capability (echo behavior).
+    ///
+    /// - Parameters:
+    ///   - reader: FrameReader for plugin stdout
+    ///   - writer: FrameWriter for plugin stdin
+    /// - Throws: PluginHostError if verification fails
+    private static func verifyPluginIdentity(reader: FrameReader, writer: FrameWriter) throws {
+        let nonce = identityNonce()
+        let reqId = MessageId.newUUID()
+        let streamId = "identity-verify"
+
+        // Send REQ with CAP_IDENTITY
+        let req = Frame.req(id: reqId, capUrn: CSCapIdentity as String, payload: Data(), contentType: "application/cbor")
+        try writer.write(req)
+
+        // Send STREAM_START
+        let ss = Frame.streamStart(reqId: reqId, streamId: streamId, mediaUrn: "media:")
+        try writer.write(ss)
+
+        // Send CHUNK with nonce
+        let checksum = Frame.computeChecksum(nonce)
+        let chunk = Frame.chunk(reqId: reqId, streamId: streamId, seq: 0, payload: nonce, chunkIndex: 0, checksum: checksum)
+        try writer.write(chunk)
+
+        // Send STREAM_END
+        let se = Frame.streamEnd(reqId: reqId, streamId: streamId, chunkCount: 1)
+        try writer.write(se)
+
+        // Send END
+        let end = Frame.end(id: reqId)
+        try writer.write(end)
+
+        // Read response - expect STREAM_START → CHUNK(s) → STREAM_END → END
+        var accumulated = Data()
+        while true {
+            guard let frame = try reader.read() else {
+                throw PluginHostError.handshakeFailed("Plugin closed connection during identity verification")
+            }
+
+            switch frame.frameType {
+            case .streamStart:
+                break // Expected, no action needed
+            case .chunk:
+                if let payload = frame.payload {
+                    accumulated.append(payload)
+                }
+            case .streamEnd:
+                break // Expected, no action needed
+            case .end:
+                // Verify nonce matches
+                if accumulated != nonce {
+                    throw PluginHostError.handshakeFailed(
+                        "Identity verification payload mismatch (expected \(nonce.count) bytes, got \(accumulated.count))")
+                }
+                return // Success
+            case .err:
+                let code = frame.errorCode ?? "UNKNOWN"
+                let msg = frame.errorMessage ?? "no message"
+                throw PluginHostError.handshakeFailed("Identity verification failed: [\(code)] \(msg)")
+            default:
+                throw PluginHostError.handshakeFailed("Identity verification: unexpected frame type \(frame.frameType)")
+            }
+        }
     }
 
     // MARK: - Spawn On Demand

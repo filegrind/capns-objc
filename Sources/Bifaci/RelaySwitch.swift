@@ -162,6 +162,9 @@ public final class RelaySwitch: @unchecked Sendable {
     private var frameChannel: [(masterIdx: Int, frame: Frame?, error: Error?)] = []
     private let frameSemaphore = DispatchSemaphore(value: 0)
 
+    /// Shutdown flag - when true, reader threads should exit
+    private var isShutdown = false
+
     /// Create a RelaySwitch from socket pairs.
     ///
     /// Two-phase construction:
@@ -318,21 +321,54 @@ public final class RelaySwitch: @unchecked Sendable {
         rebuildLimits()
     }
 
+    // MARK: - Shutdown
+
+    /// Shutdown the relay switch, stopping all reader threads.
+    /// Call this before closing file handles to prevent crashes.
+    public func shutdown() {
+        lock.lock()
+        isShutdown = true
+        lock.unlock()
+
+        // Signal semaphore to wake any waiting readers
+        frameSemaphore.signal()
+    }
+
+    /// deinit sets shutdown flag
+    deinit {
+        lock.lock()
+        isShutdown = true
+        lock.unlock()
+    }
+
     // MARK: - Reader Loop
 
     private func readerLoop(masterIdx: Int, reader: FrameReader) {
         var mutableReader = reader
         while true {
+            // Check shutdown flag before reading
+            lock.lock()
+            let shouldStop = isShutdown
+            lock.unlock()
+            if shouldStop { return }
+
             do {
                 guard let frame = try mutableReader.read() else {
                     enqueueFrame(masterIdx: masterIdx, frame: nil, error: nil)
                     return
                 }
 
+                // Check shutdown after read
+                lock.lock()
+                let shouldStopAfterRead = isShutdown
+                lock.unlock()
+                if shouldStopAfterRead { return }
+
                 // Intercept RelayNotify before sending to queue
                 if frame.frameType == .relayNotify {
                     lock.lock()
-                    if let manifest = frame.relayNotifyManifest,
+                    if !isShutdown,
+                       let manifest = frame.relayNotifyManifest,
                        let limits = frame.relayNotifyLimits {
                         let caps = try Self.parseCapabilitiesFromManifest(manifest)
                         masters[masterIdx].manifest = manifest
@@ -348,19 +384,28 @@ public final class RelaySwitch: @unchecked Sendable {
 
                 // Pass through reorder buffer
                 lock.lock()
-                let reorderBuffer = masters[masterIdx].reorderBuffer
+                let shutdownDuringReorder = isShutdown
+                let reorderBuffer = shutdownDuringReorder ? nil : masters[masterIdx].reorderBuffer
                 lock.unlock()
 
-                let readyFrames = try reorderBuffer.accept(frame)
+                guard let buffer = reorderBuffer else { return }
+
+                let readyFrames = try buffer.accept(frame)
 
                 for readyFrame in readyFrames {
                     if readyFrame.frameType == .end || readyFrame.frameType == .err {
                         let key = FlowKey.fromFrame(readyFrame)
-                        reorderBuffer.cleanupFlow(key)
+                        buffer.cleanupFlow(key)
                     }
                     enqueueFrame(masterIdx: masterIdx, frame: readyFrame, error: nil)
                 }
             } catch {
+                // Don't enqueue errors if we're shutting down
+                lock.lock()
+                let shuttingDown = isShutdown
+                lock.unlock()
+                if shuttingDown { return }
+
                 enqueueFrame(masterIdx: masterIdx, frame: nil, error: error)
                 return
             }

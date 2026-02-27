@@ -61,6 +61,37 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         return Frame.helloWithManifest(limits: limits, manifest: manifest)
     }
 
+    /// Helper for mock plugins to handle identity verification after HELLO exchange.
+    /// Reads REQ + streaming frames, echoes payload back.
+    nonisolated static func handleIdentityVerification(reader: FrameReader, writer: FrameWriter) throws {
+        // Read REQ
+        guard let req = try reader.read(), req.frameType == .req else {
+            throw PluginHostError.protocolError("Expected identity REQ")
+        }
+
+        // Read streaming frames until END, collect payload
+        var payload = Data()
+        while true {
+            guard let frame = try reader.read() else {
+                throw PluginHostError.receiveFailed("Connection closed during identity verification")
+            }
+            if frame.frameType == .chunk, let p = frame.payload {
+                payload.append(p)
+            }
+            if frame.frameType == .end { break }
+        }
+
+        // Echo payload back
+        let streamId = "identity-echo"
+        try writer.write(Frame.streamStart(reqId: req.id, streamId: streamId, mediaUrn: "media:"))
+        if !payload.isEmpty {
+            let checksum = Frame.computeChecksum(payload)
+            try writer.write(Frame.chunk(reqId: req.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+        }
+        try writer.write(Frame.streamEnd(reqId: req.id, streamId: streamId, chunkCount: payload.isEmpty ? 0 : 1))
+        try writer.write(Frame.end(id: req.id))
+    }
+
     /// Helper to write a frame with routingId (XID) stamped — required for frames entering via relay
     nonisolated static func writeWithXid(_ writer: FrameWriter, _ frame: Frame, xid: MessageId) throws {
         var f = frame
@@ -270,6 +301,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
         }
 
         let host = PluginHost()
@@ -301,10 +333,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
         let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
-        // Plugin: handshake + read REQ + write response
+        // Plugin: handshake + identity verification + read REQ + write response
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
 
             // Read REQ + streams + END from host
             let (reqId, cap, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
@@ -373,10 +406,11 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
         let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
 
-        // Plugin: handshake, send heartbeat, then respond to REQ
+        // Plugin: handshake + identity verification, send heartbeat, then respond to REQ
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
 
             // Send a heartbeat to the host
             let hbId = MessageId.newUUID()
@@ -462,6 +496,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let taskA = Task.detached { @Sendable [manifestA] in
             guard let _ = try pluginAReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginAWriter.write(CborRuntimeTests.helloWith(manifest: manifestA))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginAReader, writer: pluginAWriter)
             let (reqId, cap, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginAReader)
             guard cap == "cap:op=alpha" else { throw PluginHostError.protocolError("Expected alpha, got \(cap)") }
             try CborRuntimeTests.writeResponse(writer: pluginAWriter, reqId: reqId, payload: "from-A".data(using: .utf8)!)
@@ -470,6 +505,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let taskB = Task.detached { @Sendable [manifestB] in
             guard let _ = try pluginBReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginBWriter.write(CborRuntimeTests.helloWith(manifest: manifestB))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginBReader, writer: pluginBWriter)
             let (reqId, cap, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginBReader)
             guard cap == "cap:op=beta" else { throw PluginHostError.protocolError("Expected beta, got \(cap)") }
             try CborRuntimeTests.writeResponse(writer: pluginBWriter, reqId: reqId, payload: "from-B".data(using: .utf8)!)
@@ -552,6 +588,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         let pluginTask = Task.detached { @Sendable in
             guard let _ = try pluginReader.read() else { throw PluginHostError.receiveFailed("") }
             try pluginWriter.write(CborRuntimeTests.helloWithManifest())
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
             // Plugin just waits — no request should arrive for unknown cap
             try await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -651,6 +688,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "ContPlugin", caps: ["cap:op=cont"])
             ))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
 
             // Read REQ
             guard let req = try pluginReader.read() else { throw PluginHostError.receiveFailed("No REQ") }
@@ -736,6 +774,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "FwdPlugin", caps: ["cap:op=fwd"])
             ))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
 
             let (reqId, _, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
 
@@ -809,6 +848,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "DiePlugin", caps: ["cap:op=die"])
             ))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
             // Die immediately by closing write end
             pluginToHost.fileHandleForWriting.closeFile()
         }
@@ -860,7 +900,8 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "DiePlugin", caps: ["cap:op=die"])
             ))
-            // Read REQ, then die without responding
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
+            // Read actual test REQ (first frame after identity), then die without responding
             let _ = try pluginReader.read()
             pluginToHost.fileHandleForWriting.closeFile()
         }
@@ -926,6 +967,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "ConcPlugin", caps: ["cap:op=conc"])
             ))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
 
             // Read first complete request
             let (reqId0, _, _, _) = try CborRuntimeTests.readCompleteRequest(reader: pluginReader)
@@ -1104,6 +1146,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "ManifestPlugin", caps: ["cap:op=manifest-cap"])
             ))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
             // Keep connection alive
             try await Task.sleep(nanoseconds: 500_000_000)
         }
@@ -1141,6 +1184,7 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             try pluginWriter.write(CborRuntimeTests.helloWith(
                 manifest: CborRuntimeTests.makeManifest(name: "RunningPlugin", caps: ["cap:op=running"])
             ))
+            try CborRuntimeTests.handleIdentityVerification(reader: pluginReader, writer: pluginWriter)
             try await Task.sleep(nanoseconds: 500_000_000)
         }
 
@@ -1269,21 +1313,39 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             ])
             try pluginWriter.write(CborRuntimeTests.helloWith(manifest: manifest))
 
-            // Handle identity verification - read REQ, echo payload
+            // Handle identity verification - read streaming request, echo payload
             guard let identityReq = try pluginReader.read() else {
                 throw PluginHostError.receiveFailed("No identity request")
             }
             XCTAssertEqual(identityReq.frameType, .req)
             XCTAssertEqual(identityReq.cap, CSCapIdentity)
 
+            // Read streaming frames until END
+            var identityPayload = Data()
+            while true {
+                guard let frame = try pluginReader.read() else {
+                    throw PluginHostError.receiveFailed("Connection closed during identity request")
+                }
+                switch frame.frameType {
+                case .streamStart: break
+                case .chunk:
+                    if let p = frame.payload { identityPayload.append(p) }
+                case .streamEnd: break
+                case .end: break
+                default:
+                    throw PluginHostError.protocolError("Unexpected frame during identity: \(frame.frameType)")
+                }
+                if frame.frameType == .end { break }
+            }
+
             // Echo the payload back (standard identity behavior)
             let streamId = UUID().uuidString
             try pluginWriter.write(Frame.streamStart(reqId: identityReq.id, streamId: streamId, mediaUrn: "media:"))
-            if let payload = identityReq.payload, !payload.isEmpty {
-                let checksum = Frame.computeChecksum(payload)
-                try pluginWriter.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+            if !identityPayload.isEmpty {
+                let checksum = Frame.computeChecksum(identityPayload)
+                try pluginWriter.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: identityPayload, chunkIndex: 0, checksum: checksum))
             }
-            try pluginWriter.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityReq.payload?.isEmpty == false ? 1 : 0))
+            try pluginWriter.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityPayload.isEmpty ? 0 : 1))
             try pluginWriter.write(Frame.end(id: identityReq.id))
         }
 
@@ -1329,6 +1391,12 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             }
             XCTAssertEqual(identityReq.frameType, .req)
 
+            // Consume streaming frames until END
+            while true {
+                guard let frame = try pluginReader.read() else { break }
+                if frame.frameType == .end { break }
+            }
+
             // Return error - identity verification fails
             try pluginWriter.write(Frame.err(id: identityReq.id, code: "IDENTITY_FAILED", message: "Broken plugin"))
         }
@@ -1366,15 +1434,23 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             let manifest = CborRuntimeTests.makeManifest(name: "Plugin1", caps: ["cap:op=plugin1"])
             try plugin1Writer.write(CborRuntimeTests.helloWith(manifest: manifest))
 
-            // Handle identity verification
+            // Handle identity verification - read streaming request
             guard let identityReq = try plugin1Reader.read() else { throw PluginHostError.receiveFailed("") }
+            var identityPayload = Data()
+            while true {
+                guard let frame = try plugin1Reader.read() else { break }
+                if frame.frameType == .chunk, let p = frame.payload { identityPayload.append(p) }
+                if frame.frameType == .end { break }
+            }
+
+            // Echo payload back
             let streamId = "id1"
             try plugin1Writer.write(Frame.streamStart(reqId: identityReq.id, streamId: streamId, mediaUrn: "media:"))
-            if let payload = identityReq.payload, !payload.isEmpty {
-                let checksum = Frame.computeChecksum(payload)
-                try plugin1Writer.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+            if !identityPayload.isEmpty {
+                let checksum = Frame.computeChecksum(identityPayload)
+                try plugin1Writer.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: identityPayload, chunkIndex: 0, checksum: checksum))
             }
-            try plugin1Writer.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityReq.payload?.isEmpty == false ? 1 : 0))
+            try plugin1Writer.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityPayload.isEmpty ? 0 : 1))
             try plugin1Writer.write(Frame.end(id: identityReq.id))
         }
 
@@ -1396,15 +1472,23 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
             let manifest = CborRuntimeTests.makeManifest(name: "Plugin2", caps: ["cap:op=plugin2"])
             try plugin2Writer.write(CborRuntimeTests.helloWith(manifest: manifest))
 
-            // Handle identity verification
+            // Handle identity verification - read streaming request
             guard let identityReq = try plugin2Reader.read() else { throw PluginHostError.receiveFailed("") }
+            var identityPayload = Data()
+            while true {
+                guard let frame = try plugin2Reader.read() else { break }
+                if frame.frameType == .chunk, let p = frame.payload { identityPayload.append(p) }
+                if frame.frameType == .end { break }
+            }
+
+            // Echo payload back
             let streamId = "id2"
             try plugin2Writer.write(Frame.streamStart(reqId: identityReq.id, streamId: streamId, mediaUrn: "media:"))
-            if let payload = identityReq.payload, !payload.isEmpty {
-                let checksum = Frame.computeChecksum(payload)
-                try plugin2Writer.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+            if !identityPayload.isEmpty {
+                let checksum = Frame.computeChecksum(identityPayload)
+                try plugin2Writer.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: identityPayload, chunkIndex: 0, checksum: checksum))
             }
-            try plugin2Writer.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityReq.payload?.isEmpty == false ? 1 : 0))
+            try plugin2Writer.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityPayload.isEmpty ? 0 : 1))
             try plugin2Writer.write(Frame.end(id: identityReq.id))
         }
 

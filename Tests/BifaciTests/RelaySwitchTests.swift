@@ -104,6 +104,10 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertEqual(response?.frameType, .end)
         XCTAssertEqual(response?.id.toString(), MessageId.uint(1).toString())
         XCTAssertEqual(response?.payload, Data([42]))
+
+        // Cleanup - shutdown signals reader threads to exit
+        // File handles closed by ARC when they go out of scope
+        switch_.shutdown()
     }
 
     // TEST427: Multi-master cap routing
@@ -118,11 +122,13 @@ final class CborRelaySwitchTests: XCTestCase {
 
         let done1 = DispatchSemaphore(value: 0)
         let done2 = DispatchSemaphore(value: 0)
+        let resp1Done = DispatchSemaphore(value: 0)
+        let resp2Done = DispatchSemaphore(value: 0)
 
-        // Spawn slave 1 (echo cap)
+        // Spawn slave 1 (echo cap) - handles exactly 1 request
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: pair1_2.read, limits: Limits())  // slave1 reads from pair1_2
-            let writer = FrameWriter(handle: pair1_1.write, limits: Limits())  // slave1 writes to pair1_1
+            var reader = FrameReader(handle: pair1_2.read, limits: Limits())
+            let writer = FrameWriter(handle: pair1_1.write, limits: Limits())
 
             let caps: [String] = ["cap:in=media:;out=media:"]
             try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
@@ -130,19 +136,19 @@ final class CborRelaySwitchTests: XCTestCase {
 
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data([1]))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
+            // Handle exactly 1 request then exit
+            if let frame = try? reader.read(), frame.frameType == .req {
+                var response = Frame.end(id: frame.id, finalPayload: Data([1]))
+                response.routingId = frame.routingId
+                try! writer.write(response)
             }
+            resp1Done.signal()
         }
 
-        // Spawn slave 2 (double cap)
+        // Spawn slave 2 (double cap) - handles exactly 1 request
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: pair2_2.read, limits: Limits())  // slave2 reads from pair2_2
-            let writer = FrameWriter(handle: pair2_1.write, limits: Limits())  // slave2 writes to pair2_1
+            var reader = FrameReader(handle: pair2_2.read, limits: Limits())
+            let writer = FrameWriter(handle: pair2_1.write, limits: Limits())
 
             let caps: [String] = ["cap:in=media:;out=media:", "cap:in=\"media:void\";op=double;out=\"media:void\""]
             try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
@@ -150,21 +156,21 @@ final class CborRelaySwitchTests: XCTestCase {
 
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data([2]))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
+            // Handle exactly 1 request then exit
+            if let frame = try? reader.read(), frame.frameType == .req {
+                var response = Frame.end(id: frame.id, finalPayload: Data([2]))
+                response.routingId = frame.routingId
+                try! writer.write(response)
             }
+            resp2Done.signal()
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
         let switch_ = try RelaySwitch(sockets: [
-            SocketPair(read: pair1_1.read, write: pair1_2.write),  // engine1 reads from pair1_1, writes to pair1_2
-            SocketPair(read: pair2_1.read, write: pair2_2.write),  // engine2 reads from pair2_1, writes to pair2_2
+            SocketPair(read: pair1_1.read, write: pair1_2.write),
+            SocketPair(read: pair2_1.read, write: pair2_2.write),
         ])
 
         // Send REQ for echo cap → routes to master 1
@@ -190,6 +196,13 @@ final class CborRelaySwitchTests: XCTestCase {
 
         let resp2 = try switch_.readFromMasters()
         XCTAssertEqual(resp2?.payload, Data([2]))
+
+        // Wait for background threads to finish
+        XCTAssertEqual(resp1Done.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(resp2Done.wait(timeout: .now() + 2), .success)
+
+        // Shutdown switch - file handles closed by ARC
+        switch_.shutdown()
     }
 
     // TEST428: Unknown cap returns error
@@ -228,6 +241,9 @@ final class CborRelaySwitchTests: XCTestCase {
                 return
             }
         }
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // TEST429: Cap routing logic (find_master_for_cap)
@@ -270,6 +286,9 @@ final class CborRelaySwitchTests: XCTestCase {
         // Verify aggregate capabilities (returned as JSON array)
         let capList = try JSONSerialization.jsonObject(with: switch_.capabilities()) as! [String]
         XCTAssertEqual(capList.count, 2)
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent)
@@ -282,55 +301,51 @@ final class CborRelaySwitchTests: XCTestCase {
 
         let done1 = DispatchSemaphore(value: 0)
         let done2 = DispatchSemaphore(value: 0)
+        let slave1Done = DispatchSemaphore(value: 0)
+        let slave2Done = DispatchSemaphore(value: 0)
 
         let sameCap = "cap:in=media:;out=media:"
 
-        // Spawn slave 1
+        // Spawn slave 1 - handles 2 requests (both go to master 0)
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: pair1_2.read)  // slave1 reads from pair1_2
-            let writer = FrameWriter(handle: pair1_1.write)  // slave1 writes to pair1_1
+            var reader = FrameReader(handle: pair1_2.read)
+            let writer = FrameWriter(handle: pair1_1.write)
             let caps: [String] = [sameCap]
             try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done1.signal()
 
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            // Echo with marker 1
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
+            // Handle 2 requests then exit
+            for _ in 0..<2 {
+                if let frame = try? reader.read(), frame.frameType == .req {
                     var response = Frame.end(id: frame.id, finalPayload: Data([1]))
                     response.routingId = frame.routingId
                     try! writer.write(response)
                 }
             }
+            slave1Done.signal()
         }
 
-        // Spawn slave 2
+        // Spawn slave 2 - handles 0 requests (routing goes to master 0)
         DispatchQueue.global().async {
-            var reader = FrameReader(handle: pair2_2.read)  // slave2 reads from pair2_2
-            let writer = FrameWriter(handle: pair2_1.write)  // slave2 writes to pair2_1
+            var reader = FrameReader(handle: pair2_2.read)
+            let writer = FrameWriter(handle: pair2_1.write)
             let caps: [String] = [sameCap]
             try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done2.signal()
 
             try! self.handleIdentityVerification(reader: reader, writer: writer)
-
-            // Echo with marker 2 (should never be called if routing is consistent)
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data([2]))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
-            }
+            // No requests expected for slave 2
+            slave2Done.signal()
         }
 
         XCTAssertEqual(done1.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(done2.wait(timeout: .now() + 2), .success)
 
         let switch_ = try RelaySwitch(sockets: [
-            SocketPair(read: pair1_1.read, write: pair1_2.write),  // engine1 reads from pair1_1, writes to pair1_2
-            SocketPair(read: pair2_1.read, write: pair2_2.write),  // engine2 reads from pair2_1, writes to pair2_2
+            SocketPair(read: pair1_1.read, write: pair1_2.write),
+            SocketPair(read: pair2_1.read, write: pair2_2.write),
         ])
 
         // Send first request - should go to master 0 (first match)
@@ -346,6 +361,15 @@ final class CborRelaySwitchTests: XCTestCase {
 
         let resp2 = try switch_.readFromMasters()
         XCTAssertEqual(resp2?.payload, Data([1]))  // Also from master 0
+
+        // Wait for background threads
+        XCTAssertEqual(slave1Done.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(slave2Done.wait(timeout: .now() + 2), .success)
+
+        // Shutdown switch before closing file handles
+        switch_.shutdown()
+
+        // Cleanup
     }
 
     // TEST431: Continuation frame routing (CHUNK, END follow REQ)
@@ -408,6 +432,9 @@ final class CborRelaySwitchTests: XCTestCase {
         let response = try switch_.readFromMasters()
         XCTAssertEqual(response?.frameType, .end)
         XCTAssertEqual(response?.payload, Data([42]))
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // TEST432: Empty masters list creates empty switch (matching Rust behavior)
@@ -477,6 +504,9 @@ final class CborRelaySwitchTests: XCTestCase {
         XCTAssertTrue(capList.contains("cap:in=\"media:void\";op=double;out=\"media:void\""))
         XCTAssertTrue(capList.contains("cap:in=media:;out=media:"))
         XCTAssertTrue(capList.contains("cap:in=\"media:void\";op=triple;out=\"media:void\""))
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // TEST434: Limits negotiation takes minimum
@@ -520,6 +550,9 @@ final class CborRelaySwitchTests: XCTestCase {
         // Should take minimum of each limit
         XCTAssertEqual(switch_.limits().maxFrame, 1_000_000)  // min(1M, 2M)
         XCTAssertEqual(switch_.limits().maxChunk, 50_000)     // min(100K, 50K)
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // TEST435: URN matching (exact vs accepts())
@@ -528,6 +561,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let pair2 = FileHandle.socketPair()  // slave_read, engine_write
 
         let done = DispatchSemaphore(value: 0)
+        let slaveDone = DispatchSemaphore(value: 0)
 
         // Master advertises a specific cap
         let registeredCap = "cap:in=\"media:text;utf8\";op=process;out=\"media:text;utf8\""
@@ -541,14 +575,13 @@ final class CborRelaySwitchTests: XCTestCase {
 
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            // Respond to request
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data([42]))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
+            // Handle 1 request then exit
+            if let frame = try? reader.read(), frame.frameType == .req {
+                var response = Frame.end(id: frame.id, finalPayload: Data([42]))
+                response.routingId = frame.routingId
+                try! writer.write(response)
             }
+            slaveDone.signal()
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
@@ -575,6 +608,9 @@ final class CborRelaySwitchTests: XCTestCase {
                 return
             }
         }
+
+        XCTAssertEqual(slaveDone.wait(timeout: .now() + 2), .success)
+        switch_.shutdown()
     }
 
     // MARK: - Preferred Cap Routing Tests (TEST437-439)
@@ -586,24 +622,24 @@ final class CborRelaySwitchTests: XCTestCase {
         let pair2 = FileHandle.socketPair()
 
         let done = DispatchSemaphore(value: 0)
+        let slaveDone = DispatchSemaphore(value: 0)
 
         // Master advertises the exact cap being requested
         DispatchQueue.global().async {
             var reader = FrameReader(handle: pair2.read)
             let writer = FrameWriter(handle: pair1.write)
-            let caps: [String] = ["cap:in=media:;out=media:"]  // This cap accepts media:text
+            let caps: [String] = ["cap:in=media:;out=media:"]
             try! self.sendNotify(writer: writer, capabilities: caps, limits: Limits())
             done.signal()
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            // Respond to requests
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data("matched".utf8))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
+            // Handle 1 request then exit
+            if let frame = try? reader.read(), frame.frameType == .req {
+                var response = Frame.end(id: frame.id, finalPayload: Data("matched".utf8))
+                response.routingId = frame.routingId
+                try! writer.write(response)
             }
+            slaveDone.signal()
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
@@ -615,6 +651,9 @@ final class CborRelaySwitchTests: XCTestCase {
         try switch_.sendToMaster(req)
         let resp = try switch_.readFromMasters()
         XCTAssertEqual(resp?.payload, Data("matched".utf8))
+
+        XCTAssertEqual(slaveDone.wait(timeout: .now() + 2), .success)
+        switch_.shutdown()
     }
 
     // TEST438: find_master_for_cap with exact match works
@@ -623,6 +662,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let pair2 = FileHandle.socketPair()
 
         let done = DispatchSemaphore(value: 0)
+        let slaveDone = DispatchSemaphore(value: 0)
 
         // Master advertises specific cap (with identity required)
         DispatchQueue.global().async {
@@ -633,13 +673,13 @@ final class CborRelaySwitchTests: XCTestCase {
             done.signal()
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data("specific".utf8))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
+            // Handle 1 request then exit
+            if let frame = try? reader.read(), frame.frameType == .req {
+                var response = Frame.end(id: frame.id, finalPayload: Data("specific".utf8))
+                response.routingId = frame.routingId
+                try! writer.write(response)
             }
+            slaveDone.signal()
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
@@ -651,6 +691,9 @@ final class CborRelaySwitchTests: XCTestCase {
         try switch_.sendToMaster(req)
         let resp = try switch_.readFromMasters()
         XCTAssertEqual(resp?.payload, Data("specific".utf8))
+
+        XCTAssertEqual(slaveDone.wait(timeout: .now() + 2), .success)
+        switch_.shutdown()
     }
 
     // TEST439: Specific request without matching handler returns noHandler
@@ -684,6 +727,9 @@ final class CborRelaySwitchTests: XCTestCase {
                 return
             }
         }
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // MARK: - Identity Verification in RelaySwitch Tests (TEST487-489)
@@ -712,6 +758,9 @@ final class CborRelaySwitchTests: XCTestCase {
         // Should succeed - identity verification passes
         let switch_ = try RelaySwitch(sockets: [SocketPair(read: pair1.read, write: pair2.write)])
         XCTAssertNotNil(switch_)
+
+        // Cleanup
+        switch_.shutdown()
     }
 
     // TEST488: RelaySwitch construction fails when master's identity verification fails
@@ -744,6 +793,8 @@ final class CborRelaySwitchTests: XCTestCase {
             // Should get an error about identity verification
             XCTAssertTrue(error is RelaySwitchError)
         }
+
+        // Cleanup (no switch_ because construction failed)
     }
 
     // TEST489: add_master dynamically connects new host to running switch
@@ -757,6 +808,7 @@ final class CborRelaySwitchTests: XCTestCase {
         let pair2 = FileHandle.socketPair()
 
         let done = DispatchSemaphore(value: 0)
+        let responseSent = DispatchSemaphore(value: 0)
 
         DispatchQueue.global().async {
             var reader = FrameReader(handle: pair2.read)
@@ -766,13 +818,13 @@ final class CborRelaySwitchTests: XCTestCase {
             done.signal()
             try! self.handleIdentityVerification(reader: reader, writer: writer)
 
-            while let frame = try? reader.read() {
-                if frame.frameType == .req {
-                    var response = Frame.end(id: frame.id, finalPayload: Data("dynamic".utf8))
-                    response.routingId = frame.routingId
-                    try! writer.write(response)
-                }
+            // Handle exactly one request then exit (no infinite loop!)
+            if let frame = try? reader.read(), frame.frameType == .req {
+                var response = Frame.end(id: frame.id, finalPayload: Data("dynamic".utf8))
+                response.routingId = frame.routingId
+                try! writer.write(response)
             }
+            responseSent.signal()
         }
 
         XCTAssertEqual(done.wait(timeout: .now() + 2), .success)
@@ -788,6 +840,12 @@ final class CborRelaySwitchTests: XCTestCase {
         try switch_.sendToMaster(req)
         let resp = try switch_.readFromMasters()
         XCTAssertEqual(resp?.payload, Data("dynamic".utf8))
+
+        // Wait for background thread to finish before test ends
+        XCTAssertEqual(responseSent.wait(timeout: .now() + 2), .success)
+
+        // Shutdown switch - file handles closed by ARC
+        switch_.shutdown()
     }
 }
 
