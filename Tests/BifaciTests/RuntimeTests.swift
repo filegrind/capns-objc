@@ -3,6 +3,7 @@ import Foundation
 import SwiftCBOR
 @testable import Bifaci
 import Ops
+import CapNs
 
 /// Test Op: emits fixed "transformed" bytes, drains input. Used in TEST293.
 final class TransformOp: Op, @unchecked Sendable {
@@ -1242,5 +1243,182 @@ final class CborRuntimeTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(chunk2.offset)
         XCTAssertNil(chunk2.len)
         XCTAssertFalse(chunk2.isEof)
+    }
+
+    // MARK: - Identity Verification Tests (TEST485, TEST486, TEST490)
+
+    // TEST485: attach_plugin completes identity verification with working plugin
+    func test485_attachPluginIdentityVerificationSucceeds() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            // Read host HELLO
+            guard let hostHello = try pluginReader.read() else {
+                throw PluginHostError.receiveFailed("No HELLO from host")
+            }
+            XCTAssertEqual(hostHello.frameType, .hello)
+
+            // Send plugin HELLO with manifest
+            let manifest = CborRuntimeTests.makeManifest(name: "IdentityTestPlugin", caps: [
+                "cap:in=media:;out=media:",  // Identity cap
+                "cap:in=media:;op=test;out=media:"
+            ])
+            try pluginWriter.write(CborRuntimeTests.helloWith(manifest: manifest))
+
+            // Handle identity verification - read REQ, echo payload
+            guard let identityReq = try pluginReader.read() else {
+                throw PluginHostError.receiveFailed("No identity request")
+            }
+            XCTAssertEqual(identityReq.frameType, .req)
+            XCTAssertEqual(identityReq.cap, CSCapIdentity)
+
+            // Echo the payload back (standard identity behavior)
+            let streamId = UUID().uuidString
+            try pluginWriter.write(Frame.streamStart(reqId: identityReq.id, streamId: streamId, mediaUrn: "media:"))
+            if let payload = identityReq.payload, !payload.isEmpty {
+                let checksum = Frame.computeChecksum(payload)
+                try pluginWriter.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+            }
+            try pluginWriter.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityReq.payload?.isEmpty == false ? 1 : 0))
+            try pluginWriter.write(Frame.end(id: identityReq.id))
+        }
+
+        let host = PluginHost()
+        let idx = try host.attachPlugin(
+            stdinHandle: hostToPlugin.fileHandleForWriting,
+            stdoutHandle: pluginToHost.fileHandleForReading
+        )
+
+        XCTAssertEqual(idx, 0, "First plugin must be index 0")
+
+        // Verify plugin is registered and has caps
+        XCTAssertNotNil(host.findPluginForCap("cap:in=media:;out=media:"), "Must find identity cap")
+        XCTAssertNotNil(host.findPluginForCap("cap:in=media:;op=test;out=media:"), "Must find test cap")
+
+        try await pluginTask.value
+    }
+
+    // TEST486: attach_plugin rejects plugin that fails identity verification
+    func test486_attachPluginIdentityVerificationFails() async throws {
+        let hostToPlugin = Pipe()
+        let pluginToHost = Pipe()
+
+        let pluginReader = FrameReader(handle: hostToPlugin.fileHandleForReading)
+        let pluginWriter = FrameWriter(handle: pluginToHost.fileHandleForWriting)
+
+        let pluginTask = Task.detached { @Sendable in
+            // Read host HELLO
+            guard let hostHello = try pluginReader.read() else {
+                throw PluginHostError.receiveFailed("No HELLO from host")
+            }
+            XCTAssertEqual(hostHello.frameType, .hello)
+
+            // Send plugin HELLO with manifest
+            let manifest = CborRuntimeTests.makeManifest(name: "BrokenIdentityPlugin", caps: [
+                "cap:in=media:;out=media:"
+            ])
+            try pluginWriter.write(CborRuntimeTests.helloWith(manifest: manifest))
+
+            // Handle identity verification - return ERR instead of echoing
+            guard let identityReq = try pluginReader.read() else {
+                throw PluginHostError.receiveFailed("No identity request")
+            }
+            XCTAssertEqual(identityReq.frameType, .req)
+
+            // Return error - identity verification fails
+            try pluginWriter.write(Frame.err(id: identityReq.id, code: "IDENTITY_FAILED", message: "Broken plugin"))
+        }
+
+        let host = PluginHost()
+
+        // attach_plugin should fail due to identity verification failure
+        do {
+            try host.attachPlugin(
+                stdinHandle: hostToPlugin.fileHandleForWriting,
+                stdoutHandle: pluginToHost.fileHandleForReading
+            )
+            XCTFail("attach_plugin should fail when identity verification fails")
+        } catch {
+            // Expected - identity verification failed
+            XCTAssertTrue(error is PluginHostError, "Should be PluginHostError")
+        }
+
+        try? await pluginTask.value
+    }
+
+    // TEST490: Identity verification with multiple plugins through single relay
+    func test490_identityVerificationMultiplePlugins() async throws {
+        let host = PluginHost()
+
+        // Attach first plugin
+        let hostToPlugin1 = Pipe()
+        let plugin1ToHost = Pipe()
+
+        let plugin1Reader = FrameReader(handle: hostToPlugin1.fileHandleForReading)
+        let plugin1Writer = FrameWriter(handle: plugin1ToHost.fileHandleForWriting)
+
+        let plugin1Task = Task.detached { @Sendable in
+            guard let _ = try plugin1Reader.read() else { throw PluginHostError.receiveFailed("") }
+            let manifest = CborRuntimeTests.makeManifest(name: "Plugin1", caps: ["cap:op=plugin1"])
+            try plugin1Writer.write(CborRuntimeTests.helloWith(manifest: manifest))
+
+            // Handle identity verification
+            guard let identityReq = try plugin1Reader.read() else { throw PluginHostError.receiveFailed("") }
+            let streamId = "id1"
+            try plugin1Writer.write(Frame.streamStart(reqId: identityReq.id, streamId: streamId, mediaUrn: "media:"))
+            if let payload = identityReq.payload, !payload.isEmpty {
+                let checksum = Frame.computeChecksum(payload)
+                try plugin1Writer.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+            }
+            try plugin1Writer.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityReq.payload?.isEmpty == false ? 1 : 0))
+            try plugin1Writer.write(Frame.end(id: identityReq.id))
+        }
+
+        let idx1 = try host.attachPlugin(
+            stdinHandle: hostToPlugin1.fileHandleForWriting,
+            stdoutHandle: plugin1ToHost.fileHandleForReading
+        )
+        XCTAssertEqual(idx1, 0)
+
+        // Attach second plugin
+        let hostToPlugin2 = Pipe()
+        let plugin2ToHost = Pipe()
+
+        let plugin2Reader = FrameReader(handle: hostToPlugin2.fileHandleForReading)
+        let plugin2Writer = FrameWriter(handle: plugin2ToHost.fileHandleForWriting)
+
+        let plugin2Task = Task.detached { @Sendable in
+            guard let _ = try plugin2Reader.read() else { throw PluginHostError.receiveFailed("") }
+            let manifest = CborRuntimeTests.makeManifest(name: "Plugin2", caps: ["cap:op=plugin2"])
+            try plugin2Writer.write(CborRuntimeTests.helloWith(manifest: manifest))
+
+            // Handle identity verification
+            guard let identityReq = try plugin2Reader.read() else { throw PluginHostError.receiveFailed("") }
+            let streamId = "id2"
+            try plugin2Writer.write(Frame.streamStart(reqId: identityReq.id, streamId: streamId, mediaUrn: "media:"))
+            if let payload = identityReq.payload, !payload.isEmpty {
+                let checksum = Frame.computeChecksum(payload)
+                try plugin2Writer.write(Frame.chunk(reqId: identityReq.id, streamId: streamId, seq: 0, payload: payload, chunkIndex: 0, checksum: checksum))
+            }
+            try plugin2Writer.write(Frame.streamEnd(reqId: identityReq.id, streamId: streamId, chunkCount: identityReq.payload?.isEmpty == false ? 1 : 0))
+            try plugin2Writer.write(Frame.end(id: identityReq.id))
+        }
+
+        let idx2 = try host.attachPlugin(
+            stdinHandle: hostToPlugin2.fileHandleForWriting,
+            stdoutHandle: plugin2ToHost.fileHandleForReading
+        )
+        XCTAssertEqual(idx2, 1, "Second plugin must be index 1")
+
+        // Both plugins should be findable by their caps
+        XCTAssertNotNil(host.findPluginForCap("cap:op=plugin1"), "Plugin 1 cap must be findable")
+        XCTAssertNotNil(host.findPluginForCap("cap:op=plugin2"), "Plugin 2 cap must be findable")
+
+        try await plugin1Task.value
+        try await plugin2Task.value
     }
 }

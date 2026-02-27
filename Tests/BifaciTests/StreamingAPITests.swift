@@ -480,6 +480,90 @@ final class StreamingAPITests: XCTestCase {
         let responseBytes = try responseStream.collectBytes()
         XCTAssertEqual([UInt8](responseBytes), [1, 2, 3, 4, 5, 6])
     }
+
+    // MARK: - Stream Lookup Tests (TEST678-683)
+
+    // TEST678: find_stream with exact equivalent URN (same tags, different order) succeeds
+    func test678_findStreamEquivalentUrnDifferentTagOrder() throws {
+        // One stream with tags in one order
+        let streams: [(mediaUrn: String, bytes: Data)] = [
+            ("media:json;record;llm-generation-request", Data("data".utf8)),
+        ]
+
+        // Look for it with tags in a DIFFERENT order — is_equivalent is order-independent
+        let found = findStream(streams, mediaUrn: "media:llm-generation-request;json;record")
+        XCTAssertNotNil(found, "Same tags in different order must match via is_equivalent")
+        XCTAssertEqual(String(data: found!, encoding: .utf8), "data")
+    }
+
+    // TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict
+    func test679_findStreamBaseUrnDoesNotMatchFullUrn() throws {
+        let streams: [(mediaUrn: String, bytes: Data)] = [
+            ("media:llm-generation-request;json;form=map", Data("data".utf8)),
+        ]
+
+        // Base URN should NOT match full URN (strict equivalence)
+        let result = findStream(streams, mediaUrn: "media:llm-generation-request")
+        XCTAssertNil(result, "Base URN must not match full URN - is_equivalent is strict")
+    }
+
+    // TEST680: require_stream with missing URN returns hard StreamError
+    func test680_requireStreamMissingUrnReturnsError() throws {
+        let streams: [(mediaUrn: String, bytes: Data)] = [
+            ("media:text", Data("data".utf8)),
+        ]
+
+        XCTAssertThrowsError(try requireStream(streams, mediaUrn: "media:missing")) { error in
+            guard case StreamError.protocolError(let msg) = error else {
+                XCTFail("Expected protocolError, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("media:missing"), "Error message should contain the missing URN")
+        }
+    }
+
+    // TEST681: find_stream with multiple streams returns the correct one
+    func test681_findStreamMultipleStreamsReturnsCorrect() throws {
+        let streams: [(mediaUrn: String, bytes: Data)] = [
+            ("media:text", Data("text-data".utf8)),
+            ("media:json", Data("json-data".utf8)),
+            ("media:binary", Data("binary-data".utf8)),
+        ]
+
+        let textResult = findStream(streams, mediaUrn: "media:text")
+        XCTAssertEqual(String(data: textResult!, encoding: .utf8), "text-data")
+
+        let jsonResult = findStream(streams, mediaUrn: "media:json")
+        XCTAssertEqual(String(data: jsonResult!, encoding: .utf8), "json-data")
+
+        let binaryResult = findStream(streams, mediaUrn: "media:binary")
+        XCTAssertEqual(String(data: binaryResult!, encoding: .utf8), "binary-data")
+    }
+
+    // TEST682: require_stream_str returns UTF-8 string for text data
+    func test682_requireStreamStrReturnsUtf8() throws {
+        let streams: [(mediaUrn: String, bytes: Data)] = [
+            ("media:text", Data("Hello, World!".utf8)),
+        ]
+
+        let result = try requireStreamStr(streams, mediaUrn: "media:text")
+        XCTAssertEqual(result, "Hello, World!")
+    }
+
+    // TEST683: find_stream returns nil for invalid media URN string (not a parse error — just nil)
+    func test683_findStreamInvalidUrnReturnsNone() throws {
+        let streams: [(mediaUrn: String, bytes: Data)] = [
+            ("media:text", Data("data".utf8)),
+        ]
+
+        // Non-existent URN should return nil, not error
+        let result = findStream(streams, mediaUrn: "media:nonexistent")
+        XCTAssertNil(result)
+
+        // Empty URN should return nil
+        let emptyResult = findStream(streams, mediaUrn: "")
+        XCTAssertNil(emptyResult)
+    }
 }
 
 // MARK: - Mock FrameSender
