@@ -499,7 +499,7 @@ final class StreamingAPITests: XCTestCase {
     // TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict
     func test679_findStreamBaseUrnDoesNotMatchFullUrn() throws {
         let streams: [(mediaUrn: String, bytes: Data)] = [
-            ("media:llm-generation-request;json;form=map", Data("data".utf8)),
+            ("media:llm-generation-request;json;record", Data("data".utf8)),
         ]
 
         // Base URN should NOT match full URN (strict equivalence)

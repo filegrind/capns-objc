@@ -281,7 +281,7 @@ FOUNDATION_EXPORT NSString *CSGetProfileURL(NSString *profileName);
  * 1. Iterate mediaSpecs array and find by URN
  * 2. If not found: FAIL HARD
  *
- * @param mediaUrn The media URN (e.g., "media:textable;form=scalar")
+ * @param mediaUrn The media URN (e.g., "media:textable")
  * @param mediaSpecs The mediaSpecs array (can be nil)
  * @param error Error if media URN cannot be resolved
  * @return The resolved MediaSpec or nil on error
