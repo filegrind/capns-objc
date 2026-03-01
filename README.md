@@ -1,6 +1,6 @@
 # Cap URN - Objective-C Implementation
 
-Objective-C implementation of Cap URN (Capability Uniform Resource Names), built on [Tagged URN](https://github.com/filegrind/tagged-urn-objc).
+Objective-C implementation of Cap URN (Capability Uniform Resource Names), built on [Tagged URN](https://github.com/machinefabric/tagged-urn-objc).
 
 ## Features
 
@@ -21,7 +21,7 @@ Objective-C implementation of Cap URN (Capability Uniform Resource Names), built
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/filegrind/capns-objc.git", from: "1.0.0")
+    .package(url: "https://github.com/machinefabric/capns-objc.git", from: "1.0.0")
 ]
 ```
 
@@ -141,7 +141,7 @@ if cap.accepts(pattern) {
 | 10 | MissingInSpec | Missing required `in` tag |
 | 11 | MissingOutSpec | Missing required `out` tag |
 
-For base Tagged URN error codes, see [Tagged URN documentation](https://github.com/filegrind/tagged-urn-objc).
+For base Tagged URN error codes, see [Tagged URN documentation](https://github.com/machinefabric/tagged-urn-objc).
 
 ## Testing
 
@@ -152,10 +152,10 @@ swift test
 ## Cross-Language Compatibility
 
 This Objective-C implementation produces identical results to:
-- [Rust reference implementation](https://github.com/filegrind/capns)
-- [Go implementation](https://github.com/filegrind/capns-go)
-- [JavaScript implementation](https://github.com/filegrind/capns-js)
+- [Rust reference implementation](https://github.com/machinefabric/capns)
+- [Go implementation](https://github.com/machinefabric/capns-go)
+- [JavaScript implementation](https://github.com/machinefabric/capns-js)
 
 All implementations follow the same rules. See:
-- [Cap URN RULES.md](https://github.com/filegrind/capns/blob/main/docs/RULES.md) - Cap-specific rules
-- [Tagged URN RULES.md](https://github.com/filegrind/tagged-urn-rs/blob/main/docs/RULES.md) - Base format rules
+- [Cap URN RULES.md](https://github.com/machinefabric/capns/blob/main/docs/RULES.md) - Cap-specific rules
+- [Tagged URN RULES.md](https://github.com/machinefabric/tagged-urn-rs/blob/main/docs/RULES.md) - Base format rules

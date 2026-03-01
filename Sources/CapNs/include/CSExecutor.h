@@ -20,7 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Protocol for executing caps
 /// Implemented by:
-/// - macina: via CapService.execute_cap() through the relay
+/// - machfab: via CapService.execute_cap() through the relay
 /// - macino: by spawning plugin binaries
 @protocol CSCapExecutorProtocol <NSObject>
 
