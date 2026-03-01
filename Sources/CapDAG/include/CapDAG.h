@@ -50,3 +50,6 @@ FOUNDATION_EXPORT const unsigned char CapDAGVersionString[];
 #import "CSPlan.h"
 #import "CSPlanBuilder.h"
 #import "CSExecutor.h"
+
+// InputResolver module - unified input resolution with media detection
+#import "CSInputResolver.h"
