@@ -145,22 +145,22 @@ BOOL outputValid = [CSOutputValidator validateOutput:resultData cap:cap error:&e
 
 ## Plugin SDK Integration
 
-The MACINA Plugin SDK provides convenience methods for common document processing schemas:
+The MachineFabric Plugin SDK provides convenience methods for common document processing schemas:
 
 ```objc
 // Standard document metadata schema
 CSCapArgument *metadataArg = [CSCapArgument documentMetadataArgumentWithName:@"metadata"
                                                                   description:@"Document metadata"
                                                                       cliFlag:@"--metadata"
-                                                                       schema:[MACINASchemaValidationHelper standardDocumentMetadataSchema]];
+                                                                       schema:[MachFabSchemaValidationHelper standardDocumentMetadataSchema]];
 
 // Standard file chips schema
-CSCapOutput *pagesOutput = [CSCapOutput disboundPagesOutputWithSchema:[MACINASchemaValidationHelper standardDisboundPagesSchema]
+CSCapOutput *pagesOutput = [CSCapOutput disboundPagesOutputWithSchema:[MachFabSchemaValidationHelper standardDisboundPagesSchema]
                                                           description:@"Extracted file chips"];
 
 // Validate plugin manifest schemas
 NSError *error = nil;
-BOOL manifestValid = [MACINASchemaValidationHelper validatePluginManifest:manifest error:&error];
+BOOL manifestValid = [MachFabSchemaValidationHelper validatePluginManifest:manifest error:&error];
 ```
 
 ## Error Handling

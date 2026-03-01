@@ -42,17 +42,9 @@ final class InProcessPluginHostTests: XCTestCase {
     }
 
     /// Identity nonce for verification (must match Rust exactly)
+    /// CBOR-encoded Text("bifaci") — 7-byte deterministic nonce
     private func identityNonce() -> Data {
-        let components: [UInt8] = [
-            0x63, 0x61, 0x70, 0x6e, 0x73,  // "capdag"
-            0x2d,                           // "-"
-            0x69, 0x64, 0x65, 0x6e, 0x74,  // "ident"
-            0x69, 0x74, 0x79,               // "ity"
-            0x2d,                           // "-"
-            0x76, 0x65, 0x72, 0x69, 0x66,  // "verif"
-            0x79                            // "y"
-        ]
-        return Data(components)
+        return Data(CBOR.utf8String("bifaci").encode())
     }
 
     // MARK: - Test Handlers
