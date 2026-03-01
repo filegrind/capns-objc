@@ -16,7 +16,7 @@
 
 import XCTest
 @testable import Bifaci
-import CapNs
+import CapDAG
 import TaggedUrn
 @preconcurrency import SwiftCBOR
 import Foundation

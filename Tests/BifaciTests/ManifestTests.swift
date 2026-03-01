@@ -1,6 +1,6 @@
 import XCTest
 @testable import Bifaci
-@testable import CapNs
+@testable import CapDAG
 
 // =============================================================================
 // Manifest Tests

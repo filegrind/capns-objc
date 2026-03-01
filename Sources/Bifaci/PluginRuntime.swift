@@ -26,7 +26,7 @@
 //  ```
 
 import Foundation
-import CapNs
+import CapDAG
 import TaggedUrn
 @preconcurrency import SwiftCBOR
 import Glob
@@ -997,7 +997,7 @@ func extractEffectivePayload(payload: Data, contentType: String?, capUrn: String
 // OP-BASED HANDLER SYSTEM — handlers implement Ops.Op<Void>
 // =============================================================================
 
-/// Bundles capns I/O for WetContext. Op handlers extract this from WetContext
+/// Bundles capdag I/O for WetContext. Op handlers extract this from WetContext
 /// to access streaming input, output, and peer invocation.
 public final class CborRequest: @unchecked Sendable {
     private let _inputLock = NSLock()

@@ -22,7 +22,7 @@
 //  and each handler decides how to consume/produce data.
 
 import Foundation
-import CapNs
+import CapDAG
 import SwiftCBOR
 
 // MARK: - FrameHandler Protocol

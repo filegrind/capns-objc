@@ -1,7 +1,7 @@
 import XCTest
 import SwiftCBOR
 @testable import Bifaci
-@testable import CapNs
+@testable import CapDAG
 import Ops
 
 /// Tests for standard capabilities and manifest validation (TEST473-480)

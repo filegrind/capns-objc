@@ -1,17 +1,17 @@
 // swift-tools-version: 6.0
-// version: 0.193.78805
+// version: 0.194.78827
 import PackageDescription
 
 let package = Package(
-    name: "capns-objc",
+    name: "capdag-objc",
     platforms: [
         .macOS(.v13),
         .iOS(.v16)
     ],
     products: [
         .library(
-            name: "CapNs",
-            targets: ["CapNs"]),
+            name: "CapDAG",
+            targets: ["CapDAG"]),
         .library(
             name: "Bifaci",
             targets: ["Bifaci"]),
@@ -24,11 +24,11 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "CapNs",
+            name: "CapDAG",
             dependencies: [
                 .product(name: "TaggedUrn", package: "tagged-urn-objc"),
             ],
-            path: "Sources/CapNs",
+            path: "Sources/CapDAG",
             publicHeadersPath: "include",
             linkerSettings: [
                 .linkedFramework("Foundation"),
@@ -38,7 +38,7 @@ let package = Package(
         .target(
             name: "Bifaci",
             dependencies: [
-                "CapNs",
+                "CapDAG",
                 .product(name: "Ops", package: "ops-objc"),
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
                 .product(name: "Glob", package: "Glob"),
@@ -46,8 +46,8 @@ let package = Package(
             path: "Sources/Bifaci"
         ),
         .testTarget(
-            name: "CapNsTests",
-            dependencies: ["CapNs"]),
+            name: "CapDAGTests",
+            dependencies: ["CapDAG"]),
         .testTarget(
             name: "BifaciTests",
             dependencies: [

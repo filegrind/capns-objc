@@ -1,6 +1,6 @@
-# JSON Schema Validation for CapNs Objective-C
+# JSON Schema Validation for CapDAG Objective-C
 
-This document describes the comprehensive JSON Schema validation system implemented for the CapNs Objective-C SDK, providing validation capabilities that match the Rust and Go implementations.
+This document describes the comprehensive JSON Schema validation system implemented for the CapDAG Objective-C SDK, providing validation capabilities that match the Rust and Go implementations.
 
 ## Overview
 
@@ -293,17 +293,17 @@ CSCapArgument *enhancedArg = [CSCapArgument argumentWithName:@"data"
 ## File Structure
 
 ```
-capns-objc/
-├── Sources/CapNs/
+capdag-objc/
+├── Sources/CapDAG/
 │   ├── include/
 │   │   ├── CSSchemaValidator.h      # JSON schema validator interface
 │   │   ├── CSCap.h                  # Enhanced with schema fields
 │   │   ├── CSCapValidator.h         # Updated with schema validation
-│   │   └── CapNs.h                  # Updated to export schema validator
+│   │   └── CapDAG.h                  # Updated to export schema validator
 │   ├── CSSchemaValidator.m          # JSON schema validator implementation
 │   ├── CSCap.m                      # Updated with schema support
 │   └── CSCapValidator.m             # Updated with schema integration
-├── Tests/CapNsTests/
+├── Tests/CapDAGTests/
 │   └── CSSchemaValidationTests.m    # Comprehensive schema validation tests
 └── examples/
     └── schema_validation_example.m  # Usage examples and demonstrations
@@ -341,4 +341,4 @@ capns-objc/
 - Test schema reference resolution
 - Test integration with existing validation
 
-This comprehensive JSON Schema validation system brings the CapNs Objective-C SDK to feature parity with the Rust and Go implementations while maintaining backward compatibility and following Objective-C best practices.
+This comprehensive JSON Schema validation system brings the CapDAG Objective-C SDK to feature parity with the Rust and Go implementations while maintaining backward compatibility and following Objective-C best practices.

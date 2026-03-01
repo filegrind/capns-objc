@@ -21,20 +21,20 @@ Objective-C implementation of Cap URN (Capability Uniform Resource Names), built
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/machinefabric/capns-objc.git", from: "1.0.0")
+    .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.0.0")
 ]
 ```
 
 ### Manual
 
-Add the `Sources/CapNs` directory to your Xcode project.
+Add the `Sources/CapDAG` directory to your Xcode project.
 
 ## Quick Start
 
 ### Objective-C
 
 ```objc
-#import <CapNs/CSCapUrn.h>
+#import <CapDAG/CSCapUrn.h>
 
 // Parse a Cap URN
 NSError *error = nil;
@@ -62,7 +62,7 @@ if ([cap accepts:pattern]) {
 ### Swift
 
 ```swift
-import CapNs
+import CapDAG
 
 // Parse a Cap URN
 do {
@@ -152,10 +152,10 @@ swift test
 ## Cross-Language Compatibility
 
 This Objective-C implementation produces identical results to:
-- [Rust reference implementation](https://github.com/machinefabric/capns)
-- [Go implementation](https://github.com/machinefabric/capns-go)
-- [JavaScript implementation](https://github.com/machinefabric/capns-js)
+- [Rust reference implementation](https://github.com/machinefabric/capdag)
+- [Go implementation](https://github.com/machinefabric/capdag-go)
+- [JavaScript implementation](https://github.com/machinefabric/capdag-js)
 
 All implementations follow the same rules. See:
-- [Cap URN RULES.md](https://github.com/machinefabric/capns/blob/main/docs/RULES.md) - Cap-specific rules
+- [Cap URN RULES.md](https://github.com/machinefabric/capdag/blob/main/docs/RULES.md) - Cap-specific rules
 - [Tagged URN RULES.md](https://github.com/machinefabric/tagged-urn-rs/blob/main/docs/RULES.md) - Base format rules

@@ -3,7 +3,7 @@ import Foundation
 import SwiftCBOR
 @testable import Bifaci
 import Ops
-import CapNs
+import CapDAG
 
 /// Test Op: emits fixed "transformed" bytes, drains input. Used in TEST293.
 final class TransformOp: Op, @unchecked Sendable {

@@ -2,14 +2,14 @@
 //  InProcessPluginHostTests.swift
 //  Tests for InProcessPluginHost
 //
-//  Mirrors Rust tests from capns/src/bifaci/in_process_host.rs exactly
+//  Mirrors Rust tests from capdag/src/bifaci/in_process_host.rs exactly
 //  Tests numbered TEST654-TEST660
 
 import XCTest
 import Foundation
 import SwiftCBOR
 @testable import Bifaci
-@testable import CapNs
+@testable import CapDAG
 
 final class InProcessPluginHostTests: XCTestCase {
 
@@ -44,7 +44,7 @@ final class InProcessPluginHostTests: XCTestCase {
     /// Identity nonce for verification (must match Rust exactly)
     private func identityNonce() -> Data {
         let components: [UInt8] = [
-            0x63, 0x61, 0x70, 0x6e, 0x73,  // "capns"
+            0x63, 0x61, 0x70, 0x6e, 0x73,  // "capdag"
             0x2d,                           // "-"
             0x69, 0x64, 0x65, 0x6e, 0x74,  // "ident"
             0x69, 0x74, 0x79,               // "ity"

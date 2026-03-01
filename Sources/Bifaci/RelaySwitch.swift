@@ -35,7 +35,7 @@
 
 import Foundation
 @preconcurrency import SwiftCBOR
-import CapNs
+import CapDAG
 
 // MARK: - Helper Extensions
 

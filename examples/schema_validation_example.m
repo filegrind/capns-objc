@@ -1,6 +1,6 @@
 //
 //  schema_validation_example.m
-//  Example usage of JSON Schema validation with CapNs
+//  Example usage of JSON Schema validation with CapDAG
 //
 //  Demonstrates comprehensive schema validation with schemas stored in mediaSpecs,
 //  spec ID resolution, and integration with cap validation system.
@@ -8,7 +8,7 @@
 //  Schemas are stored in the mediaSpecs table and resolved via spec IDs.
 //
 
-#import "CapNs.h"
+#import "CapDAG.h"
 
 @interface SchemaValidationExample : NSObject
 @property (nonatomic, strong) CSJSONSchemaValidator *validator;

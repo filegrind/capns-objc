@@ -3,7 +3,7 @@
 import XCTest
 import Foundation
 @testable import Bifaci
-import CapNs
+import CapDAG
 
 @available(macOS 10.15.4, iOS 13.4, *)
 final class CborRelaySwitchTests: XCTestCase {
