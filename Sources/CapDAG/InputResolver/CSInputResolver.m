@@ -9,6 +9,7 @@
 
 #import "CSInputResolver.h"
 #import "CSMediaAdapters.h"
+#import "CSMediaUrnRegistry.h"
 #import <glob.h>
 
 NSErrorDomain const CSInputResolverErrorDomain = @"CSInputResolverErrorDomain";
@@ -460,24 +461,93 @@ NSArray<NSString *> * _Nullable CSInputResolverExpandGlob(NSString *pattern, NSE
     // Get extension
     NSString *ext = [[path pathExtension] lowercaseString];
 
-    // Try extension-based matching first
-    id<CSMediaAdapter> adapter = [self adapterForExtension:ext];
+    // Step 1: Get base URN from MediaUrnRegistry
+    CSMediaUrnRegistry *registry = [CSMediaUrnRegistry shared];
+    NSString *baseUrn = [registry primaryMediaUrnForExtension:ext];
 
-    // If no extension match and we have content, try magic bytes
-    if (!adapter && content.length >= 4) {
-        adapter = [self adapterForMagicBytes:content];
+    if (!baseUrn && content.length >= 4) {
+        // No extension match, try magic bytes
+        id<CSMediaAdapter> adapter = [self adapterForMagicBytes:content];
+        if (adapter) {
+            return [adapter detectMediaUrn:path content:content structure:structure error:error];
+        }
     }
 
-    // Use adapter to detect
+    if (!baseUrn) {
+        // Unknown extension, return generic
+        if (structure) {
+            *structure = CSContentStructureScalarOpaque;
+        }
+        return @"media:";
+    }
+
+    // Step 2: Extract base type and find adapter for content inspection
+    NSString *baseType = [self _extractBaseType:baseUrn];
+    id<CSMediaAdapter> adapter = [self _adapterForBaseType:baseType];
+
     if (adapter) {
+        // Adapter will inspect content and determine structure
         return [adapter detectMediaUrn:path content:content structure:structure error:error];
     }
 
-    // Fallback: unknown type
+    // Step 3: No adapter needed - determine structure from URN markers
     if (structure) {
-        *structure = CSContentStructureScalarOpaque;
+        *structure = [self _structureFromUrn:baseUrn];
     }
-    return @"media:";
+    return baseUrn;
+}
+
+/// Extract base type from URN (e.g., "media:json;textable" -> "media:json")
+- (NSString *)_extractBaseType:(NSString *)urn {
+    NSRange semicolon = [urn rangeOfString:@";"];
+    if (semicolon.location != NSNotFound) {
+        return [urn substringToIndex:semicolon.location];
+    }
+    return urn;
+}
+
+/// Get adapter for a base type (for content inspection)
+- (nullable id<CSMediaAdapter>)_adapterForBaseType:(NSString *)baseType {
+    // Adapters that do content inspection
+    static NSDictionary<NSString *, Class> *inspectionAdapters = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        inspectionAdapters = @{
+            @"media:json": [CSJsonAdapter class],
+            @"media:ndjson": [CSNdjsonAdapter class],
+            @"media:csv": [CSCsvAdapter class],
+            @"media:tsv": [CSTsvAdapter class],
+            @"media:yaml": [CSYamlAdapter class],
+            @"media:xml": [CSXmlAdapter class],
+            @"media:txt": [CSPlainTextAdapter class],
+        };
+    });
+
+    Class adapterClass = inspectionAdapters[baseType];
+    if (adapterClass) {
+        // Find the existing adapter instance
+        for (id<CSMediaAdapter> adapter in _adapters) {
+            if ([adapter isKindOfClass:adapterClass]) {
+                return adapter;
+            }
+        }
+    }
+    return nil;
+}
+
+/// Determine structure from URN markers
+- (CSContentStructure)_structureFromUrn:(NSString *)urn {
+    BOOL hasList = [urn containsString:@";list"];
+    BOOL hasRecord = [urn containsString:@";record"];
+
+    if (hasList && hasRecord) {
+        return CSContentStructureListRecord;
+    } else if (hasList) {
+        return CSContentStructureListOpaque;
+    } else if (hasRecord) {
+        return CSContentStructureScalarRecord;
+    }
+    return CSContentStructureScalarOpaque;
 }
 
 @end
