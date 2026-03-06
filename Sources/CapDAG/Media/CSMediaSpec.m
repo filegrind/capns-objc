@@ -25,7 +25,7 @@ NSString * const CSMediaIntegerArray = @"media:integer;list;textable;numeric";
 NSString * const CSMediaNumberArray = @"media:list;textable;numeric";
 NSString * const CSMediaBooleanArray = @"media:bool;list;textable";
 NSString * const CSMediaObjectArray = @"media:list;record";
-NSString * const CSMediaBinary = @"media:";
+NSString * const CSMediaIdentity = @"media:";
 NSString * const CSMediaVoid = @"media:void";
 // Semantic content types
 NSString * const CSMediaPng = @"media:image;png";

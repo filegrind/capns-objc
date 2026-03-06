@@ -45,7 +45,7 @@ FOUNDATION_EXPORT NSString * const CSMediaIntegerArray; // media:integer;list;te
 FOUNDATION_EXPORT NSString * const CSMediaNumberArray;  // media:list;textable;numeric
 FOUNDATION_EXPORT NSString * const CSMediaBooleanArray; // media:bool;list;textable
 FOUNDATION_EXPORT NSString * const CSMediaObjectArray;  // media:list;record
-FOUNDATION_EXPORT NSString * const CSMediaBinary;       // media:
+FOUNDATION_EXPORT NSString * const CSMediaIdentity;       // media:
 FOUNDATION_EXPORT NSString * const CSMediaVoid;         // media:void
 // Semantic content types
 FOUNDATION_EXPORT NSString * const CSMediaPng;          // media:image;png
