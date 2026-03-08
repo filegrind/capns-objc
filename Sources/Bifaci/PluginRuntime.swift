@@ -2237,7 +2237,8 @@ public final class PluginRuntime: @unchecked Sendable {
 
         for cap in manifest.caps {
             let desc = cap.capDescription ?? cap.title
-            let line = String(format: "    %-12s %@\n", cap.command, desc)
+            let paddedCommand = cap.command.padding(toLength: 12, withPad: " ", startingAt: 0)
+            let line = "    \(paddedCommand)\(desc)\n"
             stderr.write(Data(line.utf8))
         }
 
@@ -2263,10 +2264,13 @@ public final class PluginRuntime: @unchecked Sendable {
                 for source in arg.sources {
                     switch source {
                     case .cliFlag(let flag):
-                        let line = String(format: "    %-16s %@%@\n", flag, desc, requiredStr)
+                        let paddedFlag = flag.padding(toLength: 16, withPad: " ", startingAt: 0)
+                        let line = "    \(paddedFlag)\(desc)\(requiredStr)\n"
                         stderr.write(Data(line.utf8))
                     case .positional(let pos):
-                        let line = String(format: "    <arg%d>          %@%@\n", pos, desc, requiredStr)
+                        let argName = "<arg\(pos)>"
+                        let paddedArg = argName.padding(toLength: 16, withPad: " ", startingAt: 0)
+                        let line = "    \(paddedArg)\(desc)\(requiredStr)\n"
                         stderr.write(Data(line.utf8))
                     case .stdin(_):
                         let line = "    <stdin>          \(desc)\(requiredStr)\n"
