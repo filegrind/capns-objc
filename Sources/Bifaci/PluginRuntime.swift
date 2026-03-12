@@ -335,6 +335,46 @@ public final class OutputStream: @unchecked Sendable {
         }
     }
 
+    /// Emit a single CBOR value as one item in an RFC 8742 CBOR sequence.
+    ///
+    /// For list outputs: the receiver concatenates raw frame payloads and stores
+    /// the result as a CBOR sequence. This method CBOR-encodes the value, then
+    /// splits the encoded bytes across chunk frames at `maxChunk` boundaries.
+    /// The receiver's concatenation reconstructs the original CBOR encoding,
+    /// producing exactly one self-delimiting CBOR value in the sequence per call.
+    ///
+    /// Unlike `emitCbor` (which re-wraps each piece as a separate CBOR value),
+    /// this sends raw CBOR bytes as frame payloads directly.
+    public func emitListItem(_ value: CBOR) throws {
+        try ensureStarted()
+        let cborBytes = Data(value.encode())
+
+        var offset = 0
+        while offset < cborBytes.count {
+            let chunkSize = min(cborBytes.count - offset, maxChunk)
+            let chunkPayload = cborBytes.subdata(in: offset..<(offset + chunkSize))
+
+            chunkStateLock.lock()
+            let currentChunkIndex = _chunkIndex
+            _chunkIndex += 1
+            _chunkCount += 1
+            chunkStateLock.unlock()
+
+            let checksum = Frame.computeChecksum(chunkPayload)
+            var frame = Frame.chunk(
+                reqId: requestId,
+                streamId: streamId,
+                seq: 0,
+                payload: chunkPayload,
+                chunkIndex: currentChunkIndex,
+                checksum: checksum
+            )
+            frame.routingId = routingId
+            try sender.send(frame)
+            offset += chunkSize
+        }
+    }
+
     /// Emit a CBOR value. Handles byteString/utf8String/array/map chunking.
     public func emitCbor(_ value: CBOR) throws {
         try ensureStarted()
