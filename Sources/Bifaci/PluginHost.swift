@@ -164,6 +164,10 @@ private class ManagedPlugin {
     /// Last death error message (includes stderr if available). Used for ERR frames
     /// sent when attempting to write to a dead plugin.
     var lastDeathMessage: String?
+    /// Set to true before calling killProcess() to signal that the death is
+    /// intentional. handlePluginDeath checks this to avoid treating ordered
+    /// shutdowns as unexpected crashes.
+    var orderedShutdown: Bool
 
     init(path: String, knownCaps: [String]) {
         self.path = path
@@ -175,6 +179,7 @@ private class ManagedPlugin {
         self.helloFailed = false
         self.pendingHeartbeats = [:]
         self.lastDeathMessage = nil
+        self.orderedShutdown = false
     }
 
     static func attached(manifest: Data, limits: Limits, caps: [String]) -> ManagedPlugin {
@@ -317,11 +322,12 @@ public final class PluginHost: @unchecked Sendable {
     /// are removed so findPluginForCap() never routes to a dead binary.
     ///
     /// Semantics:
-    /// - **Updated path** (matching knownCaps, different binary): update path,
-    ///   kill running process (next request respawns with new binary), reset helloFailed.
-    /// - **New plugin** (caps not currently hosted): append.
-    /// - **Removed plugin** (in host, not in `current`): remove from capTable,
-    ///   kill process.
+    /// - **Same path** (binary unchanged): no-op (caps updated if they changed).
+    /// - **Path gone** (in host, not in `current`): kill process, remove from capTable.
+    /// - **New path** (in `current`, not in host): append.
+    ///
+    /// Matches by **path**, not by cap set — URN strings are not stable across
+    /// rescans (quoting and tag order may differ), but the binary path is.
     ///
     /// - Parameter current: The ground-truth list of `(binaryPath, capURNs)` from disk.
     public func syncRegistrations(_ current: [(path: String, knownCaps: [String])]) {
@@ -331,12 +337,11 @@ public final class PluginHost: @unchecked Sendable {
             stateLock.unlock()
         }
 
-        // Build a lookup: Set(knownCaps) → index in `current`.
-        // knownCaps identity is what links old and new entries (path changes).
-        let currentByCapSet: [Set<String>: Int] = {
-            var map = [Set<String>: Int]()
+        // Build a lookup: path → index in `current`.
+        let currentByPath: [String: Int] = {
+            var map = [String: Int]()
             for (i, entry) in current.enumerated() {
-                map[Set(entry.knownCaps)] = i
+                map[entry.path] = i
             }
             return map
         }()
@@ -344,34 +349,20 @@ public final class PluginHost: @unchecked Sendable {
         var matchedCurrentIndices = Set<Int>()
 
         // Walk existing plugins and reconcile.
-        for (pluginIdx, plugin) in plugins.enumerated() {
-            let existingCapSet = Set(plugin.knownCaps)
-            if let currentIdx = currentByCapSet[existingCapSet] {
-                // Match found — check if path changed.
+        for plugin in plugins {
+            if let currentIdx = currentByPath[plugin.path] {
+                // Same binary path still on disk — keep it.
                 matchedCurrentIndices.insert(currentIdx)
                 let entry = current[currentIdx]
-                if plugin.path != entry.path {
-                    // Updated binary — mutate in place.
-                    // ManagedPlugin.path is `let`, so we need a mutable wrapper.
-                    // But ManagedPlugin is a class, so we can't reassign `path` directly
-                    // since it's declared `let`. We'll work around this by replacing the
-                    // plugin object entirely, preserving only the index slot.
-                    plugin.killProcess()
-                    plugin.stdinHandle = nil
-                    plugin.stdoutHandle = nil
-                    plugin.stderrHandle = nil
-                    plugin.writer = nil
-
-                    let replacement = ManagedPlugin(path: entry.path, knownCaps: entry.knownCaps)
-                    plugins[pluginIdx] = replacement
-
-                    // Update capTable entries pointing to this index
-                    // (caps are the same, only the plugin object changed — no capTable change needed)
-                }
-                // Same path, same caps — nothing to do.
+                // Update knownCaps in case they changed (harmless if identical).
+                plugin.knownCaps = entry.knownCaps
+                // Clear helloFailed so the plugin can be respawned on demand.
+                // A previous syncRegistrations (with broken cap-set matching) may
+                // have marked it helloFailed even though the binary is fine.
+                plugin.helloFailed = false
             } else {
-                // Plugin in host but not on disk — mark as removed.
-                // Kill process, nil out the writer so it can't receive frames.
+                // Plugin path no longer on disk — removed or replaced by new version.
+                plugin.orderedShutdown = true
                 plugin.killProcess()
                 plugin.writerLock.lock()
                 plugin.writer = nil
@@ -385,7 +376,7 @@ public final class PluginHost: @unchecked Sendable {
             }
         }
 
-        // Append genuinely new plugins (in `current` but not matched to any existing).
+        // Append genuinely new plugins (path not in host).
         for (i, entry) in current.enumerated() where !matchedCurrentIndices.contains(i) {
             let plugin = ManagedPlugin(path: entry.path, knownCaps: entry.knownCaps)
             plugins.append(plugin)
@@ -784,23 +775,28 @@ public final class PluginHost: @unchecked Sendable {
 
     /// Handle a plugin death (reader thread detected EOF/error).
     ///
-    /// Sends ERR for pending peer requests (outgoingRids) and cleans up
-    /// incoming routing entries (incomingRxids).
-    /// Host-generated ERR uses max_seen + 1 seq for the flow.
+    /// Three cases:
+    /// 1. **Ordered shutdown** (`orderedShutdown == true`): We asked for this.
+    ///    Clean up routing tables, no ERR frames, no error messages.
+    /// 2. **Unexpected death with pending work**: Genuine crash mid-flight.
+    ///    Send ERR for pending requests, store death message.
+    /// 3. **Unexpected death, idle**: Plugin exited on its own (OS jetsam,
+    ///    resource reclaim, natural exit after completing work). Clean up,
+    ///    no ERR frames — next request will respawn it.
     private func handlePluginDeath(pluginIdx: Int) {
         stateLock.lock()
         let plugin = plugins[pluginIdx]
         plugin.running = false
         plugin.writer = nil
+        let wasOrdered = plugin.orderedShutdown
+        plugin.orderedShutdown = false  // Reset for potential respawn
 
-        // Capture stderr content BEFORE closing handles - this contains crash info
+        // Capture stderr content BEFORE closing handles
         var stderrContent = ""
         if let stderrHandle = plugin.stderrHandle {
-            // Read available stderr data (non-blocking)
             let stderrData = stderrHandle.availableData
             if !stderrData.isEmpty {
                 if let text = String(data: stderrData, encoding: .utf8) {
-                    // Truncate to reasonable size for error message
                     let maxLen = 2000
                     if text.count > maxLen {
                         stderrContent = String(text.prefix(maxLen)) + "... [truncated]"
@@ -813,32 +809,16 @@ public final class PluginHost: @unchecked Sendable {
             plugin.stderrHandle = nil
         }
 
-        // Close stdin to ensure plugin process exits
         if let stdinHandle = plugin.stdinHandle {
             try? stdinHandle.close()
             plugin.stdinHandle = nil
         }
 
-        // Build error message with stderr content if available
-        let pluginPath = plugin.path
-        let errorMessage: String
-        if stderrContent.isEmpty {
-            errorMessage = "Plugin \(pluginPath) exited unexpectedly (no stderr output)"
-        } else {
-            errorMessage = "Plugin \(pluginPath) exited unexpectedly. stderr:\n\(stderrContent)"
-        }
-
-        // Store for late-arriving frames that try to write to the dead plugin
-        plugin.lastDeathMessage = errorMessage
-
-        // Send ERR for pending PEER requests (outgoingRids only).
-        // These are requests the plugin initiated — the relay is waiting for
-        // the plugin to complete its request body or receive its response.
-        // Collect (rid, nextSeq) inside the lock.
+        // Clean up routing tables regardless of death cause.
+        // outgoingRids: peer requests the plugin initiated
         var failedOutgoing: [(rid: MessageId, nextSeq: UInt64)] = []
         for (rid, idx) in outgoingRids {
             if idx == pluginIdx {
-                // Peer REQs have no XID (plugins never send XID)
                 let flowKey = FlowKey(rid: rid, xid: nil)
                 let nextSeq = (outgoingMaxSeq.removeValue(forKey: flowKey) ?? 0) + 1
                 failedOutgoing.append((rid: rid, nextSeq: nextSeq))
@@ -848,8 +828,7 @@ public final class PluginHost: @unchecked Sendable {
             outgoingRids.removeValue(forKey: entry.rid)
         }
 
-        // Clean up incomingRxids entries for this plugin (leaked routing entries).
-        // Also collect XID info so we can send ERR with correct XID for incoming requests.
+        // incomingRxids: requests routed to this plugin (intentionally leaked)
         var failedIncoming: [(key: RxidKey, xid: MessageId, rid: MessageId, nextSeq: UInt64)] = []
         for (key, idx) in incomingRxids {
             if idx == pluginIdx {
@@ -862,8 +841,31 @@ public final class PluginHost: @unchecked Sendable {
             incomingRxids.removeValue(forKey: entry.key)
         }
 
-        // Replace actual caps with knownCaps for on-demand respawn routing.
-        // If helloFailed, remove entirely (permanently broken).
+        // Determine whether to send ERR frames.
+        // Ordered shutdown: we asked for this — never send ERR.
+        // Unordered with pending outgoing: genuine crash — send ERR.
+        // Unordered, idle: natural exit — no ERR needed.
+        //
+        // NOTE: Only outgoingRids represent genuinely pending work.
+        // incomingRxids are intentionally leaked after request completion
+        // (for out-of-order frame handling) and do NOT mean work is pending.
+        let hasGenuinePendingWork = !wasOrdered && !failedOutgoing.isEmpty
+        let pluginPath = plugin.path
+
+        let errorMessage: String?
+        if hasGenuinePendingWork {
+            if stderrContent.isEmpty {
+                errorMessage = "Plugin \(pluginPath) exited unexpectedly (no stderr output)"
+            } else {
+                errorMessage = "Plugin \(pluginPath) exited unexpectedly. stderr:\n\(stderrContent)"
+            }
+            plugin.lastDeathMessage = errorMessage
+        } else {
+            errorMessage = nil
+            plugin.lastDeathMessage = nil
+        }
+
+        // Rebuild capTable for on-demand respawn routing.
         capTable.removeAll { $0.1 == pluginIdx }
         if !plugin.helloFailed {
             for cap in plugin.knownCaps {
@@ -873,17 +875,13 @@ public final class PluginHost: @unchecked Sendable {
         rebuildCapabilities()
         stateLock.unlock()
 
-        // Send ERR frames outside the lock — with correct seq from max-seen tracking
-        for entry in failedOutgoing {
-            var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: errorMessage)
-            err.seq = entry.nextSeq
-            sendToRelay(err)
-        }
-        for entry in failedIncoming {
-            var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: errorMessage)
-            err.routingId = entry.xid
-            err.seq = entry.nextSeq
-            sendToRelay(err)
+        // Send ERR frames only for genuinely pending work.
+        if let msg = errorMessage {
+            for entry in failedOutgoing {
+                var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: msg)
+                err.seq = entry.nextSeq
+                sendToRelay(err)
+            }
         }
     }
 
@@ -1264,6 +1262,7 @@ public final class PluginHost: @unchecked Sendable {
                 try? stderr.close()
                 plugin.stderrHandle = nil
             }
+            plugin.orderedShutdown = true
             plugin.killProcess()
             plugin.running = false
         }
