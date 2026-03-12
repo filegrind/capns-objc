@@ -310,6 +310,96 @@ public final class PluginHost: @unchecked Sendable {
         stateLock.unlock()
     }
 
+    /// Reconcile the host's plugin state with the current on-disk truth.
+    ///
+    /// After a rescan, the XPC service calls this instead of accumulating
+    /// registerPlugin() calls.  This ensures stale entries (old binary paths)
+    /// are removed so findPluginForCap() never routes to a dead binary.
+    ///
+    /// Semantics:
+    /// - **Updated path** (matching knownCaps, different binary): update path,
+    ///   kill running process (next request respawns with new binary), reset helloFailed.
+    /// - **New plugin** (caps not currently hosted): append.
+    /// - **Removed plugin** (in host, not in `current`): remove from capTable,
+    ///   kill process.
+    ///
+    /// - Parameter current: The ground-truth list of `(binaryPath, capURNs)` from disk.
+    public func syncRegistrations(_ current: [(path: String, knownCaps: [String])]) {
+        stateLock.lock()
+        defer {
+            rebuildCapabilities()
+            stateLock.unlock()
+        }
+
+        // Build a lookup: Set(knownCaps) → index in `current`.
+        // knownCaps identity is what links old and new entries (path changes).
+        let currentByCapSet: [Set<String>: Int] = {
+            var map = [Set<String>: Int]()
+            for (i, entry) in current.enumerated() {
+                map[Set(entry.knownCaps)] = i
+            }
+            return map
+        }()
+
+        var matchedCurrentIndices = Set<Int>()
+
+        // Walk existing plugins and reconcile.
+        for (pluginIdx, plugin) in plugins.enumerated() {
+            let existingCapSet = Set(plugin.knownCaps)
+            if let currentIdx = currentByCapSet[existingCapSet] {
+                // Match found — check if path changed.
+                matchedCurrentIndices.insert(currentIdx)
+                let entry = current[currentIdx]
+                if plugin.path != entry.path {
+                    // Updated binary — mutate in place.
+                    // ManagedPlugin.path is `let`, so we need a mutable wrapper.
+                    // But ManagedPlugin is a class, so we can't reassign `path` directly
+                    // since it's declared `let`. We'll work around this by replacing the
+                    // plugin object entirely, preserving only the index slot.
+                    plugin.killProcess()
+                    plugin.stdinHandle = nil
+                    plugin.stdoutHandle = nil
+                    plugin.stderrHandle = nil
+                    plugin.writer = nil
+
+                    let replacement = ManagedPlugin(path: entry.path, knownCaps: entry.knownCaps)
+                    plugins[pluginIdx] = replacement
+
+                    // Update capTable entries pointing to this index
+                    // (caps are the same, only the plugin object changed — no capTable change needed)
+                }
+                // Same path, same caps — nothing to do.
+            } else {
+                // Plugin in host but not on disk — mark as removed.
+                // Kill process, nil out the writer so it can't receive frames.
+                plugin.killProcess()
+                plugin.writerLock.lock()
+                plugin.writer = nil
+                plugin.writerLock.unlock()
+                plugin.stdinHandle = nil
+                plugin.stdoutHandle = nil
+                plugin.stderrHandle = nil
+                plugin.helloFailed = true  // Prevent on-demand spawn
+                plugin.knownCaps = []      // Remove from capTable rebuild
+                plugin.caps = []
+            }
+        }
+
+        // Append genuinely new plugins (in `current` but not matched to any existing).
+        for (i, entry) in current.enumerated() where !matchedCurrentIndices.contains(i) {
+            let plugin = ManagedPlugin(path: entry.path, knownCaps: entry.knownCaps)
+            plugins.append(plugin)
+        }
+
+        // Rebuild capTable from scratch — covers new, updated, and removed plugins.
+        capTable.removeAll()
+        for (idx, plugin) in plugins.enumerated() where !plugin.helloFailed {
+            for cap in plugin.knownCaps {
+                capTable.append((cap, idx))
+            }
+        }
+    }
+
     /// Attach a pre-connected plugin (already running, ready for handshake).
     ///
     /// Performs HELLO handshake synchronously. Extracts manifest and caps.
