@@ -845,6 +845,7 @@ public final class RelaySwitch: @unchecked Sendable {
             ridToXid[rid] = xid
 
             // Record origin (where this request came from)
+            fputs("[RelaySwitch] PEER_REQ: master \(sourceIdx) → master \(destIdx) cap='\(cap)' rid=\(rid) xid=\(xid)\n", stderr)
             originMap[key] = sourceIdx
 
             // Register routing
@@ -887,9 +888,12 @@ public final class RelaySwitch: @unchecked Sendable {
                 // Route back to origin
                 if let masterIdx = originIdx {
                     // Peer response — route back to source master (keep XID for relay protocol)
-                    try writeToMasterIdx(masterIdx, &mutableFrame)
-
                     if isTerminal {
+                        fputs("[RelaySwitch] PEER_RESP: routing \(frame.frameType) back to master \(masterIdx) xid=\(xid) rid=\(rid)\n", stderr)
+                    }
+                    try writeToMasterIdx(masterIdx, &mutableFrame)
+                    if isTerminal {
+                        fputs("[RelaySwitch] PEER_RESP: write to master \(masterIdx) completed\n", stderr)
                         requestRouting.removeValue(forKey: key)
                         originMap.removeValue(forKey: key)
                         peerRequests.remove(key)

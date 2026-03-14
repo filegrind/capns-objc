@@ -504,8 +504,16 @@ public final class PeerCall: @unchecked Sendable {
 
     /// Finish sending args and get the response stream.
     /// Sends END for the peer request, spawns Demux on response channel.
-    public func finish() throws -> InputStream {
+    ///
+    /// Peer LOG frames (including progress) are mapped to the caller's progress range
+    /// and forwarded via the caller's emitter. `base` is the progress value at the start
+    /// of this peer call, `weight` is the fraction of overall progress this call represents.
+    /// For example, if this peer call is 5%–25% of the handler's work: base=0.05, weight=0.20.
+    ///
+    /// A peer reporting progress=0.50 will cause emitter.progress(0.05 + 0.50 * 0.20 = 0.15).
+    public func finish(emitter: OutputStream, base: Float, weight: Float) throws -> InputStream {
         // Send END frame for the peer request
+        fputs("[PeerCall] finish: sending END for peer_rid=\(requestId)\n", stderr)
         let endFrame = Frame.end(id: requestId, finalPayload: nil)
         try sender.send(endFrame)
 
@@ -518,8 +526,11 @@ public final class PeerCall: @unchecked Sendable {
         responseRx = nil
         lock.unlock()
 
-        // Spawn single-stream Demux for the response
-        let inputStream = try demuxSingleStream(responseRx: rx, maxChunk: maxChunk)
+        // Demux with LOG frame forwarding — maps peer progress to caller's range
+        fputs("[PeerCall] finish: awaiting peer response for peer_rid=\(requestId)\n", stderr)
+        let logForwarder = PeerLogForwarder(emitter: emitter, base: base, weight: weight)
+        let inputStream = try demuxSingleStream(responseRx: rx, maxChunk: maxChunk, logHandler: logForwarder.handle)
+        fputs("[PeerCall] finish: peer response received for peer_rid=\(requestId)\n", stderr)
         return inputStream
     }
 }
@@ -599,9 +610,32 @@ public final class BlockingQueue<T>: @unchecked Sendable {
     }
 }
 
+/// Maps peer LOG frames to the caller's progress range and forwards them.
+private struct PeerLogForwarder {
+    let emitter: OutputStream
+    let base: Float
+    let weight: Float
+
+    func handle(_ frame: Frame) {
+        if let peerProgress = frame.logProgress {
+            // Map peer's [0.0, 1.0] to caller's [base, base+weight]
+            let mapped = mapProgress(peerProgress, base: base, weight: weight)
+            let msg = frame.logMessage ?? ""
+            emitter.progress(mapped, message: msg)
+        } else if let msg = frame.logMessage {
+            // Forward non-progress LOG frames from peer as regular logs
+            let level = frame.logLevel ?? "info"
+            emitter.log(level: level, message: msg)
+        }
+    }
+}
+
 /// Demux a single response stream from frame channel.
 /// Used by PeerCall.finish() to convert response frames into InputStream.
-private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) throws -> InputStream {
+///
+/// LOG frames are forwarded to `logHandler` if provided. This enables peer progress
+/// mapping — the handler maps peer progress values into the caller's progress range.
+private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int, logHandler: ((Frame) -> Void)? = nil) throws -> InputStream {
     // Create a channel for decoded CBOR values
     var chunks: [Result<CBOR, StreamError>] = []
     var mediaUrn = "media:" // Default, updated by STREAM_START
@@ -641,6 +675,9 @@ private func demuxSingleStream(responseRx: AnyIterator<Frame>, maxChunk: Int) th
             } catch {
                 chunks.append(.failure(.decode("Failed to decode CBOR chunk: \(error)")))
             }
+
+        case .log:
+            logHandler?(frame)
 
         case .streamEnd:
             // Stream ended normally
@@ -838,19 +875,22 @@ public protocol PeerInvoker: Sendable {
     func call(capUrn: String) throws -> PeerCall
 
     /// Convenience: open call, write each arg's bytes, finish, return response.
-    func callWithBytes(capUrn: String, args: [(mediaUrn: String, data: Data)]) throws -> InputStream
+    ///
+    /// `emitter` is the caller's output stream for forwarding peer LOG/progress frames.
+    /// `base` and `weight` define the progress range this peer call maps to.
+    func callWithBytes(capUrn: String, args: [(mediaUrn: String, data: Data)], emitter: OutputStream, base: Float, weight: Float) throws -> InputStream
 }
 
 // Default implementation of callWithBytes
 extension PeerInvoker {
-    public func callWithBytes(capUrn: String, args: [(mediaUrn: String, data: Data)]) throws -> InputStream {
+    public func callWithBytes(capUrn: String, args: [(mediaUrn: String, data: Data)], emitter: OutputStream, base: Float, weight: Float) throws -> InputStream {
         let call = try self.call(capUrn: capUrn)
         for (mediaUrn, data) in args {
             let arg = call.arg(mediaUrn: mediaUrn)
             try arg.write(data)
             try arg.close()
         }
-        return try call.finish()
+        return try call.finish(emitter: emitter, base: base, weight: weight)
     }
 }
 
@@ -1230,6 +1270,7 @@ final class PeerInvokerImpl: PeerInvoker, @unchecked Sendable {
     func call(capUrn: String) throws -> PeerCall {
         // Generate a new message ID for this request
         let requestId = MessageId.newUUID()
+        fputs("[PluginRuntime] PEER_CALL: cap='\(capUrn)' peer_rid=\(requestId)\n", stderr)
 
         // Create AsyncStream and continuation for response frames
         let (stream, continuation) = AsyncStream<Frame>.makeStream()
@@ -2354,13 +2395,16 @@ public final class PluginRuntime: @unchecked Sendable {
         let stdinHandle = FileHandle.standardInput
 
         // Duplicate stdout so CBOR frame I/O is immune to anything that
-        // closes the original FD 1 (e.g. Metal shader compilation in MLX).
-        // The duplicated FD points to the same pipe but lives at a different
-        // descriptor number, so close(STDOUT_FILENO) won't affect it.
+        // writes to or closes the original FD 1 (e.g. Metal shader
+        // compilation in MLX, Swift print(), C printf()).  The duplicated FD
+        // points to the same pipe but lives at a different descriptor number.
         let safeFd = dup(STDOUT_FILENO)
         guard safeFd >= 0 else {
             throw PluginRuntimeError.ioError("dup(STDOUT_FILENO) failed: \(String(cString: strerror(errno)))")
         }
+        // Redirect FD 1 → stderr so any stray stdout writes end up in the
+        // log instead of injecting non-CBOR bytes into the frame pipe.
+        dup2(STDERR_FILENO, STDOUT_FILENO)
         let stdoutHandle = FileHandle(fileDescriptor: safeFd, closeOnDealloc: true)
 
         let frameReader = FrameReader(handle: stdinHandle, limits: limits)
@@ -2470,6 +2514,7 @@ public final class PluginRuntime: @unchecked Sendable {
                 let outputMediaUrn = cap.getOutSpec()
 
                 Thread.detachNewThread {
+                    fputs("[PluginRuntime] handler started: cap='\(capUrn)' rid=\(requestId)\n", stderr)
                     // Create blocking queue for frame delivery
                     let framesQueue = BlockingQueue<Frame>()
 
@@ -2515,12 +2560,14 @@ public final class PluginRuntime: @unchecked Sendable {
                         let op = factory()
                         try dispatchOp(op: op, input: inputPackage, output: outputStream, peer: peer)
 
+                        fputs("[PluginRuntime] handler completed OK: cap='\(capUrn)' rid=\(requestId)\n", stderr)
                         // Send END frame with routing_id (via outputSender for seq assignment)
                         var endFrame = Frame.end(id: requestId, finalPayload: nil)
                         endFrame.routingId = routingId
                         try? outputSender.send(endFrame)
 
                     } catch {
+                        fputs("[PluginRuntime] handler FAILED: cap='\(capUrn)' rid=\(requestId) error=\(error)\n", stderr)
                         var errFrame = Frame.err(id: requestId, code: "HANDLER_ERROR", message: "\(error)")
                         errFrame.routingId = routingId
                         try? outputSender.send(errFrame)
@@ -2575,6 +2622,7 @@ public final class PluginRuntime: @unchecked Sendable {
                 // Check if this is the end of an incoming request
                 pendingIncomingLock.lock()
                 if let pendingReq = pendingIncoming.removeValue(forKey: frame.id) {
+                    fputs("[PluginRuntime] END routed to active_request rid=\(frame.id)\n", stderr)
                     pendingReq.continuation.yield(frame)
                     pendingReq.continuation.finish()
                     pendingIncomingLock.unlock()
@@ -2585,14 +2633,18 @@ public final class PluginRuntime: @unchecked Sendable {
                 // Not an incoming request end - must be a peer response end
                 pendingPeerRequestsLock.lock()
                 if let pending = pendingPeerRequests[frame.id] as? PendingPeerRequest {
+                    fputs("[PluginRuntime] PEER_END received: peer_rid=\(frame.id)\n", stderr)
                     pending.continuation.yield(frame)
                     pending.continuation.finish()
                     pendingPeerRequests.removeObject(forKey: frame.id)
+                } else {
+                    fputs("[PluginRuntime] END for unknown rid=\(frame.id)\n", stderr)
                 }
                 pendingPeerRequestsLock.unlock()
 
             case .err:
                 // Error frame from host - forward to pending peer request and finish stream
+                fputs("[PluginRuntime] ERR received: rid=\(frame.id) code=\(frame.errorCode ?? "?") msg=\(frame.errorMessage ?? "?")\n", stderr)
                 pendingPeerRequestsLock.lock()
                 if let pending = pendingPeerRequests[frame.id] as? PendingPeerRequest {
                     pending.continuation.yield(frame)
@@ -2602,8 +2654,13 @@ public final class PluginRuntime: @unchecked Sendable {
                 pendingPeerRequestsLock.unlock()
 
             case .log:
-                // Log frames from host - shouldn't normally receive these, ignore
-                continue
+                // Log frames from peer responses — forward to the pending peer request
+                // so the caller's PeerLogForwarder can map progress into the caller's range.
+                pendingPeerRequestsLock.lock()
+                if let pending = pendingPeerRequests[frame.id] as? PendingPeerRequest {
+                    pending.continuation.yield(frame)
+                }
+                pendingPeerRequestsLock.unlock()
 
             case .streamStart:
                 // Forward frame to appropriate stream

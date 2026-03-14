@@ -592,7 +592,7 @@ public final class PluginHost: @unchecked Sendable {
     /// NEVER cleans up incomingRxids on terminal frames — intentionally leaked until plugin death.
     private func handleRelayFrame(_ frame: Frame) {
         if frame.frameType != .log {
-            os_log(.info, log: Self.log, "[handleRelayFrame] %{public}@ id=%{public}@ xid=%{public}@", String(describing: frame.frameType), String(describing: frame.id), String(describing: frame.routingId))
+            os_log(.debug, log: Self.log, "[handleRelayFrame] %{public}@ id=%{public}@ xid=%{public}@", String(describing: frame.frameType), String(describing: frame.id), String(describing: frame.routingId))
         }
         switch frame.frameType {
         case .req:
@@ -639,7 +639,7 @@ public final class PluginHost: @unchecked Sendable {
             let plugin = plugins[pluginIdx]
             stateLock.unlock()
 
-            os_log(.info, log: Self.log, "[handleRelayFrame] REQ dispatched to plugin %d cap=%{public}@ xid=%{public}@ rid=%{public}@", pluginIdx, String(describing: frame.cap), String(describing: xid), String(describing: frame.id))
+            os_log(.debug, log: Self.log, "[handleRelayFrame] REQ dispatched to plugin %d cap=%{public}@ xid=%{public}@ rid=%{public}@", pluginIdx, String(describing: frame.cap), String(describing: xid), String(describing: frame.id))
             if !plugin.writeFrame(frame) {
                 // Plugin is dead — send ERR with XID and clean up
                 let deathMsg = plugin.lastDeathMessage ?? "Plugin exited while processing request"
@@ -730,7 +730,7 @@ public final class PluginHost: @unchecked Sendable {
     /// (there's only one relay destination).
     private func handlePluginFrame(pluginIdx: Int, frame: Frame) {
         if frame.frameType != .log {
-            os_log(.info, log: Self.log, "[handlePluginFrame] plugin=%d %{public}@ id=%{public}@ xid=%{public}@", pluginIdx, String(describing: frame.frameType), String(describing: frame.id), String(describing: frame.routingId))
+            os_log(.debug, log: Self.log, "[handlePluginFrame] plugin=%d %{public}@ id=%{public}@ xid=%{public}@", pluginIdx, String(describing: frame.frameType), String(describing: frame.id), String(describing: frame.routingId))
         }
         switch frame.frameType {
         case .hello:
@@ -1001,7 +1001,7 @@ public final class PluginHost: @unchecked Sendable {
     /// Frames arrive with seq already assigned by PluginRuntime — no modification needed.
     private func sendToRelay(_ frame: Frame) {
         if frame.frameType != .log {
-            os_log(.info, log: Self.log, "[sendToRelay] %{public}@ id=%{public}@ xid=%{public}@", String(describing: frame.frameType), String(describing: frame.id), String(describing: frame.routingId))
+            os_log(.debug, log: Self.log, "[sendToRelay] %{public}@ id=%{public}@ xid=%{public}@", String(describing: frame.frameType), String(describing: frame.id), String(describing: frame.routingId))
         }
         outboundLock.lock()
         defer { outboundLock.unlock() }

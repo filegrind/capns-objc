@@ -133,7 +133,7 @@ public final class RelaySlave: @unchecked Sendable {
                             reorderBuffer.cleanupFlow(key)
                         }
                         if readyFrame.frameType != .log {
-                            os_log(.info, log: RelaySlave.log, "[t1 socket→local] %{public}@ id=%{public}@ xid=%{public}@", String(describing: readyFrame.frameType), String(describing: readyFrame.id), String(describing: readyFrame.routingId))
+                            os_log(.debug, log: RelaySlave.log, "[t1 socket→local] %{public}@ id=%{public}@ xid=%{public}@", String(describing: readyFrame.frameType), String(describing: readyFrame.id), String(describing: readyFrame.routingId))
                         }
                         try localWriter.write(readyFrame)
                     }
@@ -181,7 +181,7 @@ public final class RelaySlave: @unchecked Sendable {
                             reorderBuffer.cleanupFlow(key)
                         }
                         if readyFrame.frameType != .log {
-                            os_log(.info, log: RelaySlave.log, "[t2 local→socket] %{public}@ id=%{public}@ xid=%{public}@", String(describing: readyFrame.frameType), String(describing: readyFrame.id), String(describing: readyFrame.routingId))
+                            os_log(.debug, log: RelaySlave.log, "[t2 local→socket] %{public}@ id=%{public}@ xid=%{public}@", String(describing: readyFrame.frameType), String(describing: readyFrame.id), String(describing: readyFrame.routingId))
                         }
                         try socketWriter.write(readyFrame)
                     }

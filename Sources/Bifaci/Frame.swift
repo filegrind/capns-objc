@@ -308,6 +308,7 @@ public struct Frame: @unchecked Sendable {
 
     /// Create an ERR frame
     public static func err(id: MessageId, code: String, message: String) -> Frame {
+
         var frame = Frame(frameType: .err, id: id)
         frame.meta = [
             "code": .utf8String(code),
@@ -503,6 +504,17 @@ public struct Frame: @unchecked Sendable {
             return true
         }
     }
+}
+
+// MARK: - Progress Mapping
+
+/// Map child progress [0.0, 1.0] into parent range [base, base + weight].
+///
+/// This is the canonical progress mapping formula. Every place in the system
+/// that subdivides progress must use this function — no ad-hoc derivations.
+/// Mirrors capdag (Rust) `map_progress()`.
+public func mapProgress(_ childProgress: Float, base: Float, weight: Float) -> Float {
+    base + min(max(childProgress, 0.0), 1.0) * weight
 }
 
 // MARK: - UUID Extension
