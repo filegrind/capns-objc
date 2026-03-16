@@ -120,6 +120,10 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 // Split node properties
 @property (nonatomic, assign) NSUInteger outputCount;
 
+// WrapInList node properties
+@property (nonatomic, copy, nullable) NSString *wrapItemMediaUrn;
+@property (nonatomic, copy, nullable) NSString *wrapListMediaUrn;
+
 // InputSlot node properties
 @property (nonatomic, copy, nullable) NSString *slotName;
 @property (nonatomic, copy, nullable) NSString *expectedMediaUrn;
@@ -150,6 +154,11 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 /// Create an output node
 + (instancetype)outputNode:(NSString *)nodeId outputName:(NSString *)outputName sourceNode:(NSString *)sourceNode;
 
+/// Create a WrapInList node (wrap scalar in list-of-one)
++ (instancetype)wrapInListNode:(NSString *)nodeId
+                  itemMediaUrn:(NSString *)itemMediaUrn
+                  listMediaUrn:(NSString *)listMediaUrn;
+
 /// Check if this is a cap execution node
 - (BOOL)isCap;
 
@@ -158,6 +167,9 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 
 /// Check if this is a fan-in node
 - (BOOL)isFanIn;
+
+/// Check if this is a WrapInList node
+- (BOOL)isWrapInList;
 
 @end
 
@@ -208,6 +220,26 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 
 /// Create a linear chain of caps
 + (instancetype)linearChainPlan:(NSArray<NSString *> *)capUrns inputMedia:(NSString *)inputMedia outputMedia:(NSString *)outputMedia filePathArgNames:(NSArray<NSString *> *)filePathArgNames;
+
+/// Check if plan contains any ForEach or Collect nodes
+- (BOOL)hasForeachOrCollect;
+
+/// Find the first ForEach node ID, or nil if none
+- (nullable NSString *)findFirstForeach;
+
+/// Extract prefix sub-plan from entry points to target node (inclusive)
+- (nullable CSCapExecutionPlan *)extractPrefixTo:(NSString *)targetNodeId
+                                           error:(NSError **)error;
+
+/// Extract ForEach body as standalone plan with synthetic InputSlot and Output
+- (nullable CSCapExecutionPlan *)extractForeachBody:(NSString *)foreachNodeId
+                                       itemMediaUrn:(NSString *)itemMediaUrn
+                                              error:(NSError **)error;
+
+/// Extract suffix sub-plan from source node to output nodes
+- (nullable CSCapExecutionPlan *)extractSuffixFrom:(NSString *)sourceNodeId
+                                    sourceMediaUrn:(NSString *)sourceMediaUrn
+                                             error:(NSError **)error;
 
 @end
 

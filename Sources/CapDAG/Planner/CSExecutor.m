@@ -171,6 +171,9 @@
     } else if (node.inputNodes) {
         // Collect node
         [self executeCollectNode:node nodeOutputs:nodeOutputs start:start completion:completion];
+    } else if (node.wrapItemMediaUrn) {
+        // WrapInList node - pass-through, only type annotation changes
+        [self executeWrapInListNode:node nodeOutputs:nodeOutputs start:start completion:completion];
     } else {
         // Unknown node type - fail hard
         NSError *error = [NSError errorWithDomain:CSPlannerErrorDomain
@@ -302,6 +305,32 @@
     result.durationMs = (uint64_t)([[NSDate date] timeIntervalSinceDate:start] * 1000);
 
     completion(result, output, nil);
+}
+
+// MARK: - Execute WrapInList Node
+
+- (void)executeWrapInListNode:(CSCapNode *)node
+                  nodeOutputs:(NSDictionary *)nodeOutputs
+                        start:(NSDate *)start
+                   completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
+    // WrapInList is a pass-through — find predecessor output and forward it unchanged
+    id predecessorOutput = nil;
+    for (CSCapEdge *edge in self.plan.edges) {
+        if ([edge.toNode isEqualToString:node.nodeId]) {
+            predecessorOutput = nodeOutputs[edge.fromNode];
+            break;
+        }
+    }
+
+    CSNodeExecutionResult *result = [[CSNodeExecutionResult alloc] init];
+    result.nodeId = node.nodeId;
+    result.success = YES;
+    result.binaryOutput = nil;
+    result.textOutput = predecessorOutput ? [self jsonToString:predecessorOutput] : nil;
+    result.error = nil;
+    result.durationMs = (uint64_t)([[NSDate date] timeIntervalSinceDate:start] * 1000);
+
+    completion(result, predecessorOutput, nil);
 }
 
 // MARK: - Execute Cap Node

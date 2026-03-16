@@ -23,6 +23,24 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 @end
 
 @implementation CSCapChainStepInfo
+
+- (NSString *)title {
+    switch (self.stepType) {
+        case CSCapChainStepTypeCap:
+            return self.capUrn ?: @"(unknown cap)";
+        case CSCapChainStepTypeForEach:
+            return @"ForEach (iterate over list)";
+        case CSCapChainStepTypeCollect:
+            return @"Collect (gather results)";
+        case CSCapChainStepTypeWrapInList:
+            return @"WrapInList (wrap scalar in list)";
+    }
+}
+
+- (BOOL)isCap {
+    return self.stepType == CSCapChainStepTypeCap;
+}
+
 @end
 
 @implementation CSCapChainPathInfo

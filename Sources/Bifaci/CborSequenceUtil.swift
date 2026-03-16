@@ -11,15 +11,19 @@
 import Foundation
 @preconcurrency import SwiftCBOR
 
-/// Errors from CBOR sequence operations.
+/// Errors from CBOR sequence and array operations.
 public enum CborSequenceError: Error, LocalizedError {
     case emptySequence
+    case notAnArray
+    case emptyArray
     case deserializationError(String)
     case serializationError(String)
 
     public var errorDescription: String? {
         switch self {
         case .emptySequence: return "Empty CBOR sequence — nothing to split"
+        case .notAnArray: return "CBOR value is not an array"
+        case .emptyArray: return "CBOR array is empty"
         case .deserializationError(let msg): return "CBOR deserialization error: \(msg)"
         case .serializationError(let msg): return "CBOR serialization error: \(msg)"
         }
@@ -97,4 +101,68 @@ public func assembleCborSequence(_ items: [Data]) throws -> Data {
         result.append(item)
     }
     return result
+}
+
+// MARK: - CBOR Array split/assemble
+
+/// Split a CBOR array into individually-serialized CBOR items.
+///
+/// Decodes the input as a CBOR array, then re-encodes each element
+/// as an independent CBOR value. This is distinct from CBOR sequences:
+/// an array is a single CBOR value containing multiple items, while a
+/// sequence is a concatenation of independent CBOR values.
+///
+/// - Parameter data: The raw bytes of a CBOR array
+/// - Returns: Array of individually-encoded CBOR items
+/// - Throws: `CborSequenceError.notAnArray` if the input is not a CBOR array,
+///           `CborSequenceError.emptyArray` if the array is empty,
+///           `CborSequenceError.deserializationError` if the value is malformed
+public func splitCborArray(_ data: Data) throws -> [Data] {
+    let bytes = [UInt8](data)
+
+    let decoded: CBOR
+    do {
+        guard let value = try CBOR.decode(bytes) else {
+            throw CborSequenceError.deserializationError("Failed to decode CBOR value")
+        }
+        decoded = value
+    } catch let error as CborSequenceError {
+        throw error
+    } catch {
+        throw CborSequenceError.deserializationError("CBOR decode failed: \(error)")
+    }
+
+    guard case .array(let items) = decoded else {
+        throw CborSequenceError.notAnArray
+    }
+
+    if items.isEmpty {
+        throw CborSequenceError.emptyArray
+    }
+
+    return items.map { item in
+        Data(item.encode())
+    }
+}
+
+/// Assemble individually-serialized CBOR items into a single CBOR array.
+///
+/// Each input item must be a complete CBOR value. The result is a CBOR array
+/// containing all items in order.
+///
+/// - Parameter items: Array of individually-encoded CBOR items
+/// - Returns: The CBOR array bytes
+/// - Throws: `CborSequenceError.deserializationError` if any item is not valid CBOR,
+///           `CborSequenceError.serializationError` if the array cannot be serialized
+public func assembleCborArray(_ items: [Data]) throws -> Data {
+    var values: [CBOR] = []
+    for (i, item) in items.enumerated() {
+        guard let value = try? CBOR.decode([UInt8](item)) else {
+            throw CborSequenceError.deserializationError("Item \(i): not valid CBOR")
+        }
+        values.append(value)
+    }
+
+    let array = CBOR.array(values)
+    return Data(array.encode())
 }

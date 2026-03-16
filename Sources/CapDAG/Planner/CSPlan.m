@@ -116,6 +116,17 @@
     return node;
 }
 
++ (instancetype)wrapInListNode:(NSString *)nodeId
+                  itemMediaUrn:(NSString *)itemMediaUrn
+                  listMediaUrn:(NSString *)listMediaUrn {
+    CSCapNode *node = [[CSCapNode alloc] init];
+    node.nodeId = nodeId;
+    node.wrapItemMediaUrn = itemMediaUrn;
+    node.wrapListMediaUrn = listMediaUrn;
+    node.nodeDescription = @"WrapInList: wrap scalar in list-of-one";
+    return node;
+}
+
 - (BOOL)isCap {
     return self.capUrn != nil;
 }
@@ -126,6 +137,10 @@
 
 - (BOOL)isFanIn {
     return self.inputNodes != nil && self.inputNodes.count > 0;
+}
+
+- (BOOL)isWrapInList {
+    return self.wrapItemMediaUrn != nil && self.wrapListMediaUrn != nil;
 }
 
 @end
@@ -328,6 +343,294 @@
     [plan addEdge:[CSCapEdge directFrom:prevId to:outputId]];
 
     return plan;
+}
+
+// MARK: - Plan Decomposition
+
+- (BOOL)hasForeachOrCollect {
+    for (NSString *nodeId in self.nodes) {
+        CSCapNode *node = self.nodes[nodeId];
+        if ([node isFanOut] || [node isFanIn]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (nullable NSString *)findFirstForeach {
+    NSError *error = nil;
+    NSArray<CSCapNode *> *topo = [self topologicalOrder:&error];
+    if (!topo) return nil;
+
+    for (CSCapNode *node in topo) {
+        if ([node isFanOut]) {
+            return node.nodeId;
+        }
+    }
+    return nil;
+}
+
+- (nullable CSCapExecutionPlan *)extractPrefixTo:(NSString *)targetNodeId
+                                           error:(NSError **)error {
+    if (!self.nodes[targetNodeId]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSPlannerError" code:1
+                                     userInfo:@{NSLocalizedDescriptionKey:
+                [NSString stringWithFormat:@"Target node '%@' not found in plan", targetNodeId]}];
+        }
+        return nil;
+    }
+
+    // Build reverse adjacency: toNode -> [fromNode]
+    NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *reverseAdj = [NSMutableDictionary dictionary];
+    for (CSCapEdge *edge in self.edges) {
+        if (!reverseAdj[edge.toNode]) {
+            reverseAdj[edge.toNode] = [NSMutableArray array];
+        }
+        [reverseAdj[edge.toNode] addObject:edge.fromNode];
+    }
+
+    // BFS backward from target to find all ancestors
+    NSMutableSet<NSString *> *ancestors = [NSMutableSet setWithObject:targetNodeId];
+    NSMutableArray<NSString *> *queue = [NSMutableArray arrayWithObject:targetNodeId];
+
+    while (queue.count > 0) {
+        NSString *nodeId = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+
+        NSArray<NSString *> *parents = reverseAdj[nodeId];
+        for (NSString *parent in parents) {
+            if (![ancestors containsObject:parent]) {
+                [ancestors addObject:parent];
+                [queue addObject:parent];
+            }
+        }
+    }
+
+    // Build sub-plan with ancestor nodes (skip original Output nodes)
+    CSCapExecutionPlan *subPlan = [CSCapExecutionPlan planWithName:
+        [NSString stringWithFormat:@"%@ [prefix to %@]", self.name, targetNodeId]];
+
+    for (NSString *nodeId in ancestors) {
+        CSCapNode *node = self.nodes[nodeId];
+        if (!node) continue;
+        if (node.outputName) continue; // skip Output nodes
+        [subPlan addNode:node];
+    }
+
+    // Add edges where both endpoints are in ancestors and neither is an Output
+    for (CSCapEdge *edge in self.edges) {
+        if ([ancestors containsObject:edge.fromNode] && [ancestors containsObject:edge.toNode]) {
+            CSCapNode *fromNode = self.nodes[edge.fromNode];
+            CSCapNode *toNode = self.nodes[edge.toNode];
+            if (fromNode.outputName || toNode.outputName) continue;
+            [subPlan addEdge:edge];
+        }
+    }
+
+    // Add synthetic Output connected to target
+    NSString *outputId = [NSString stringWithFormat:@"%@_prefix_output", targetNodeId];
+    [subPlan addNode:[CSCapNode outputNode:outputId outputName:@"prefix_result" sourceNode:targetNodeId]];
+    [subPlan addEdge:[CSCapEdge directFrom:targetNodeId to:outputId]];
+
+    NSError *validateError = [subPlan validate];
+    if (validateError) {
+        if (error) *error = validateError;
+        return nil;
+    }
+    return subPlan;
+}
+
+- (nullable CSCapExecutionPlan *)extractForeachBody:(NSString *)foreachNodeId
+                                       itemMediaUrn:(NSString *)itemMediaUrn
+                                              error:(NSError **)error {
+    CSCapNode *foreachNode = self.nodes[foreachNodeId];
+    if (!foreachNode) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSPlannerError" code:1
+                                     userInfo:@{NSLocalizedDescriptionKey:
+                [NSString stringWithFormat:@"ForEach node '%@' not found", foreachNodeId]}];
+        }
+        return nil;
+    }
+
+    if (![foreachNode isFanOut]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSPlannerError" code:1
+                                     userInfo:@{NSLocalizedDescriptionKey:
+                [NSString stringWithFormat:@"Node '%@' is not a ForEach node", foreachNodeId]}];
+        }
+        return nil;
+    }
+
+    NSString *bodyEntry = foreachNode.bodyEntry;
+    NSString *bodyExit = foreachNode.bodyExit;
+
+    // Build forward adjacency
+    NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *forwardAdj = [NSMutableDictionary dictionary];
+    for (CSCapEdge *edge in self.edges) {
+        if (!forwardAdj[edge.fromNode]) {
+            forwardAdj[edge.fromNode] = [NSMutableArray array];
+        }
+        [forwardAdj[edge.fromNode] addObject:edge.toNode];
+    }
+
+    // BFS forward from bodyEntry to find body nodes
+    NSMutableSet<NSString *> *bodyNodes = [NSMutableSet setWithObject:bodyEntry];
+    NSMutableArray<NSString *> *queue = [NSMutableArray arrayWithObject:bodyEntry];
+
+    while (queue.count > 0) {
+        NSString *nodeId = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+
+        // Don't traverse past body_exit (unless it IS body_entry)
+        if ([nodeId isEqualToString:bodyExit] && ![nodeId isEqualToString:bodyEntry]) {
+            continue;
+        }
+
+        NSArray<NSString *> *children = forwardAdj[nodeId];
+        for (NSString *child in children) {
+            CSCapNode *childNode = self.nodes[child];
+            if (!childNode) continue;
+
+            // Don't include Output or Collect nodes from original plan
+            if (childNode.outputName || [childNode isFanIn]) {
+                // But include body_exit if it matches
+                if ([child isEqualToString:bodyExit]) {
+                    [bodyNodes addObject:child];
+                }
+                continue;
+            }
+
+            if (![bodyNodes containsObject:child]) {
+                [bodyNodes addObject:child];
+                [queue addObject:child];
+            }
+        }
+    }
+
+    // Ensure body_exit is included
+    [bodyNodes addObject:bodyExit];
+
+    // Build body sub-plan
+    CSCapExecutionPlan *bodyPlan = [CSCapExecutionPlan planWithName:
+        [NSString stringWithFormat:@"%@ [foreach body %@]", self.name, foreachNodeId]];
+
+    // Add synthetic InputSlot for per-item input
+    NSString *inputId = [NSString stringWithFormat:@"%@_body_input", foreachNodeId];
+    [bodyPlan addNode:[CSCapNode inputSlotNode:inputId
+                                     slotName:@"item_input"
+                                     mediaUrn:itemMediaUrn
+                                  cardinality:CSInputCardinalitySingle]];
+
+    // Add body nodes
+    for (NSString *nodeId in bodyNodes) {
+        CSCapNode *node = self.nodes[nodeId];
+        if (node) {
+            [bodyPlan addNode:node];
+        }
+    }
+
+    // Add edge from synthetic input to body_entry
+    [bodyPlan addEdge:[CSCapEdge directFrom:inputId to:bodyEntry]];
+
+    // Add edges where both endpoints are body nodes (skip Iteration/Collection edges)
+    for (CSCapEdge *edge in self.edges) {
+        if ([bodyNodes containsObject:edge.fromNode] && [bodyNodes containsObject:edge.toNode]) {
+            if (edge.edgeType == CSEdgeTypeIteration || edge.edgeType == CSEdgeTypeCollection) {
+                continue;
+            }
+            [bodyPlan addEdge:edge];
+        }
+    }
+
+    // Add synthetic Output connected to body_exit
+    NSString *outputId = [NSString stringWithFormat:@"%@_body_output", foreachNodeId];
+    [bodyPlan addNode:[CSCapNode outputNode:outputId outputName:@"item_result" sourceNode:bodyExit]];
+    [bodyPlan addEdge:[CSCapEdge directFrom:bodyExit to:outputId]];
+
+    NSError *validateError = [bodyPlan validate];
+    if (validateError) {
+        if (error) *error = validateError;
+        return nil;
+    }
+    return bodyPlan;
+}
+
+- (nullable CSCapExecutionPlan *)extractSuffixFrom:(NSString *)sourceNodeId
+                                    sourceMediaUrn:(NSString *)sourceMediaUrn
+                                             error:(NSError **)error {
+    if (!self.nodes[sourceNodeId]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"CSPlannerError" code:1
+                                     userInfo:@{NSLocalizedDescriptionKey:
+                [NSString stringWithFormat:@"Source node '%@' not found in plan", sourceNodeId]}];
+        }
+        return nil;
+    }
+
+    // Build forward adjacency
+    NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *forwardAdj = [NSMutableDictionary dictionary];
+    for (CSCapEdge *edge in self.edges) {
+        if (!forwardAdj[edge.fromNode]) {
+            forwardAdj[edge.fromNode] = [NSMutableArray array];
+        }
+        [forwardAdj[edge.fromNode] addObject:edge.toNode];
+    }
+
+    // BFS forward from source to find all descendants
+    NSMutableSet<NSString *> *descendants = [NSMutableSet setWithObject:sourceNodeId];
+    NSMutableArray<NSString *> *queue = [NSMutableArray arrayWithObject:sourceNodeId];
+
+    while (queue.count > 0) {
+        NSString *nodeId = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+
+        NSArray<NSString *> *children = forwardAdj[nodeId];
+        for (NSString *child in children) {
+            if (![descendants containsObject:child]) {
+                [descendants addObject:child];
+                [queue addObject:child];
+            }
+        }
+    }
+
+    CSCapExecutionPlan *subPlan = [CSCapExecutionPlan planWithName:
+        [NSString stringWithFormat:@"%@ [suffix from %@]", self.name, sourceNodeId]];
+
+    // Add synthetic InputSlot
+    NSString *inputId = [NSString stringWithFormat:@"%@_suffix_input", sourceNodeId];
+    [subPlan addNode:[CSCapNode inputSlotNode:inputId
+                                    slotName:@"collected_input"
+                                    mediaUrn:sourceMediaUrn
+                                 cardinality:CSInputCardinalitySingle]];
+
+    // Add descendant nodes (skip source — replaced by InputSlot; skip original InputSlots)
+    for (NSString *nodeId in descendants) {
+        if ([nodeId isEqualToString:sourceNodeId]) continue;
+        CSCapNode *node = self.nodes[nodeId];
+        if (!node) continue;
+        if (node.slotName) continue; // skip original InputSlot nodes
+        [subPlan addNode:node];
+    }
+
+    // Rewire edges: source -> child becomes inputSlot -> child
+    for (CSCapEdge *edge in self.edges) {
+        if ([edge.fromNode isEqualToString:sourceNodeId] && [descendants containsObject:edge.toNode]) {
+            [subPlan addEdge:[CSCapEdge directFrom:inputId to:edge.toNode]];
+        } else if ([descendants containsObject:edge.fromNode]
+                   && [descendants containsObject:edge.toNode]
+                   && ![edge.fromNode isEqualToString:sourceNodeId]) {
+            [subPlan addEdge:edge];
+        }
+    }
+
+    NSError *validateError = [subPlan validate];
+    if (validateError) {
+        if (error) *error = validateError;
+        return nil;
+    }
+    return subPlan;
 }
 
 @end

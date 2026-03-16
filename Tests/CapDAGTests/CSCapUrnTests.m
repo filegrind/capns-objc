@@ -1091,5 +1091,171 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertEqualObjects([cap getTag:@"op"], @"test");
 }
 
+#pragma mark - Dispatch Predicate Tests
+
+// TEST823: is_dispatchable — exact match provider dispatches request
+- (void)testDispatchExactMatch {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Exact match should dispatch");
+}
+
+// TEST824: is_dispatchable — provider with broader input handles specific request (contravariance)
+- (void)testDispatchContravariantInput {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:\";op=analyze;out=\"media:record;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=analyze;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Provider accepting any input should dispatch request with specific pdf input");
+}
+
+// TEST825: is_dispatchable — request with unconstrained input dispatches to specific provider
+// media: on the request input axis means "unconstrained" — vacuously true
+- (void)testDispatchRequestUnconstrainedInput {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=analyze;out=\"media:record;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:\";op=analyze;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Request in=media: is unconstrained — axis is vacuously true");
+}
+
+// TEST826: is_dispatchable — provider output must satisfy request output (covariance)
+- (void)testDispatchCovariantOutput {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Provider output record;textable should satisfy request needing textable");
+}
+
+// TEST827: is_dispatchable — provider with generic output cannot satisfy specific request
+- (void)testDispatchGenericOutputFails {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertFalse([provider isDispatchable:request], @"Provider with generic output cannot guarantee specific output");
+}
+
+// TEST828: is_dispatchable — wildcard * tag in request, provider missing tag → reject
+- (void)testDispatchWildcardRequiresTagPresence {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:\";op=infer;out=\"media:textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:\";candle=*;op=infer;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertFalse([provider isDispatchable:request], @"Provider missing candle tag should NOT dispatch request requiring candle=*");
+}
+
+// TEST829: is_dispatchable — wildcard * tag in request, provider has tag → accept
+- (void)testDispatchWildcardWithTagPresent {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:candle=v2;in=\"media:\";op=infer;out=\"media:textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:\";candle=*;op=infer;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Provider with candle=v2 should dispatch request requiring candle=*");
+}
+
+// TEST830: is_dispatchable — provider extra tags are refinement, always OK
+- (void)testDispatchProviderExtraTags {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:backend=mlx;in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Provider with extra backend tag should still dispatch");
+}
+
+// TEST831: is_dispatchable — cross-backend mismatch prevented
+- (void)testDispatchCrossBackendMismatch {
+    NSError *error;
+    CSCapUrn *ggufProvider = [CSCapUrn fromString:@"cap:gguf=*;in=\"media:model-spec;gguf;textable\";op=infer;out=\"media:textable\"" error:&error];
+    CSCapUrn *candleRequest = [CSCapUrn fromString:@"cap:candle=*;in=\"media:model-spec;candle;textable\";op=infer;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(ggufProvider);
+    XCTAssertNotNil(candleRequest);
+    XCTAssertFalse([ggufProvider isDispatchable:candleRequest], @"GGUF provider must not dispatch candle request");
+}
+
+// TEST832: is_dispatchable is NOT symmetric
+- (void)testDispatchAsymmetric {
+    NSError *error;
+    CSCapUrn *broad = [CSCapUrn fromString:@"cap:in=\"media:\";op=process;out=\"media:record;textable\"" error:&error];
+    CSCapUrn *narrow = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=process;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(broad);
+    XCTAssertNotNil(narrow);
+    XCTAssertTrue([broad isDispatchable:narrow], @"Broad provider should dispatch narrow request");
+    XCTAssertFalse([narrow isDispatchable:broad], @"Narrow provider should NOT dispatch broad request");
+}
+
+// TEST833: is_comparable — both directions checked
+- (void)testComparableSymmetric {
+    NSError *error;
+    CSCapUrn *a = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    CSCapUrn *b = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(a);
+    XCTAssertNotNil(b);
+    XCTAssertTrue([a isComparable:b]);
+    XCTAssertTrue([b isComparable:a]);
+}
+
+// TEST834: is_comparable — unrelated caps are NOT comparable
+- (void)testComparableUnrelated {
+    NSError *error;
+    CSCapUrn *a = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    CSCapUrn *b = [CSCapUrn fromString:@"cap:in=\"media:audio\";op=transcribe;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(a);
+    XCTAssertNotNil(b);
+    XCTAssertFalse([a isComparable:b]);
+    XCTAssertFalse([b isComparable:a]);
+}
+
+// TEST835: is_equivalent — identical caps
+- (void)testEquivalentIdentical {
+    NSError *error;
+    CSCapUrn *a = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    CSCapUrn *b = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(a);
+    XCTAssertNotNil(b);
+    XCTAssertTrue([a isEquivalent:b]);
+}
+
+// TEST836: is_equivalent — non-equivalent comparable caps
+- (void)testEquivalentNonEquivalent {
+    NSError *error;
+    CSCapUrn *a = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    CSCapUrn *b = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(a);
+    XCTAssertNotNil(b);
+    XCTAssertTrue([a isComparable:b], @"Should be comparable");
+    XCTAssertFalse([a isEquivalent:b], @"Should NOT be equivalent — different specificity");
+}
+
+// TEST837: is_dispatchable — op tag mismatch rejects
+- (void)testDispatchOpMismatch {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=transform;out=\"media:textable\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertFalse([provider isDispatchable:request], @"Different op tags should prevent dispatch");
+}
+
+// TEST838: is_dispatchable — request with wildcard output accepts any provider output
+- (void)testDispatchRequestWildcardOutput {
+    NSError *error;
+    CSCapUrn *provider = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:record;textable\"" error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:@"cap:in=\"media:pdf\";op=extract;out=\"media:\"" error:&error];
+    XCTAssertNotNil(provider);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([provider isDispatchable:request], @"Request with wildcard output should accept any provider output");
+}
 
 @end

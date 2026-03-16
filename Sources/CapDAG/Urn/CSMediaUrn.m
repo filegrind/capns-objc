@@ -195,6 +195,50 @@ NSErrorDomain const CSMediaUrnErrorDomain = @"CSMediaUrnErrorDomain";
     return [[self tags] count];
 }
 
+// MARK: - List cardinality builders
+
+- (CSMediaUrn *)withList {
+    return [self withTag:@"list" value:@"*"];
+}
+
+- (CSMediaUrn *)withoutList {
+    return [self withoutTag:@"list"];
+}
+
++ (CSMediaUrn *)lub:(NSArray<CSMediaUrn *> *)urns {
+    if (urns.count == 0) {
+        NSError *err = nil;
+        CSMediaUrn *universal = [CSMediaUrn fromString:@"media:" error:&err];
+        NSAssert(universal != nil, @"Failed to create universal media URN: %@", err);
+        return universal;
+    }
+    if (urns.count == 1) {
+        return urns[0];
+    }
+
+    // Start with the first URN's tags, intersect with each subsequent URN
+    NSMutableDictionary<NSString *, NSString *> *commonTags = [urns[0].tags mutableCopy];
+
+    for (NSUInteger i = 1; i < urns.count; i++) {
+        NSDictionary<NSString *, NSString *> *otherTags = urns[i].tags;
+        NSMutableArray<NSString *> *keysToRemove = [NSMutableArray array];
+        for (NSString *key in commonTags) {
+            NSString *otherValue = otherTags[key];
+            if (!otherValue || ![otherValue isEqualToString:commonTags[key]]) {
+                [keysToRemove addObject:key];
+            }
+        }
+        [commonTags removeObjectsForKeys:keysToRemove];
+    }
+
+    NSError *err = nil;
+    CSTaggedUrn *inner = [CSTaggedUrn fromPrefix:@"media" tags:commonTags error:&err];
+    NSAssert(inner != nil, @"Failed to build LUB MediaUrn from tags: %@", err);
+    CSMediaUrn *result = [CSMediaUrn fromTaggedUrn:inner error:&err];
+    NSAssert(result != nil, @"Failed to wrap LUB TaggedUrn as MediaUrn: %@", err);
+    return result;
+}
+
 // MARK: - Convenience conformsTo without error
 
 - (BOOL)conformsTo:(CSMediaUrn *)pattern {

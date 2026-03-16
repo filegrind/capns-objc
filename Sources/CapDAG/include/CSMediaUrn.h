@@ -82,6 +82,22 @@ typedef NS_ERROR_ENUM(CSMediaUrnErrorDomain, CSMediaUrnError) {
 /// Mirrors Rust: pub fn without_tag(&self, key: &str) -> Self
 - (CSMediaUrn * _Nonnull)withoutTag:(NSString * _Nonnull)key;
 
+/// Create a new MediaUrn with the list marker tag added.
+/// If already a list, returns an equivalent copy (idempotent).
+/// Mirrors Rust: pub fn with_list(&self) -> MediaUrn
+- (CSMediaUrn * _Nonnull)withList;
+
+/// Create a new MediaUrn with the list marker tag removed.
+/// If already scalar, returns an equivalent copy (idempotent).
+/// Mirrors Rust: pub fn without_list(&self) -> MediaUrn
+- (CSMediaUrn * _Nonnull)withoutList;
+
+/// Compute the least upper bound (LUB) of an array of media URNs.
+/// The LUB keeps only tags that are common to ALL inputs (with matching values).
+/// Returns media: (universal) if no common tags exist, or if the array is empty.
+/// Mirrors Rust: pub fn lub(urns: &[MediaUrn]) -> MediaUrn
++ (CSMediaUrn * _Nonnull)lub:(NSArray<CSMediaUrn *> * _Nonnull)urns;
+
 // MARK: - Predicates (mirror Rust MediaUrn predicates)
 
 /// Check if this represents binary data (textable marker tag absent).

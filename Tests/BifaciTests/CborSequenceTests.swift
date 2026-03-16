@@ -229,6 +229,150 @@ final class CborSequenceTests: XCTestCase {
         XCTAssertEqual(d1, page2)
     }
 
+    // MARK: - CBOR Array Tests (splitCborArray / assembleCborArray)
+    // Mirrors Rust tests 780-786, 955-956 in cbor_util.rs
+
+    // TEST780: splitCborArray splits integer array
+    func test780_splitIntegerArray() throws {
+        let array = CBOR.array([.unsignedInt(1), .unsignedInt(2), .unsignedInt(3)])
+        let data = Data(array.encode())
+
+        let items = try splitCborArray(data)
+        XCTAssertEqual(items.count, 3)
+
+        for (i, item) in items.enumerated() {
+            let decoded = try CBOR.decode([UInt8](item))
+            XCTAssertEqual(decoded, .unsignedInt(UInt64(i + 1)))
+        }
+    }
+
+    // TEST955: splitCborArray with nested maps
+    func test955_splitMapArray() throws {
+        let map1 = CBOR.map([.utf8String("name"): .utf8String("Alice")])
+        let map2 = CBOR.map([.utf8String("name"): .utf8String("Bob")])
+        let array = CBOR.array([map1, map2])
+        let data = Data(array.encode())
+
+        let items = try splitCborArray(data)
+        XCTAssertEqual(items.count, 2)
+
+        let decoded1 = try CBOR.decode([UInt8](items[0]))
+        XCTAssertEqual(decoded1, map1)
+        let decoded2 = try CBOR.decode([UInt8](items[1]))
+        XCTAssertEqual(decoded2, map2)
+    }
+
+    // TEST782: splitCborArray rejects non-array input
+    func test782_splitNonArray() {
+        let text = CBOR.utf8String("not an array")
+        let data = Data(text.encode())
+
+        XCTAssertThrowsError(try splitCborArray(data)) { error in
+            guard let seqError = error as? CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)")
+                return
+            }
+            if case .notAnArray = seqError {
+                // expected
+            } else {
+                XCTFail("Expected .notAnArray, got \(seqError)")
+            }
+        }
+    }
+
+    // TEST783: splitCborArray rejects empty array
+    func test783_splitEmptyArray() {
+        let array = CBOR.array([])
+        let data = Data(array.encode())
+
+        XCTAssertThrowsError(try splitCborArray(data)) { error in
+            guard let seqError = error as? CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)")
+                return
+            }
+            if case .emptyArray = seqError {
+                // expected
+            } else {
+                XCTFail("Expected .emptyArray, got \(seqError)")
+            }
+        }
+    }
+
+    // TEST784: splitCborArray rejects invalid CBOR bytes
+    func test784_splitInvalidCbor() {
+        // 0xFF 0xFE 0xFD is garbage — SwiftCBOR may decode it as a non-array
+        // value rather than failing outright, so accept either error variant.
+        let data = Data([0xFF, 0xFE, 0xFD])
+        XCTAssertThrowsError(try splitCborArray(data)) { error in
+            guard let seqError = error as? CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)")
+                return
+            }
+            switch seqError {
+            case .deserializationError, .notAnArray:
+                break // both acceptable for garbage input
+            default:
+                XCTFail("Expected .deserializationError or .notAnArray, got \(seqError)")
+            }
+        }
+    }
+
+    // TEST785: assembleCborArray creates array from individual items
+    func test785_assembleIntegerArray() throws {
+        let items: [Data] = [
+            Data(CBOR.unsignedInt(10).encode()),
+            Data(CBOR.unsignedInt(20).encode()),
+            Data(CBOR.unsignedInt(30).encode()),
+        ]
+
+        let assembled = try assembleCborArray(items)
+
+        let decoded = try CBOR.decode([UInt8](assembled))
+        guard case .array(let values) = decoded else {
+            XCTFail("Expected CBOR array")
+            return
+        }
+        XCTAssertEqual(values.count, 3)
+        XCTAssertEqual(values[0], .unsignedInt(10))
+        XCTAssertEqual(values[1], .unsignedInt(20))
+        XCTAssertEqual(values[2], .unsignedInt(30))
+    }
+
+    // TEST786: split then assemble roundtrip preserves data
+    func test786_roundtripSplitAssemble() throws {
+        let original = CBOR.array([
+            .utf8String("hello"),
+            .boolean(true),
+            .unsignedInt(42),
+            .byteString([1, 2, 3]),
+        ])
+        let originalBytes = Data(original.encode())
+
+        let items = try splitCborArray(originalBytes)
+        XCTAssertEqual(items.count, 4)
+
+        let reassembled = try assembleCborArray(items)
+        let decoded = try CBOR.decode([UInt8](reassembled))
+        XCTAssertEqual(decoded, original)
+    }
+
+    // TEST956: assemble then split roundtrip preserves data
+    func test956_roundtripAssembleSplit() throws {
+        let items: [Data] = [
+            Data(CBOR.utf8String("a").encode()),
+            Data(CBOR.utf8String("b").encode()),
+        ]
+
+        let assembled = try assembleCborArray(items)
+        let splitBack = try splitCborArray(assembled)
+
+        XCTAssertEqual(splitBack.count, 2)
+        XCTAssertEqual(splitBack[0], items[0])
+        XCTAssertEqual(splitBack[1], items[1])
+    }
+
+    // MARK: - Stream Tests
+
     // TEST822: collectBytes vs collectCborSequence produce different results for same input
     func test822_collectBytesVsSequence() throws {
         // With byteString chunks, collectBytes extracts inner bytes while

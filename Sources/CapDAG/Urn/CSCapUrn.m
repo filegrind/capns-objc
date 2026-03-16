@@ -519,6 +519,118 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
     return [pattern accepts:self];
 }
 
+#pragma mark - Dispatch predicates
+
+- (BOOL)isDispatchable:(CSCapUrn *)request {
+    // Axis 1: Input - provider must handle at least what request specifies (contravariant)
+    if (![self inputDispatchable:request]) {
+        return NO;
+    }
+
+    // Axis 2: Output - provider must produce at least what request needs (covariant)
+    if (![self outputDispatchable:request]) {
+        return NO;
+    }
+
+    // Axis 3: Cap-tags - provider must satisfy explicit request constraints
+    if (![self capTagsDispatchable:request]) {
+        return NO;
+    }
+
+    return YES;
+}
+
+/// Input is CONTRAVARIANT: provider with looser input constraint can handle
+/// request with stricter input. media: is the identity (top) and means
+/// "unconstrained" — vacuously true on either side.
+- (BOOL)inputDispatchable:(CSCapUrn *)request {
+    // Request unconstrained: no input constraint, any provider is fine
+    if ([request.inSpec isEqualToString:@"media:"]) {
+        return YES;
+    }
+
+    // Provider wildcard: provider accepts any input, including request's specific input
+    if ([self.inSpec isEqualToString:@"media:"]) {
+        return YES;
+    }
+
+    // Both specific: request input must conform to provider's input requirement
+    NSError *error = nil;
+    CSMediaUrn *reqIn = [CSMediaUrn fromString:request.inSpec error:&error];
+    if (!reqIn) return NO;
+    CSMediaUrn *provIn = [CSMediaUrn fromString:self.inSpec error:&error];
+    if (!provIn) return NO;
+
+    return [reqIn conformsTo:provIn error:&error];
+}
+
+/// Output is COVARIANT: provider output must conform to request output requirement.
+/// ASYMMETRIC with input: generic provider output does NOT satisfy specific request.
+- (BOOL)outputDispatchable:(CSCapUrn *)request {
+    // Request wildcard: any provider output is fine
+    if ([request.outSpec isEqualToString:@"media:"]) {
+        return YES;
+    }
+
+    // Provider wildcard: cannot guarantee specific output request needs
+    if ([self.outSpec isEqualToString:@"media:"]) {
+        return NO;
+    }
+
+    // Both specific: provider output must conform to request output
+    NSError *error = nil;
+    CSMediaUrn *reqOut = [CSMediaUrn fromString:request.outSpec error:&error];
+    if (!reqOut) return NO;
+    CSMediaUrn *provOut = [CSMediaUrn fromString:self.outSpec error:&error];
+    if (!provOut) return NO;
+
+    return [provOut conformsTo:reqOut error:&error];
+}
+
+/// Every explicit request tag must be satisfied by provider.
+/// Provider may have extra tags (refinement is OK).
+/// Wildcard (*) in request means any value acceptable, but tag must still be present in provider.
+- (BOOL)capTagsDispatchable:(CSCapUrn *)request {
+    for (NSString *key in request.mutableTags) {
+        NSString *requestValue = request.mutableTags[key];
+        NSString *providerValue = self.mutableTags[key];
+
+        if (!providerValue) {
+            // Provider missing a tag that request specifies.
+            // Even wildcard (*) means "any value is fine" — the tag
+            // must still be present. Without this, a GGUF plugin
+            // (no candle tag) would match a registry cap that
+            // requires candle=*, causing cross-backend mismatches.
+            return NO;
+        }
+
+        if ([requestValue isEqualToString:@"*"]) {
+            // Request wildcard accepts anything
+            continue;
+        }
+
+        if ([providerValue isEqualToString:@"*"]) {
+            // Provider wildcard handles anything
+            continue;
+        }
+
+        if (![requestValue isEqualToString:providerValue]) {
+            // Value conflict
+            return NO;
+        }
+    }
+    // Provider may have extra tags not in request — that's refinement, always OK
+    return YES;
+}
+
+- (BOOL)isComparable:(CSCapUrn *)other {
+    return [self accepts:other] || [other accepts:self];
+}
+
+- (BOOL)isEquivalent:(CSCapUrn *)other {
+    return [self accepts:other] && [other accepts:self];
+}
+
 - (NSUInteger)specificity {
     NSUInteger count = 0;
 

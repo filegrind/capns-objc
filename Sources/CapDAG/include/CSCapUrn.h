@@ -171,6 +171,52 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)conformsTo:(CSCapUrn * _Nonnull)pattern;
 
 /**
+ * Check if this provider can dispatch (handle) the given request.
+ *
+ * This is the PRIMARY predicate for routing/dispatch decisions.
+ * NOT symmetric: provider.isDispatchable(request) may differ from request.isDispatchable(provider).
+ *
+ * A provider is dispatchable for a request iff:
+ * 1. Input axis (contravariant): provider can handle request's input
+ *    - Provider with looser input handles stricter request input
+ *    - request.inSpec conforms to provider.inSpec
+ * 2. Output axis (covariant): provider meets request's output needs
+ *    - Provider output must satisfy request's output requirement
+ *    - provider.outSpec conforms to request.outSpec
+ * 3. Cap-tags: provider satisfies all explicit request tag constraints
+ *    - Provider missing a tag that request specifies → reject (even if request tag is wildcard)
+ *
+ * @param request The request cap to check dispatchability against
+ * @return YES if this provider can handle the request
+ */
+- (BOOL)isDispatchable:(CSCapUrn * _Nonnull)request;
+
+/**
+ * Check if two cap URNs are comparable in the order-theoretic sense.
+ * Two URNs are comparable if either one accepts (subsumes) the other.
+ * This is the symmetric closure of the accepts relation.
+ *
+ * Use for routing when you want to find any handler that could
+ * potentially satisfy a request, regardless of which is more specific.
+ *
+ * @param other The other cap to compare with
+ * @return YES if the two caps are comparable
+ */
+- (BOOL)isComparable:(CSCapUrn * _Nonnull)other;
+
+/**
+ * Check if two cap URNs are equivalent in the order-theoretic sense.
+ * Two URNs are equivalent if each accepts (subsumes) the other.
+ * They have the same position in the specificity lattice.
+ *
+ * Use for exact matching where you need URNs to be interchangeable.
+ *
+ * @param other The other cap to compare with
+ * @return YES if the two caps are equivalent
+ */
+- (BOOL)isEquivalent:(CSCapUrn * _Nonnull)other;
+
+/**
  * Get the specificity score for cap matching using graded scoring:
  *   K=v (exact value): 3 points (most specific)
  *   K=* (must-have-any): 2 points

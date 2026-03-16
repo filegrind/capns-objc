@@ -39,6 +39,21 @@ typedef NS_ENUM(NSInteger, CSPlannerErrorCode) {
 - (void)getMediaSpec:(NSString *)urn completion:(void (^)(NSDictionary * _Nullable spec, NSError * _Nullable error))completion;
 @end
 
+// MARK: - Step Type Enum
+
+/// Type of step in a capability chain path
+/// Mirrors Rust: CapChainStepType
+typedef NS_ENUM(NSInteger, CSCapChainStepType) {
+    /// A real capability step
+    CSCapChainStepTypeCap,
+    /// Fan-out: iterate over list items
+    CSCapChainStepTypeForEach,
+    /// Collect: gather iteration results
+    CSCapChainStepTypeCollect,
+    /// Wrap single item in list
+    CSCapChainStepTypeWrapInList,
+};
+
 // MARK: - Supporting Structures
 
 /// Information about a reachable target with metadata
@@ -47,20 +62,46 @@ typedef NS_ENUM(NSInteger, CSPlannerErrorCode) {
 @property (nonatomic, copy) NSString *displayName;
 @property (nonatomic, assign) NSUInteger minDepth;
 @property (nonatomic, assign) NSUInteger maxDepth;
+@property (nonatomic, assign) NSInteger pathCount;
 @end
 
 /// Information about a step in a cap chain
+/// Mirrors Rust: CapChainStepInfo
 @interface CSCapChainStepInfo : NSObject
-@property (nonatomic, copy) NSString *capUrn;
+/// Cap URN string (for Cap steps; nil for cardinality transitions)
+@property (nonatomic, copy, nullable) NSString *capUrn;
 @property (nonatomic, copy, nullable) NSString *preferredCap;
 @property (nonatomic, strong, nullable) NSDictionary *metadata;
+/// Step type (Cap, ForEach, Collect, WrapInList)
+@property (nonatomic, assign) CSCapChainStepType stepType;
+/// Input media spec for this step
+@property (nonatomic, copy, nullable) NSString *fromSpec;
+/// Output media spec for this step
+@property (nonatomic, copy, nullable) NSString *toSpec;
+/// For ForEach/Collect/WrapInList: item media URN
+@property (nonatomic, copy, nullable) NSString *itemMediaUrn;
+/// For ForEach/Collect/WrapInList: list media URN
+@property (nonatomic, copy, nullable) NSString *listMediaUrn;
+/// Specificity score (0 for cardinality transitions)
+@property (nonatomic, assign) NSUInteger specificity;
+/// Human-readable title for this step
+- (NSString *)title;
+/// Whether this is a real cap step
+- (BOOL)isCap;
 @end
 
 /// Information about a cap chain path
+/// Mirrors Rust: CapChainPathInfo
 @interface CSCapChainPathInfo : NSObject
 @property (nonatomic, copy) NSString *sourceSpec;
 @property (nonatomic, copy) NSString *targetSpec;
 @property (nonatomic, strong) NSArray<CSCapChainStepInfo *> *steps;
+/// Total steps including cardinality transitions
+@property (nonatomic, assign) NSInteger totalSteps;
+/// Only real cap steps (for sorting)
+@property (nonatomic, assign) NSInteger capStepCount;
+/// Human-readable "A -> B -> C" description
+@property (nonatomic, copy, nullable) NSString *pathDescription;
 @end
 
 /// Information about an argument
