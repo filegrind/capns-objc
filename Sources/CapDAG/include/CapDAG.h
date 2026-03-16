@@ -52,5 +52,9 @@ FOUNDATION_EXPORT const unsigned char CapDAGVersionString[];
 #import "CSExecutor.h"
 #import "CSLiveCapGraph.h"
 
+// Progress mapping for DAG execution
+#import "CSProgressMapper.h"
+
 // InputResolver module - unified input resolution with media detection
 #import "CSInputResolver.h"
+

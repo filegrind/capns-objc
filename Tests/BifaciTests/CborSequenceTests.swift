@@ -371,6 +371,222 @@ final class CborSequenceTests: XCTestCase {
         XCTAssertEqual(splitBack[1], items[1])
     }
 
+    // MARK: - CBOR Array Extended Tests (TEST961-963)
+
+    // TEST961: assembleCborArray with empty list produces empty CBOR array
+    func test961_assembleEmpty() throws {
+        let result = try assembleCborArray([])
+        let decoded = try CBOR.decode([UInt8](result))
+        guard case .array(let items) = decoded else {
+            XCTFail("Expected CBOR array"); return
+        }
+        XCTAssertEqual(items.count, 0, "Empty input should produce empty array")
+    }
+
+    // TEST962: assembleCborArray rejects invalid CBOR item
+    // Mirrors Rust: valid item first, then garbage — exactly as Rust does
+    // Uses truncated CBOR: 0x5A = byte string with 4-byte length, but only 1 byte of content
+    func test962_assembleInvalidItem() {
+        let valid = Data(CBOR.unsignedInt(1).encode())
+        let garbage = Data([0x5A, 0x00, 0x00, 0x00, 0x0A, 0x01]) // claims 10 bytes, has 1
+        XCTAssertThrowsError(try assembleCborArray([valid, garbage])) { error in
+            guard let seqError = error as? CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)"); return
+            }
+            if case .deserializationError = seqError {
+                // expected
+            } else {
+                XCTFail("Expected .deserializationError, got \(seqError)")
+            }
+        }
+    }
+
+    // TEST963: splitCborArray preserves CBOR byte strings (binary data)
+    func test963_splitBinaryItems() throws {
+        let bin1: [UInt8] = [0xDE, 0xAD]
+        let bin2: [UInt8] = [0xBE, 0xEF]
+        let original = CBOR.array([.byteString(bin1), .byteString(bin2)])
+        let data = Data(original.encode())
+
+        let items = try splitCborArray(data)
+        XCTAssertEqual(items.count, 2)
+
+        let decoded0 = try CBOR.decode([UInt8](items[0]))
+        let decoded1 = try CBOR.decode([UInt8](items[1]))
+        XCTAssertEqual(decoded0, .byteString(bin1))
+        XCTAssertEqual(decoded1, .byteString(bin2))
+    }
+
+    // MARK: - CBOR Sequence Extended Tests (TEST964-975)
+
+    // TEST964: splitCborSequence on concatenated Bytes values
+    func test964_splitSequenceBytes() throws {
+        let b1 = CBOR.byteString([0x01, 0x02])
+        let b2 = CBOR.byteString([0x03, 0x04])
+        let seq = buildCborSequence([b1, b2])
+
+        let items = try splitCborSequence(seq)
+        XCTAssertEqual(items.count, 2)
+
+        let d0 = try CBOR.decode([UInt8](items[0]))
+        let d1 = try CBOR.decode([UInt8](items[1]))
+        XCTAssertEqual(d0, b1)
+        XCTAssertEqual(d1, b2)
+    }
+
+    // TEST965: splitCborSequence on concatenated Text values
+    func test965_splitSequenceText() throws {
+        let t1 = CBOR.utf8String("hello")
+        let t2 = CBOR.utf8String("world")
+        let seq = buildCborSequence([t1, t2])
+
+        let items = try splitCborSequence(seq)
+        XCTAssertEqual(items.count, 2)
+
+        let d0 = try CBOR.decode([UInt8](items[0]))
+        let d1 = try CBOR.decode([UInt8](items[1]))
+        XCTAssertEqual(d0, t1)
+        XCTAssertEqual(d1, t2)
+    }
+
+    // TEST966: splitCborSequence handles mixed types
+    func test966_splitSequenceMixed() throws {
+        let values: [CBOR] = [
+            .byteString([0xCA, 0xFE]),
+            .utf8String("text"),
+            .map([.utf8String("key"): .unsignedInt(42)]),
+            .unsignedInt(99),
+        ]
+        let seq = buildCborSequence(values)
+
+        let items = try splitCborSequence(seq)
+        XCTAssertEqual(items.count, 4)
+
+        for (i, expected) in values.enumerated() {
+            let decoded = try CBOR.decode([UInt8](items[i]))
+            XCTAssertEqual(decoded, expected, "Item \(i) mismatch")
+        }
+    }
+
+    // TEST967: splitCborSequence on single-item sequence
+    func test967_splitSequenceSingle() throws {
+        let single = CBOR.utf8String("only one")
+        let seq = buildCborSequence([single])
+
+        let items = try splitCborSequence(seq)
+        XCTAssertEqual(items.count, 1)
+        let decoded = try CBOR.decode([UInt8](items[0]))
+        XCTAssertEqual(decoded, single)
+    }
+
+    // TEST968: assemble then split roundtrip preserves items (sequence)
+    func test968_roundtripAssembleSplitSequence() throws {
+        let items: [Data] = [
+            Data(CBOR.utf8String("a").encode()),
+            Data(CBOR.unsignedInt(10).encode()),
+            Data(CBOR.byteString([0xFF]).encode()),
+        ]
+
+        let assembled = try assembleCborSequence(items)
+        let splitBack = try splitCborSequence(assembled)
+
+        XCTAssertEqual(splitBack.count, 3)
+        for (i, item) in items.enumerated() {
+            XCTAssertEqual(splitBack[i], item, "Item \(i) mismatch after roundtrip")
+        }
+    }
+
+    // TEST969: split then assemble roundtrip preserves bytes exactly (sequence)
+    func test969_roundtripSplitAssembleSequence() throws {
+        let values: [CBOR] = [
+            .utf8String("x"),
+            .unsignedInt(7),
+        ]
+        let original = buildCborSequence(values)
+
+        let items = try splitCborSequence(original)
+        let reassembled = try assembleCborSequence(items)
+
+        XCTAssertEqual(reassembled, original, "Roundtrip must preserve bytes exactly")
+    }
+
+    // TEST970: splitCborSequence rejects empty data
+    func test970_splitSequenceEmpty() {
+        XCTAssertThrowsError(try splitCborSequence(Data())) { error in
+            guard let seqError = error as? CborSequenceError else {
+                XCTFail("Expected CborSequenceError"); return
+            }
+            if case .emptySequence = seqError {
+                // expected
+            } else {
+                XCTFail("Expected .emptySequence, got \(seqError)")
+            }
+        }
+    }
+
+    // TEST971: splitCborSequence rejects truncated CBOR
+    func test971_splitSequenceTruncated() {
+        // Start of a text string header but truncated mid-value
+        let truncated = Data([0x78, 0x20]) // text(32) but no actual bytes follow
+        XCTAssertThrowsError(try splitCborSequence(truncated)) { error in
+            guard error is CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)"); return
+            }
+        }
+    }
+
+    // TEST972: assembleCborSequence rejects invalid item
+    // Mirrors Rust: valid item first, then garbage — exactly as Rust does
+    // Uses truncated CBOR: 0x5A = byte string with 4-byte length, but only 1 byte of content
+    func test972_assembleSequenceInvalidItem() {
+        let valid = Data(CBOR.unsignedInt(1).encode())
+        let garbage = Data([0x5A, 0x00, 0x00, 0x00, 0x0A, 0x01]) // claims 10 bytes, has 1
+        XCTAssertThrowsError(try assembleCborSequence([valid, garbage])) { error in
+            guard error is CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)"); return
+            }
+        }
+    }
+
+    // TEST973: assembleCborSequence with empty items produces empty bytes
+    func test973_assembleSequenceEmpty() throws {
+        let result = try assembleCborSequence([])
+        XCTAssertEqual(result.count, 0, "Empty items should produce empty bytes")
+    }
+
+    // TEST974: CBOR sequence is NOT a CBOR array — splitCborArray rejects it
+    func test974_sequenceIsNotArray() {
+        let seq = buildCborSequence([.unsignedInt(1), .unsignedInt(2)])
+        // A sequence is just concatenated values, not wrapped in array
+        // splitCborArray should reject it (it's not a single CBOR array value)
+        XCTAssertThrowsError(try splitCborArray(seq)) { error in
+            guard let seqError = error as? CborSequenceError else {
+                XCTFail("Expected CborSequenceError, got \(error)"); return
+            }
+            if case .notAnArray = seqError {
+                // expected — first value decodes as integer, not array
+            } else {
+                XCTFail("Expected .notAnArray, got \(seqError)")
+            }
+        }
+    }
+
+    // TEST975: single CBOR value is both valid sequence and valid value
+    func test975_singleValueSequence() throws {
+        let single = CBOR.utf8String("standalone")
+        let data = Data(single.encode())
+
+        // As sequence: should split to exactly one item
+        let seqItems = try splitCborSequence(data)
+        XCTAssertEqual(seqItems.count, 1)
+        let decoded = try CBOR.decode([UInt8](seqItems[0]))
+        XCTAssertEqual(decoded, single)
+
+        // As raw CBOR: should decode directly
+        let directDecode = try CBOR.decode([UInt8](data))
+        XCTAssertEqual(directDecode, single)
+    }
+
     // MARK: - Stream Tests
 
     // TEST822: collectBytes vs collectCborSequence produce different results for same input

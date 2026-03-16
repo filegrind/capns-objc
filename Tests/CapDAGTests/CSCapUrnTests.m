@@ -1258,4 +1258,145 @@ static NSString* testUrn(NSString *tags) {
     XCTAssertTrue([provider isDispatchable:request], @"Request with wildcard output should accept any provider output");
 }
 
+// TEST014: Test that escape sequences round-trip correctly
+- (void)testRoundTripEscapes {
+    NSError *error;
+    CSCapUrn *cap = [CSCapUrn fromString:@"cap:in=\"media:void\";key=\"value\\\"with\\\\escapes\";out=\"media:record;textable\"" error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertEqualObjects([cap getTag:@"key"], @"value\"with\\escapes");
+    NSString *serialized = [cap toString];
+    CSCapUrn *reparsed = [CSCapUrn fromString:serialized error:&error];
+    XCTAssertNotNil(reparsed);
+    XCTAssertEqualObjects([cap toString], [reparsed toString]);
+}
+
+// TEST018: Test that quoted values with different case do NOT match (case-sensitive)
+- (void)testMatchingCaseSensitiveValues {
+    NSError *error;
+    CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"key=\"Value\"") error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"key=\"value\"") error:&error];
+    XCTAssertNotNil(cap1);
+    XCTAssertNotNil(cap2);
+    XCTAssertFalse([cap1 accepts:cap2]);
+    XCTAssertFalse([cap2 accepts:cap1]);
+
+    // Same case should match
+    CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"key=\"Value\"") error:&error];
+    XCTAssertTrue([cap1 accepts:cap3]);
+}
+
+// TEST021: Test builder creates cap URN with correct tags and direction specs
+- (void)testBuilder {
+    NSError *error;
+    CSCapUrn *cap = [[[[[[[CSCapUrnBuilder builder]
+        inSpec:@"media:void"]
+        outSpec:@"media:record;textable"]
+        tag:@"op" value:@"generate"]
+        tag:@"target" value:@"thumbnail"]
+        tag:@"ext" value:@"pdf"]
+        build:&error];
+
+    XCTAssertNotNil(cap);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects([cap getTag:@"op"], @"generate");
+    XCTAssertEqualObjects([cap getInSpec], @"media:void");
+    XCTAssertEqualObjects([cap getOutSpec], @"media:record;textable");
+}
+
+// TEST022: Test builder requires both in_spec and out_spec
+- (void)testBuilderRequiresDirection {
+    NSError *error;
+
+    // Missing in_spec should fail
+    CSCapUrn *result1 = [[[[CSCapUrnBuilder builder]
+        outSpec:@"media:record;textable"]
+        tag:@"op" value:@"test"]
+        build:&error];
+    XCTAssertNil(result1);
+
+    // Missing out_spec should fail
+    error = nil;
+    CSCapUrn *result2 = [[[[CSCapUrnBuilder builder]
+        inSpec:@"media:void"]
+        tag:@"op" value:@"test"]
+        build:&error];
+    XCTAssertNil(result2);
+
+    // Both present should succeed
+    error = nil;
+    CSCapUrn *result3 = [[[[CSCapUrnBuilder builder]
+        inSpec:@"media:void"]
+        outSpec:@"media:record;textable"]
+        build:&error];
+    XCTAssertNotNil(result3);
+}
+
+// TEST023: Test builder lowercases keys but preserves value case
+- (void)testBuilderPreservesCase {
+    NSError *error;
+    CSCapUrn *cap = [[[[[CSCapUrnBuilder builder]
+        inSpec:@"media:void"]
+        outSpec:@"media:record;textable"]
+        tag:@"KEY" value:@"ValueWithCase"]
+        build:&error];
+
+    XCTAssertNotNil(cap);
+    // Key is lowercase
+    XCTAssertEqualObjects([cap getTag:@"key"], @"ValueWithCase");
+}
+
+// TEST025: Test find_best_match returns most specific matching cap
+- (void)testBestMatch {
+    NSError *error;
+    CSCapUrn *cap1 = [CSCapUrn fromString:testUrn(@"op=*") error:&error];
+    CSCapUrn *cap2 = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
+    CSCapUrn *cap3 = [CSCapUrn fromString:testUrn(@"op=generate;ext=pdf") error:&error];
+    XCTAssertNotNil(cap1);
+    XCTAssertNotNil(cap2);
+    XCTAssertNotNil(cap3);
+
+    CSCapUrn *request = [CSCapUrn fromString:testUrn(@"op=generate") error:&error];
+    XCTAssertNotNil(request);
+    CSCapUrn *best = [CSCapMatcher findBestMatchInCaps:@[cap1, cap2, cap3] forRequest:request];
+
+    // Most specific cap that accepts the request
+    XCTAssertNotNil(best);
+    XCTAssertEqualObjects([best getTag:@"ext"], @"pdf");
+}
+
+// TEST034: Test empty values are rejected
+- (void)testEmptyValueError {
+    NSError *error;
+    CSCapUrn *result1 = [CSCapUrn fromString:testUrn(@"key=") error:&error];
+    XCTAssertNil(result1);
+
+    error = nil;
+    CSCapUrn *result2 = [CSCapUrn fromString:testUrn(@"key=;other=value") error:&error];
+    XCTAssertNil(result2);
+}
+
+// TEST037: Test with_tag rejects empty value
+- (void)testWithTagRejectsEmptyValue {
+    NSError *error;
+    CSCapUrn *cap = [CSCapUrn fromString:testUrn(@"") error:&error];
+    XCTAssertNotNil(cap);
+    // withTag with empty value — tag should NOT be set
+    CSCapUrn *result = [cap withTag:@"key" value:@""];
+    XCTAssertNil([result getTag:@"key"]);
+}
+
+// TEST047: Matching semantics - thumbnail fallback with void input
+- (void)testMatchingSemanticsThumbVoidInput {
+    NSError *error;
+    NSString *outBin = @"media:binary";
+    CSCapUrn *cap = [CSCapUrn fromString:[NSString stringWithFormat:
+        @"cap:in=\"media:void\";op=generate_thumbnail;out=\"%@\"", outBin] error:&error];
+    CSCapUrn *request = [CSCapUrn fromString:[NSString stringWithFormat:
+        @"cap:ext=wav;in=\"media:void\";op=generate_thumbnail;out=\"%@\"", outBin] error:&error];
+    XCTAssertNotNil(cap);
+    XCTAssertNotNil(request);
+    XCTAssertTrue([cap accepts:request],
+                  @"Thumbnail fallback with void input should match");
+}
+
 @end

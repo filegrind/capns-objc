@@ -410,6 +410,10 @@ static BOOL CSMediaUrnInstanceConformsToPattern(NSString *instance, NSString *pa
     if ([keyLower isEqualToString:@"in"] || [keyLower isEqualToString:@"out"]) {
         return self;
     }
+    // Reject empty values — matches Rust which returns Err for empty values
+    if (value.length == 0) {
+        return self;
+    }
     NSMutableDictionary *newTags = [self.mutableTags mutableCopy];
     // Key lowercase, value preserved
     newTags[keyLower] = value;

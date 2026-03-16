@@ -85,6 +85,101 @@ BOOL CSCardinalityPatternProducesVector(CSCardinalityPattern pattern);
 /// Mirrors Rust: pub fn requires_vector(&self) -> bool
 BOOL CSCardinalityPatternRequiresVector(CSCardinalityPattern pattern);
 
+// MARK: - InputStructure
+
+/// Structure of media data - whether it has internal fields or is opaque
+/// Mirrors Rust: pub enum InputStructure
+typedef NS_ENUM(NSInteger, CSInputStructure) {
+    /// Indivisible, no internal fields (no record marker = opaque by default)
+    CSInputStructureOpaque,
+    /// Has internal key-value fields (record marker present)
+    CSInputStructureRecord
+};
+
+/// Parse structure from a media URN string.
+/// Uses the `record` marker tag to determine if this has internal fields.
+/// No record marker = opaque (default), record marker = record.
+/// Mirrors Rust: InputStructure::from_media_urn
+CSInputStructure CSInputStructureFromMediaUrn(NSString *urn);
+
+/// Check if structures are compatible for data flow.
+/// Structure compatibility is strict - no coercion allowed.
+/// Mirrors Rust: pub fn is_compatible_with(&self, source: InputStructure)
+typedef NS_ENUM(NSInteger, CSStructureCompatibility) {
+    /// Direct flow, structures match
+    CSStructureCompatibilityDirect,
+    /// Incompatible structures - this is an error
+    CSStructureCompatibilityIncompatible
+};
+
+CSStructureCompatibility CSInputStructureIsCompatibleWith(CSInputStructure target, CSInputStructure source);
+
+/// Create a media URN with this structure from a base URN
+/// Mirrors Rust: pub fn apply_to_urn(&self, base_urn: &str) -> String
+NSString *CSInputStructureApplyToUrn(CSInputStructure structure, NSString *baseUrn);
+
+// MARK: - MediaShape
+
+/// Complete shape of media data combining cardinality and structure
+/// Mirrors Rust: pub struct MediaShape
+@interface CSMediaShape : NSObject
+
+@property (nonatomic, assign, readonly) CSInputCardinality cardinality;
+@property (nonatomic, assign, readonly) CSInputStructure structure;
+
++ (instancetype)fromMediaUrn:(NSString *)urn;
++ (instancetype)scalarOpaque;
++ (instancetype)scalarRecord;
++ (instancetype)listOpaque;
++ (instancetype)listRecord;
+
+@end
+
+/// Result of checking complete shape compatibility
+/// Mirrors Rust: pub enum ShapeCompatibility
+typedef NS_ENUM(NSInteger, CSShapeCompatibility) {
+    CSShapeCompatibilityDirect,
+    CSShapeCompatibilityWrapInArray,
+    CSShapeCompatibilityRequiresFanOut,
+    CSShapeCompatibilityIncompatible
+};
+
+CSShapeCompatibility CSMediaShapeIsCompatibleWith(CSMediaShape *target, CSMediaShape *source);
+
+// MARK: - CapShapeInfo
+
+/// Complete shape analysis for a cap transformation (cardinality + structure)
+/// Mirrors Rust: pub struct CapShapeInfo
+@interface CSCapShapeInfo : NSObject
+
+@property (nonatomic, strong, readonly) CSMediaShape *input;
+@property (nonatomic, strong, readonly) CSMediaShape *output;
+@property (nonatomic, copy, readonly) NSString *capUrn;
+
++ (instancetype)fromCapUrn:(NSString *)capUrn inSpec:(NSString *)inSpec outSpec:(NSString *)outSpec;
+- (CSCardinalityPattern)cardinalityPattern;
+- (BOOL)structuresMatch;
+
+@end
+
+// MARK: - ShapeChainAnalysis
+
+/// Analysis of shape chain for a sequence of caps (cardinality + structure)
+/// Mirrors Rust: pub struct ShapeChainAnalysis
+@interface CSShapeChainAnalysis : NSObject
+
+@property (nonatomic, copy, readonly) NSArray<CSCapShapeInfo *> *capInfos;
+@property (nonatomic, copy, readonly) NSArray<NSNumber *> *fanOutPoints;
+@property (nonatomic, copy, readonly) NSArray<NSNumber *> *fanInPoints;
+@property (nonatomic, assign, readonly) BOOL isValid;
+@property (nonatomic, copy, readonly, nullable) NSString *error;
+
++ (instancetype)analyze:(NSArray<CSCapShapeInfo *> *)capInfos;
+- (BOOL)requiresTransformation;
+- (nullable CSMediaShape *)finalOutputShape;
+
+@end
+
 // MARK: - CapCardinalityInfo
 
 /// Cardinality analysis for a cap transformation

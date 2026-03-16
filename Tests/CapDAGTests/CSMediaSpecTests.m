@@ -256,4 +256,157 @@
     XCTAssertNil(error, @"Should have no error");
 }
 
+#pragma mark - ResolvedMediaSpec predicate tests
+
+// TEST099: ResolvedMediaSpec is_binary (textable absent)
+- (void)test099_resolved_is_binary {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:",
+        @"media_type": @"application/octet-stream",
+        @"title": @"Binary"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertTrue([resolved isBinary]);
+    XCTAssertFalse([resolved isRecord]);
+    XCTAssertFalse([resolved isJSON]);
+}
+
+// TEST100: ResolvedMediaSpec is_record (record marker present)
+- (void)test100_resolved_is_record {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:record;textable",
+        @"media_type": @"application/json",
+        @"title": @"Object"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:record;textable", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertTrue([resolved isRecord]);
+    XCTAssertFalse([resolved isBinary]);
+    XCTAssertTrue([resolved isScalar], @"record without list marker is scalar");
+    XCTAssertFalse([resolved isList]);
+}
+
+// TEST101: ResolvedMediaSpec is_scalar (list marker absent)
+- (void)test101_resolved_is_scalar {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:textable",
+        @"media_type": @"text/plain",
+        @"title": @"String"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:textable", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertTrue([resolved isScalar]);
+    XCTAssertFalse([resolved isRecord]);
+    XCTAssertFalse([resolved isList]);
+}
+
+// TEST102: ResolvedMediaSpec is_list (list marker present)
+- (void)test102_resolved_is_list {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:list;textable",
+        @"media_type": @"application/json",
+        @"title": @"String Array"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:list;textable", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertTrue([resolved isList]);
+    XCTAssertFalse([resolved isRecord]);
+    XCTAssertFalse([resolved isScalar]);
+}
+
+// TEST103: ResolvedMediaSpec is_json (json tag present)
+- (void)test103_resolved_is_json {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:json;record;textable",
+        @"media_type": @"application/json",
+        @"title": @"JSON"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:json;record;textable", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertTrue([resolved isJSON]);
+    XCTAssertTrue([resolved isRecord]);
+    XCTAssertFalse([resolved isBinary]);
+}
+
+// TEST104: ResolvedMediaSpec is_text (textable present)
+- (void)test104_resolved_is_text {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:textable",
+        @"media_type": @"text/plain",
+        @"title": @"Text"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:textable", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertTrue([resolved isText]);
+    XCTAssertFalse([resolved isBinary]);
+    XCTAssertFalse([resolved isJSON]);
+}
+
+#pragma mark - Resolve with local overrides
+
+// TEST091: Resolve custom media URN from local media_specs
+- (void)test091_resolve_custom_media_spec {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:custom-spec;json",
+        @"media_type": @"application/json",
+        @"title": @"Custom Spec",
+        @"profile_uri": @"https://example.com/schema"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:custom-spec;json", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertNil(error);
+    XCTAssertEqualObjects(resolved.mediaUrn, @"media:custom-spec;json");
+    XCTAssertEqualObjects(resolved.contentType, @"application/json");
+    XCTAssertEqualObjects(resolved.profile, @"https://example.com/schema");
+    XCTAssertNil(resolved.schema);
+}
+
+// TEST092: Resolve custom record media spec with schema
+- (void)test092_resolve_custom_with_schema {
+    NSDictionary *schema = @{
+        @"type": @"object",
+        @"properties": @{
+            @"name": @{@"type": @"string"}
+        }
+    };
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:json;output-spec;record",
+        @"media_type": @"application/json",
+        @"title": @"Output Spec",
+        @"profile_uri": @"https://example.com/schema/output",
+        @"schema": schema
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:json;output-spec;record", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertEqualObjects(resolved.mediaUrn, @"media:json;output-spec;record");
+    XCTAssertEqualObjects(resolved.contentType, @"application/json");
+    XCTAssertEqualObjects(resolved.profile, @"https://example.com/schema/output");
+    XCTAssertNotNil(resolved.schema);
+    XCTAssertEqualObjects(resolved.schema[@"type"], @"object");
+}
+
+// TEST094: Local media_specs overrides registry definition
+- (void)test094_local_overrides_registry {
+    NSArray<NSDictionary *> *specs = @[@{
+        @"urn": @"media:textable",
+        @"media_type": @"application/json",
+        @"title": @"Custom String",
+        @"profile_uri": @"https://custom.example.com/str"
+    }];
+    NSError *error = nil;
+    CSMediaSpec *resolved = CSResolveMediaUrn(@"media:textable", specs, &error);
+    XCTAssertNotNil(resolved);
+    XCTAssertEqualObjects(resolved.contentType, @"application/json");
+    XCTAssertEqualObjects(resolved.profile, @"https://custom.example.com/str");
+}
+
 @end
