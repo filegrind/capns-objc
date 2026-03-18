@@ -22,28 +22,28 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 @implementation CSReachableTargetInfo
 @end
 
-@implementation CSCapChainStepInfo
+@implementation CSStrandStep
 
 - (NSString *)title {
     switch (self.stepType) {
-        case CSCapChainStepTypeCap:
+        case CSStrandStepTypeCap:
             return self.capUrn ?: @"(unknown cap)";
-        case CSCapChainStepTypeForEach:
+        case CSStrandStepTypeForEach:
             return @"ForEach (iterate over list)";
-        case CSCapChainStepTypeCollect:
+        case CSStrandStepTypeCollect:
             return @"Collect (gather results)";
-        case CSCapChainStepTypeWrapInList:
+        case CSStrandStepTypeWrapInList:
             return @"WrapInList (wrap scalar in list)";
     }
 }
 
 - (BOOL)isCap {
-    return self.stepType == CSCapChainStepTypeCap;
+    return self.stepType == CSStrandStepTypeCap;
 }
 
 @end
 
-@implementation CSCapChainPathInfo
+@implementation CSStrand
 @end
 
 @implementation CSArgumentInfo
@@ -57,24 +57,24 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
 // MARK: - Private Helper Structures
 
-@interface CSCapChainInfo : NSObject
+@interface CSMachineInfo : NSObject
 @property (nonatomic, strong) CSCapCardinalityInfo *cardinality;
 @property (nonatomic, copy, nullable) NSString *filePathArgName;
 @property (nonatomic, assign) BOOL filePathIsStdinChainable;
 @end
 
-@implementation CSCapChainInfo
+@implementation CSMachineInfo
 @end
 
-// MARK: - CSCapPlanBuilder Implementation
+// MARK: - CSMachinePlanBuilder Implementation
 
-@interface CSCapPlanBuilder ()
+@interface CSMachinePlanBuilder ()
 @property (nonatomic, strong) id<CSCapRegistryProtocol> capRegistry;
 @property (nonatomic, strong) id<CSMediaUrnRegistryProtocol> mediaRegistry;
 @property (nonatomic, strong, nullable) NSSet<NSString *> *availableCapUrns;
 @end
 
-@implementation CSCapPlanBuilder
+@implementation CSMachinePlanBuilder
 
 - (instancetype)initWithCapRegistry:(id<CSCapRegistryProtocol>)capRegistry
                       mediaRegistry:(id<CSMediaUrnRegistryProtocol>)mediaRegistry {
@@ -290,7 +290,7 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 - (void)buildPlanFromSource:(NSString *)sourceMedia
                    toTarget:(NSString *)targetMedia
                  inputFiles:(NSArray<CSCapInputFile *> *)inputFiles
-                 completion:(void (^)(CSCapExecutionPlan * _Nullable plan, NSError * _Nullable error))completion {
+                 completion:(void (^)(CSMachinePlan * _Nullable plan, NSError * _Nullable error))completion {
 
     [self findPathFromSource:sourceMedia toTarget:targetMedia completion:^(NSArray<NSString *> * _Nullable capUrns, NSError * _Nullable error) {
         if (error) {
@@ -299,25 +299,25 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
         }
 
         if (capUrns.count == 0) {
-            CSCapExecutionPlan *plan = [CSCapExecutionPlan planWithName:[NSString stringWithFormat:@"Identity: %@ -> %@", sourceMedia, targetMedia]];
+            CSMachinePlan *plan = [CSMachinePlan planWithName:[NSString stringWithFormat:@"Identity: %@ -> %@", sourceMedia, targetMedia]];
             completion(plan, nil);
             return;
         }
 
-        [self getCapChainInfo:capUrns completion:^(NSArray<CSCapChainInfo *> * _Nullable infos, NSError * _Nullable error) {
+        [self getMachineInfo:capUrns completion:^(NSArray<CSMachineInfo *> * _Nullable infos, NSError * _Nullable error) {
             if (error) {
                 completion(nil, error);
                 return;
             }
 
             NSMutableArray<CSCapCardinalityInfo *> *cardinalities = [NSMutableArray array];
-            for (CSCapChainInfo *info in infos) {
+            for (CSMachineInfo *info in infos) {
                 [cardinalities addObject:info.cardinality];
             }
 
             CSCardinalityChainAnalysis *analysis = [CSCardinalityChainAnalysis analyzeChain:cardinalities];
 
-            CSCapExecutionPlan *plan = [self buildPlanFromAnalysisWithSource:sourceMedia
+            CSMachinePlan *plan = [self buildPlanFromAnalysisWithSource:sourceMedia
                                                                       target:targetMedia
                                                                  chainInfos:infos
                                                                    analysis:analysis
@@ -330,8 +330,8 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
 // MARK: - Get Cap Chain Info
 
-- (void)getCapChainInfo:(NSArray<NSString *> *)capUrns
-             completion:(void (^)(NSArray<CSCapChainInfo *> * _Nullable infos, NSError * _Nullable error))completion {
+- (void)getMachineInfo:(NSArray<NSString *> *)capUrns
+             completion:(void (^)(NSArray<CSMachineInfo *> * _Nullable infos, NSError * _Nullable error))completion {
 
     [self.capRegistry getCachedCaps:^(NSArray<CSCap *> * _Nullable caps, NSError * _Nullable error) {
         if (error) {
@@ -341,7 +341,7 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
             return;
         }
 
-        NSMutableArray<CSCapChainInfo *> *infos = [NSMutableArray array];
+        NSMutableArray<CSMachineInfo *> *infos = [NSMutableArray array];
 
         for (NSString *urn in capUrns) {
             CSCap *cap = nil;
@@ -352,14 +352,14 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
                 }
             }
 
-            CSCapChainInfo *info = [[CSCapChainInfo alloc] init];
+            CSMachineInfo *info = [[CSMachineInfo alloc] init];
 
             if (cap) {
                 NSString *inSpec = [[cap capUrn] inSpec];
                 NSString *outSpec = [[cap capUrn] outSpec];
                 info.cardinality = [CSCapCardinalityInfo fromCapUrn:urn inSpec:inSpec outSpec:outSpec];
-                info.filePathArgName = [CSCapPlanBuilder findFilePathArg:cap];
-                info.filePathIsStdinChainable = [CSCapPlanBuilder isFilePathStdinChainable:cap];
+                info.filePathArgName = [CSMachinePlanBuilder findFilePathArg:cap];
+                info.filePathIsStdinChainable = [CSMachinePlanBuilder isFilePathStdinChainable:cap];
             } else {
                 // Cap not found in registry - FAIL HARD
                 completion(nil, [NSError errorWithDomain:CSPlannerErrorDomain
@@ -377,18 +377,18 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
 // MARK: - Build Plan from Analysis
 
-- (CSCapExecutionPlan *)buildPlanFromAnalysisWithSource:(NSString *)sourceMedia
+- (CSMachinePlan *)buildPlanFromAnalysisWithSource:(NSString *)sourceMedia
                                                  target:(NSString *)targetMedia
-                                             chainInfos:(NSArray<CSCapChainInfo *> *)chainInfos
+                                             chainInfos:(NSArray<CSMachineInfo *> *)chainInfos
                                                analysis:(CSCardinalityChainAnalysis *)analysis
                                              inputFiles:(NSArray<CSCapInputFile *> *)inputFiles {
 
-    CSCapExecutionPlan *plan = [CSCapExecutionPlan planWithName:[NSString stringWithFormat:@"Transform: %@ -> %@", sourceMedia, targetMedia]];
+    CSMachinePlan *plan = [CSMachinePlan planWithName:[NSString stringWithFormat:@"Transform: %@ -> %@", sourceMedia, targetMedia]];
 
     CSInputCardinality inputCardinality = (inputFiles.count == 1) ? CSInputCardinalitySingle : CSInputCardinalitySequence;
 
     NSString *inputSlotId = @"input_slot";
-    [plan addNode:[CSCapNode inputSlotNode:inputSlotId
+    [plan addNode:[CSMachineNode inputSlotNode:inputSlotId
                                   slotName:@"input"
                                   mediaUrn:sourceMedia
                                cardinality:inputCardinality]];
@@ -401,8 +401,8 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
     NSString *lastNodeId = [NSString stringWithFormat:@"cap_%lu", (unsigned long)(chainInfos.count - 1)];
     NSString *outputId = @"output";
-    [plan addNode:[CSCapNode outputNode:outputId outputName:@"result" sourceNode:lastNodeId]];
-    [plan addEdge:[CSCapEdge directFrom:lastNodeId to:outputId]];
+    [plan addNode:[CSMachineNode outputNode:outputId outputName:@"result" sourceNode:lastNodeId]];
+    [plan addEdge:[CSMachinePlanEdge directFrom:lastNodeId to:outputId]];
 
     plan.metadata = @{
         @"source_media": sourceMedia,
@@ -416,14 +416,14 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
 // MARK: - Build Linear Plan
 
-- (void)buildLinearPlan:(CSCapExecutionPlan *)plan
+- (void)buildLinearPlan:(CSMachinePlan *)plan
               entryNode:(NSString *)entryNode
-             chainInfos:(NSArray<CSCapChainInfo *> *)chainInfos {
+             chainInfos:(NSArray<CSMachineInfo *> *)chainInfos {
 
     NSString *prevNodeId = entryNode;
 
     for (NSUInteger i = 0; i < chainInfos.count; i++) {
-        CSCapChainInfo *info = chainInfos[i];
+        CSMachineInfo *info = chainInfos[i];
         NSString *nodeId = [NSString stringWithFormat:@"cap_%lu", (unsigned long)i];
         NSString *capUrn = info.cardinality.capUrn;
 
@@ -439,9 +439,9 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
             }
         }
 
-        CSCapNode *node = [CSCapNode capNode:nodeId capUrn:capUrn bindings:bindings];
+        CSMachineNode *node = [CSMachineNode capNode:nodeId capUrn:capUrn bindings:bindings];
         [plan addNode:node];
-        [plan addEdge:[CSCapEdge directFrom:prevNodeId to:nodeId]];
+        [plan addEdge:[CSMachinePlanEdge directFrom:prevNodeId to:nodeId]];
 
         prevNodeId = nodeId;
     }
@@ -449,16 +449,16 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
 // MARK: - Build Fan-Out Plan
 
-- (void)buildFanOutPlan:(CSCapExecutionPlan *)plan
+- (void)buildFanOutPlan:(CSMachinePlan *)plan
               entryNode:(NSString *)entryNode
-             chainInfos:(NSArray<CSCapChainInfo *> *)chainInfos
+             chainInfos:(NSArray<CSMachineInfo *> *)chainInfos
                analysis:(CSCardinalityChainAnalysis *)analysis {
 
     NSString *prevNodeId = entryNode;
     NSUInteger nodeCounter = 0;
 
     for (NSUInteger i = 0; i < chainInfos.count; i++) {
-        CSCapChainInfo *info = chainInfos[i];
+        CSMachineInfo *info = chainInfos[i];
         NSString *capUrn = info.cardinality.capUrn;
 
         BOOL needsFanOut = NO;
@@ -480,17 +480,17 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
                 bindings[info.filePathArgName] = [CSArgumentBinding inputFilePath];
             }
 
-            CSCapNode *capNode = [CSCapNode capNode:bodyEntryId capUrn:capUrn bindings:bindings];
-            CSCapNode *foreachNode = [CSCapNode forEachNode:foreachId inputNode:prevNodeId bodyEntry:bodyEntryId bodyExit:bodyExitId];
-            CSCapNode *collectNode = [CSCapNode collectNode:collectId inputNodes:@[bodyExitId]];
+            CSMachineNode *capNode = [CSMachineNode capNode:bodyEntryId capUrn:capUrn bindings:bindings];
+            CSMachineNode *foreachNode = [CSMachineNode forEachNode:foreachId inputNode:prevNodeId bodyEntry:bodyEntryId bodyExit:bodyExitId];
+            CSMachineNode *collectNode = [CSMachineNode collectNode:collectId inputNodes:@[bodyExitId]];
 
             [plan addNode:foreachNode];
             [plan addNode:capNode];
             [plan addNode:collectNode];
 
-            [plan addEdge:[CSCapEdge directFrom:prevNodeId to:foreachId]];
-            [plan addEdge:[CSCapEdge iterationFrom:foreachId to:bodyEntryId]];
-            [plan addEdge:[CSCapEdge collectionFrom:bodyExitId to:collectId]];
+            [plan addEdge:[CSMachinePlanEdge directFrom:prevNodeId to:foreachId]];
+            [plan addEdge:[CSMachinePlanEdge iterationFrom:foreachId to:bodyEntryId]];
+            [plan addEdge:[CSMachinePlanEdge collectionFrom:bodyExitId to:collectId]];
 
             prevNodeId = collectId;
             nodeCounter++;
@@ -508,9 +508,9 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
                 }
             }
 
-            CSCapNode *node = [CSCapNode capNode:nodeId capUrn:capUrn bindings:bindings];
+            CSMachineNode *node = [CSMachineNode capNode:nodeId capUrn:capUrn bindings:bindings];
             [plan addNode:node];
-            [plan addEdge:[CSCapEdge directFrom:prevNodeId to:nodeId]];
+            [plan addEdge:[CSMachinePlanEdge directFrom:prevNodeId to:nodeId]];
 
             prevNodeId = nodeId;
             nodeCounter++;
@@ -535,14 +535,14 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
             return;
         }
 
-        [self getCapChainInfo:capUrns completion:^(NSArray<CSCapChainInfo *> * _Nullable infos, NSError * _Nullable error) {
+        [self getMachineInfo:capUrns completion:^(NSArray<CSMachineInfo *> * _Nullable infos, NSError * _Nullable error) {
             if (error) {
                 completion(nil, error);
                 return;
             }
 
             NSMutableArray<CSCapCardinalityInfo *> *cardinalities = [NSMutableArray array];
-            for (CSCapChainInfo *info in infos) {
+            for (CSMachineInfo *info in infos) {
                 [cardinalities addObject:info.cardinality];
             }
 
@@ -553,10 +553,10 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
 // MARK: - Build Plan from Path
 
-- (void)buildPlanFromPath:(CSCapChainPathInfo *)path
+- (void)buildPlanFromPath:(CSStrand *)path
                      name:(NSString *)name
         inputCardinality:(CSInputCardinality)cardinality
-              completion:(void (^)(CSCapExecutionPlan * _Nullable plan, NSError * _Nullable error))completion {
+              completion:(void (^)(CSMachinePlan * _Nullable plan, NSError * _Nullable error))completion {
 
     [self.capRegistry getCachedCaps:^(NSArray<CSCap *> * _Nullable caps, NSError * _Nullable error) {
         if (error) {
@@ -568,7 +568,7 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
 
         // Build file path info map
         NSMutableDictionary<NSString *, NSArray *> *filePathInfo = [NSMutableDictionary dictionary];
-        for (CSCapChainStepInfo *step in path.steps) {
+        for (CSStrandStep *step in path.steps) {
             CSCap *cap = nil;
             for (CSCap *c in caps) {
                 if ([[[c capUrn] toString] isEqualToString:step.capUrn]) {
@@ -577,15 +577,15 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
                 }
             }
 
-            NSString *argName = cap ? [CSCapPlanBuilder findFilePathArg:cap] : nil;
-            BOOL chainable = cap ? [CSCapPlanBuilder isFilePathStdinChainable:cap] : NO;
+            NSString *argName = cap ? [CSMachinePlanBuilder findFilePathArg:cap] : nil;
+            BOOL chainable = cap ? [CSMachinePlanBuilder isFilePathStdinChainable:cap] : NO;
             filePathInfo[step.capUrn] = @[argName ?: [NSNull null], @(chainable)];
         }
 
-        CSCapExecutionPlan *plan = [CSCapExecutionPlan planWithName:name];
+        CSMachinePlan *plan = [CSMachinePlan planWithName:name];
 
         NSString *inputSlotId = @"input_slot";
-        [plan addNode:[CSCapNode inputSlotNode:inputSlotId
+        [plan addNode:[CSMachineNode inputSlotNode:inputSlotId
                                       slotName:@"input"
                                       mediaUrn:path.sourceSpec
                                    cardinality:cardinality]];
@@ -593,7 +593,7 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
         NSString *prevNodeId = inputSlotId;
 
         for (NSUInteger i = 0; i < path.steps.count; i++) {
-            CSCapChainStepInfo *step = path.steps[i];
+            CSStrandStep *step = path.steps[i];
             NSString *nodeId = [NSString stringWithFormat:@"cap_%lu", (unsigned long)i];
 
             NSMutableDictionary *bindings = [NSMutableDictionary dictionary];
@@ -612,16 +612,16 @@ NSString * const CSPlannerErrorDomain = @"CSPlannerError";
                 }
             }
 
-            CSCapNode *node = [CSCapNode capNode:nodeId capUrn:step.capUrn bindings:bindings];
+            CSMachineNode *node = [CSMachineNode capNode:nodeId capUrn:step.capUrn bindings:bindings];
             [plan addNode:node];
-            [plan addEdge:[CSCapEdge directFrom:prevNodeId to:nodeId]];
+            [plan addEdge:[CSMachinePlanEdge directFrom:prevNodeId to:nodeId]];
 
             prevNodeId = nodeId;
         }
 
         NSString *outputId = @"output";
-        [plan addNode:[CSCapNode outputNode:outputId outputName:@"result" sourceNode:prevNodeId]];
-        [plan addEdge:[CSCapEdge directFrom:prevNodeId to:outputId]];
+        [plan addNode:[CSMachineNode outputNode:outputId outputName:@"result" sourceNode:prevNodeId]];
+        [plan addEdge:[CSMachinePlanEdge directFrom:prevNodeId to:outputId]];
 
         plan.metadata = @{
             @"source_spec": path.sourceSpec,

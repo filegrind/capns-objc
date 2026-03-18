@@ -89,7 +89,7 @@ static CSCap *makeTestCap(NSString *inSpec, NSString *outSpec, NSString *op, NSS
     CSMediaUrn *source = [CSMediaUrn fromString:@"media:pdf" error:&error];
     CSMediaUrn *target = [CSMediaUrn fromString:@"media:summary-text" error:&error];
 
-    NSArray<CSCapChainPathInfo *> *paths = [graph findPathsToExactTarget:source target:target maxDepth:5 maxPaths:10];
+    NSArray<CSStrand *> *paths = [graph findPathsToExactTarget:source target:target maxDepth:5 maxPaths:10];
 
     XCTAssertEqual(paths.count, 1u);
     XCTAssertEqual(paths[0].totalSteps, 2);
@@ -115,8 +115,8 @@ static CSCap *makeTestCap(NSString *inSpec, NSString *outSpec, NSString *op, NSS
 
     XCTAssertEqual(paths1.count, paths2.count);
     for (NSUInteger i = 0; i < paths1.count; i++) {
-        CSCapChainPathInfo *p1 = paths1[i];
-        CSCapChainPathInfo *p2 = paths2[i];
+        CSStrand *p1 = paths1[i];
+        CSStrand *p2 = paths2[i];
         XCTAssertEqualObjects(p1.steps[0].capUrn, p2.steps[0].capUrn);
     }
 }
@@ -161,7 +161,7 @@ static CSCap *makeTestCap(NSString *inSpec, NSString *outSpec, NSString *op, NSS
     NSArray *paths = [graph findPathsToExactTarget:source target:target maxDepth:5 maxPaths:10];
 
     XCTAssertEqual(paths.count, 1u, @"Should find one path through intermediate");
-    CSCapChainPathInfo *path = paths[0];
+    CSStrand *path = paths[0];
     XCTAssertEqual(path.steps.count, 2u, @"Path should have 2 steps");
     XCTAssertEqualObjects(path.steps[0].capUrn, [cap1.capUrn toString]);
     XCTAssertEqualObjects(path.steps[1].capUrn, [cap2.capUrn toString]);
@@ -274,7 +274,7 @@ static CSCap *makeTestCap(NSString *inSpec, NSString *outSpec, NSString *op, NSS
     CSMediaUrn *thumbTarget = [CSMediaUrn fromString:@"media:thumbnail" error:&error];
     NSArray *pngPaths = [graph findPathsToExactTarget:pngSource target:thumbTarget maxDepth:5 maxPaths:10];
     XCTAssertEqual(pngPaths.count, 1u, @"PNG should find 1 path to thumbnail");
-    XCTAssertEqual(((CSCapChainPathInfo *)pngPaths[0]).steps.count, 2u, @"Path should have 2 steps");
+    XCTAssertEqual(((CSStrand *)pngPaths[0]).steps.count, 2u, @"Path should have 2 steps");
 
     // PDF should find no path
     CSMediaUrn *pdfSource = [CSMediaUrn fromString:@"media:pdf" error:&error];
@@ -297,7 +297,7 @@ static CSCap *makeTestCap(NSString *inSpec, NSString *outSpec, NSString *op, NSS
     CSMediaUrn *source = [CSMediaUrn fromString:@"media:format-a" error:&error];
     CSMediaUrn *target = [CSMediaUrn fromString:@"media:format-c" error:&error];
 
-    NSArray<CSCapChainPathInfo *> *paths = [graph findPathsToExactTarget:source target:target maxDepth:5 maxPaths:10];
+    NSArray<CSStrand *> *paths = [graph findPathsToExactTarget:source target:target maxDepth:5 maxPaths:10];
 
     XCTAssertGreaterThanOrEqual(paths.count, 2u, @"Should find at least 2 paths");
     XCTAssertEqual(paths[0].steps.count, 1u, @"Shortest path should be first (1 step)");
@@ -321,12 +321,12 @@ static CSCap *makeTestCap(NSString *inSpec, NSString *outSpec, NSString *op, NSS
     CSMediaUrn *source = [CSMediaUrn fromString:@"media:pdf" error:&error];
     CSMediaUrn *target = [CSMediaUrn fromString:@"media:decision;bool;textable" error:&error];
 
-    NSArray<CSCapChainPathInfo *> *paths = [graph findPathsToExactTarget:source target:target maxDepth:10 maxPaths:20];
+    NSArray<CSStrand *> *paths = [graph findPathsToExactTarget:source target:target maxDepth:10 maxPaths:20];
 
     // Should find at least one path that goes through ForEach
-    for (CSCapChainPathInfo *path in paths) {
-        for (CSCapChainStepInfo *step in path.steps) {
-            if (step.stepType == CSCapChainStepTypeForEach) {
+    for (CSStrand *path in paths) {
+        for (CSStrandStep *step in path.steps) {
+            if (step.stepType == CSStrandStepTypeForEach) {
                 hasForEach = YES;
                 break;
             }

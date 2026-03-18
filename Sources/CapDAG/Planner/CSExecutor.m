@@ -12,18 +12,18 @@
 #import "CSCap.h"
 #import "CSPlanBuilder.h"
 
-@interface CSPlanExecutor ()
+@interface CSMachineExecutor ()
 @property (nonatomic, strong) id<CSCapExecutorProtocol> executor;
-@property (nonatomic, strong) CSCapExecutionPlan *plan;
+@property (nonatomic, strong) CSMachinePlan *plan;
 @property (nonatomic, strong) NSArray<CSCapInputFile *> *inputFiles;
 @property (nonatomic, strong) NSDictionary<NSString *, NSData *> *slotValues;
 @property (nonatomic, strong, nullable) id<CSCapSettingsProviderProtocol> settingsProvider;
 @end
 
-@implementation CSPlanExecutor
+@implementation CSMachineExecutor
 
 - (instancetype)initWithExecutor:(id<CSCapExecutorProtocol>)executor
-                            plan:(CSCapExecutionPlan *)plan
+                            plan:(CSMachinePlan *)plan
                       inputFiles:(NSArray<CSCapInputFile *> *)inputFiles {
     self = [super init];
     if (self) {
@@ -48,7 +48,7 @@
 
 // MARK: - Execute Plan
 
-- (void)execute:(void (^)(CSCapChainExecutionResult * _Nullable result, NSError * _Nullable error))completion {
+- (void)execute:(void (^)(CSMachineResult * _Nullable result, NSError * _Nullable error))completion {
     NSDate *start = [NSDate date];
 
     // Validate plan
@@ -60,7 +60,7 @@
 
     // Get topological order
     NSError *topoError = nil;
-    NSArray<CSCapNode *> *orderedNodes = [self.plan topologicalOrder:&topoError];
+    NSArray<CSMachineNode *> *orderedNodes = [self.plan topologicalOrder:&topoError];
     if (topoError) {
         completion(nil, topoError);
         return;
@@ -77,16 +77,16 @@
                         completion:completion];
 }
 
-- (void)executeNodesSequentially:(NSArray<CSCapNode *> *)orderedNodes
+- (void)executeNodesSequentially:(NSArray<CSMachineNode *> *)orderedNodes
                      nodeResults:(NSMutableDictionary *)nodeResults
                      nodeOutputs:(NSMutableDictionary *)nodeOutputs
                     currentIndex:(NSUInteger)index
                        startTime:(NSDate *)start
-                      completion:(void (^)(CSCapChainExecutionResult * _Nullable result, NSError * _Nullable error))completion {
+                      completion:(void (^)(CSMachineResult * _Nullable result, NSError * _Nullable error))completion {
 
     if (index >= orderedNodes.count) {
         // All nodes executed - create result
-        CSCapChainExecutionResult *result = [[CSCapChainExecutionResult alloc] init];
+        CSMachineResult *result = [[CSMachineResult alloc] init];
         result.success = YES;
         result.nodeResults = [nodeResults allValues];
         result.finalOutput = nil; // Would extract from output nodes
@@ -97,7 +97,7 @@
         return;
     }
 
-    CSCapNode *node = orderedNodes[index];
+    CSMachineNode *node = orderedNodes[index];
 
     [self executeNode:node
           nodeResults:nodeResults
@@ -105,7 +105,7 @@
            completion:^(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error) {
 
         if (error) {
-            CSCapChainExecutionResult *result = [[CSCapChainExecutionResult alloc] init];
+            CSMachineResult *result = [[CSMachineResult alloc] init];
             result.success = NO;
             result.nodeResults = [nodeResults allValues];
             result.finalOutput = nil;
@@ -116,7 +116,7 @@
         }
 
         if (!execResult.success) {
-            CSCapChainExecutionResult *result = [[CSCapChainExecutionResult alloc] init];
+            CSMachineResult *result = [[CSMachineResult alloc] init];
             result.success = NO;
             result.nodeResults = [nodeResults allValues];
             result.finalOutput = nil;
@@ -143,7 +143,7 @@
 
 // MARK: - Execute Node
 
-- (void)executeNode:(CSCapNode *)node
+- (void)executeNode:(CSMachineNode *)node
         nodeResults:(NSDictionary *)nodeResults
         nodeOutputs:(NSDictionary *)nodeOutputs
          completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
@@ -153,7 +153,7 @@
     // Determine node type and execute accordingly
     if (node.capUrn) {
         // Cap node
-        [self executeCapNode:node.nodeId
+        [self executeMachineNode:node.nodeId
                       capUrn:node.capUrn
                  argBindings:node.argBindings
                 preferredCap:node.preferredCap
@@ -185,7 +185,7 @@
 
 // MARK: - Execute InputSlot Node
 
-- (void)executeInputSlotNode:(CSCapNode *)node
+- (void)executeInputSlotNode:(CSMachineNode *)node
                        start:(NSDate *)start
                   completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
 
@@ -219,7 +219,7 @@
 
 // MARK: - Execute Output Node
 
-- (void)executeOutputNode:(CSCapNode *)node
+- (void)executeOutputNode:(CSMachineNode *)node
               nodeOutputs:(NSDictionary *)nodeOutputs
                     start:(NSDate *)start
                completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
@@ -239,7 +239,7 @@
 
 // MARK: - Execute ForEach Node
 
-- (void)executeForEachNode:(CSCapNode *)node
+- (void)executeForEachNode:(CSMachineNode *)node
                nodeOutputs:(NSDictionary *)nodeOutputs
                      start:(NSDate *)start
                 completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
@@ -275,7 +275,7 @@
 
 // MARK: - Execute Collect Node
 
-- (void)executeCollectNode:(CSCapNode *)node
+- (void)executeCollectNode:(CSMachineNode *)node
                 nodeOutputs:(NSDictionary *)nodeOutputs
                       start:(NSDate *)start
                  completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
@@ -309,13 +309,13 @@
 
 // MARK: - Execute WrapInList Node
 
-- (void)executeWrapInListNode:(CSCapNode *)node
+- (void)executeWrapInListNode:(CSMachineNode *)node
                   nodeOutputs:(NSDictionary *)nodeOutputs
                         start:(NSDate *)start
                    completion:(void (^)(CSNodeExecutionResult * _Nullable execResult, id _Nullable output, NSError * _Nullable error))completion {
     // WrapInList is a pass-through — find predecessor output and forward it unchanged
     id predecessorOutput = nil;
-    for (CSCapEdge *edge in self.plan.edges) {
+    for (CSMachinePlanEdge *edge in self.plan.edges) {
         if ([edge.toNode isEqualToString:node.nodeId]) {
             predecessorOutput = nodeOutputs[edge.fromNode];
             break;
@@ -335,7 +335,7 @@
 
 // MARK: - Execute Cap Node
 
-- (void)executeCapNode:(NSString *)nodeId
+- (void)executeMachineNode:(NSString *)nodeId
                 capUrn:(NSString *)capUrn
            argBindings:(NSDictionary<NSString *, CSArgumentBinding *> *)argBindings
           preferredCap:(nullable NSString *)preferredCap

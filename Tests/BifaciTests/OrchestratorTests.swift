@@ -247,7 +247,7 @@ final class OrchestratorTests: XCTestCase {
     // MARK: - Phase 2: Long Chain Tests
 
     // TEST945: 4-cap chain: edge1 -> edge2 -> edge7 -> edge8
-    func test945_fourCapChain() async throws {
+    func test945_fourMachine() async throws {
         let registry = TestcartridgeRegistry()
 
         let dot = #"""
@@ -271,7 +271,7 @@ final class OrchestratorTests: XCTestCase {
     }
 
     // TEST946: 5-cap chain: edge1 -> edge2 -> edge7 -> edge8 -> edge9
-    func test946_fiveCapChain() async throws {
+    func test946_fiveMachine() async throws {
         let registry = TestcartridgeRegistry()
 
         let dot = #"""
@@ -297,7 +297,7 @@ final class OrchestratorTests: XCTestCase {
     }
 
     // TEST947: 6-cap chain: edge1 -> edge2 -> edge7 -> edge8 -> edge9 -> edge10
-    func test947_sixCapChain() async throws {
+    func test947_sixMachine() async throws {
         let registry = TestcartridgeRegistry()
 
         let dot = #"""

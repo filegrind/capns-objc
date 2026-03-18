@@ -238,12 +238,12 @@ CSShapeCompatibility CSMediaShapeIsCompatibleWith(CSMediaShape *target, CSMediaS
 
 @end
 
-// MARK: - ShapeChainAnalysis
+// MARK: - StrandShapeAnalysis
 
-@implementation CSShapeChainAnalysis
+@implementation CSStrandShapeAnalysis
 
 + (instancetype)analyze:(NSArray<CSCapShapeInfo *> *)capInfos {
-    CSShapeChainAnalysis *analysis = [[CSShapeChainAnalysis alloc] init];
+    CSStrandShapeAnalysis *analysis = [[CSStrandShapeAnalysis alloc] init];
 
     if (capInfos.count == 0) {
         analysis->_capInfos = @[];

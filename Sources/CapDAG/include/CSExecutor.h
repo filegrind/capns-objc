@@ -9,9 +9,9 @@
 #import <Foundation/Foundation.h>
 #import "CSPlan.h"
 
-@class CSCapExecutionPlan;
+@class CSMachinePlan;
 @class CSCapInputFile;
-@class CSCapChainExecutionResult;
+@class CSMachineResult;
 @class CSCap;
 
 NS_ASSUME_NONNULL_BEGIN
@@ -50,14 +50,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-// MARK: - PlanExecutor
+// MARK: - MachineExecutor
 
 /// Generic plan executor parameterized by a cap execution backend
-@interface CSPlanExecutor : NSObject
+@interface CSMachineExecutor : NSObject
 
 /// Create a new plan executor
 - (instancetype)initWithExecutor:(id<CSCapExecutorProtocol>)executor
-                            plan:(CSCapExecutionPlan *)plan
+                            plan:(CSMachinePlan *)plan
                       inputFiles:(NSArray<CSCapInputFile *> *)inputFiles;
 
 /// Set user-provided slot values for argument binding (raw bytes)
@@ -67,7 +67,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)withSettingsProvider:(id<CSCapSettingsProviderProtocol>)provider;
 
 /// Execute the plan and return the result
-- (void)execute:(void (^)(CSCapChainExecutionResult * _Nullable result, NSError * _Nullable error))completion;
+- (void)execute:(void (^)(CSMachineResult * _Nullable result, NSError * _Nullable error))completion;
 
 @end
 

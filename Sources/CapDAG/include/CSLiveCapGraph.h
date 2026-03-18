@@ -24,29 +24,29 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - Edge Type
 
 /// Type of edge in the live capability graph
-typedef NS_ENUM(NSInteger, CSLiveCapEdgeType) {
+typedef NS_ENUM(NSInteger, CSLiveMachinePlanEdgeType) {
     /// A real capability that transforms media
-    CSLiveCapEdgeTypeCap,
+    CSLiveMachinePlanEdgeTypeCap,
     /// Fan-out: splits a list into individual items
-    CSLiveCapEdgeTypeForEach,
+    CSLiveMachinePlanEdgeTypeForEach,
     /// Collect: gathers iteration results back into a list
-    CSLiveCapEdgeTypeCollect,
+    CSLiveMachinePlanEdgeTypeCollect,
     /// Wrap: wraps a single item into a list
-    CSLiveCapEdgeTypeWrapInList,
+    CSLiveMachinePlanEdgeTypeWrapInList,
 };
 
-// MARK: - LiveCapEdge
+// MARK: - LiveMachinePlanEdge
 
 /// An edge in the live capability graph.
 /// Represents either a real capability or a cardinality transition.
-@interface CSLiveCapEdge : NSObject
+@interface CSLiveMachinePlanEdge : NSObject
 
 /// Input media type (what this edge consumes)
 @property (nonatomic, strong, readonly) CSMediaUrn *fromSpec;
 /// Output media type (what this edge produces)
 @property (nonatomic, strong, readonly) CSMediaUrn *toSpec;
 /// Type of edge
-@property (nonatomic, assign, readonly) CSLiveCapEdgeType edgeType;
+@property (nonatomic, assign, readonly) CSLiveMachinePlanEdgeType edgeType;
 /// Input cardinality
 @property (nonatomic, assign, readonly) CSInputCardinality inputCardinality;
 /// Output cardinality
@@ -123,7 +123,7 @@ typedef NS_ENUM(NSInteger, CSLiveCapEdgeType) {
 
 /// DFS: find all paths to exact target (uses isEquivalentTo: for matching).
 /// Returns paths sorted by (cap_step_count, specificity desc, urn lex).
-- (NSArray<CSCapChainPathInfo *> *)findPathsToExactTarget:(CSMediaUrn *)source
+- (NSArray<CSStrand *> *)findPathsToExactTarget:(CSMediaUrn *)source
                                                    target:(CSMediaUrn *)target
                                                  maxDepth:(NSUInteger)maxDepth
                                                  maxPaths:(NSUInteger)maxPaths;

@@ -173,12 +173,12 @@
 
 // TEST711: Tests shape chain analysis for simple linear one-to-one capability chains
 // Verifies chains with no fan-out are valid and require no transformation
-- (void)test711_shape_chain_analysis_simple_linear {
+- (void)test711_strand_shape_analysis_simple_linear {
     NSArray *infos = @[
         [CSCapShapeInfo fromCapUrn:@"cap:pdf-to-png" inSpec:@"media:pdf" outSpec:@"media:png"],
         [CSCapShapeInfo fromCapUrn:@"cap:resize" inSpec:@"media:png" outSpec:@"media:png"],
     ];
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:infos];
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:infos];
     XCTAssertTrue(analysis.isValid);
     XCTAssertEqual(analysis.fanOutPoints.count, 0);
     XCTAssertFalse([analysis requiresTransformation]);
@@ -186,12 +186,12 @@
 
 // TEST712: Tests shape chain analysis detects fan-out points in capability chains
 // Verifies chains with one-to-many transitions are marked for transformation
-- (void)test712_shape_chain_analysis_with_fan_out {
+- (void)test712_strand_shape_analysis_with_fan_out {
     NSArray *infos = @[
         [CSCapShapeInfo fromCapUrn:@"cap:pdf-to-pages" inSpec:@"media:pdf" outSpec:@"media:list;png"],
         [CSCapShapeInfo fromCapUrn:@"cap:thumbnail" inSpec:@"media:png" outSpec:@"media:png"],
     ];
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:infos];
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:infos];
     XCTAssertTrue(analysis.isValid);
     XCTAssertEqualObjects(analysis.fanOutPoints, (@[@1]));
     XCTAssertTrue([analysis requiresTransformation]);
@@ -199,8 +199,8 @@
 
 // TEST713: Tests shape chain analysis handles empty capability chains correctly
 // Verifies empty chains are valid and require no transformation
-- (void)test713_shape_chain_analysis_empty {
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:@[]];
+- (void)test713_strand_shape_analysis_empty {
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:@[]];
     XCTAssertTrue(analysis.isValid);
     XCTAssertFalse([analysis requiresTransformation]);
 }
@@ -375,46 +375,46 @@
     XCTAssertEqual([oneToMany cardinalityPattern], CSCardinalityPatternOneToMany);
 }
 
-// ==================== ShapeChainAnalysis Tests ====================
+// ==================== StrandShapeAnalysis Tests ====================
 
 // TEST750: Tests shape chain analysis for valid chain with matching structures
-- (void)test750_shape_chain_valid {
+- (void)test750_strand_shape_valid {
     NSArray *infos = @[
         [CSCapShapeInfo fromCapUrn:@"cap:resize" inSpec:@"media:png" outSpec:@"media:png"],
         [CSCapShapeInfo fromCapUrn:@"cap:compress" inSpec:@"media:png" outSpec:@"media:png"],
     ];
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:infos];
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:infos];
     XCTAssertTrue(analysis.isValid);
     XCTAssertNil(analysis.error);
 }
 
 // TEST751: Tests shape chain analysis detects structure mismatch
-- (void)test751_shape_chain_structure_mismatch {
+- (void)test751_strand_shape_structure_mismatch {
     NSArray *infos = @[
         [CSCapShapeInfo fromCapUrn:@"cap:extract" inSpec:@"media:pdf" outSpec:@"media:textable"],
         // This cap expects record but gets opaque - should fail
         [CSCapShapeInfo fromCapUrn:@"cap:parse" inSpec:@"media:json;record" outSpec:@"media:data;record"],
     ];
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:infos];
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:infos];
     XCTAssertFalse(analysis.isValid);
     XCTAssertNotNil(analysis.error);
     XCTAssertTrue([analysis.error containsString:@"Shape mismatch"]);
 }
 
 // TEST752: Tests shape chain analysis with fan-out (matching structures)
-- (void)test752_shape_chain_with_fanout {
+- (void)test752_strand_shape_with_fanout {
     NSArray *infos = @[
         [CSCapShapeInfo fromCapUrn:@"cap:disbind" inSpec:@"media:pdf" outSpec:@"media:page;list;textable"],
         [CSCapShapeInfo fromCapUrn:@"cap:process" inSpec:@"media:textable" outSpec:@"media:result;textable"],
     ];
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:infos];
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:infos];
     XCTAssertTrue(analysis.isValid);
     XCTAssertTrue([analysis requiresTransformation]);
     XCTAssertEqualObjects(analysis.fanOutPoints, (@[@1]));
 }
 
 // TEST753: Tests shape chain analysis correctly handles list-to-list record flow
-- (void)test753_shape_chain_list_record_to_list_record {
+- (void)test753_strand_shape_list_record_to_list_record {
     NSArray *infos = @[
         [CSCapShapeInfo fromCapUrn:@"cap:parse_csv"
                             inSpec:@"media:csv;textable"
@@ -423,7 +423,7 @@
                             inSpec:@"media:json;list;record"
                            outSpec:@"media:result;list;record"],
     ];
-    CSShapeChainAnalysis *analysis = [CSShapeChainAnalysis analyze:infos];
+    CSStrandShapeAnalysis *analysis = [CSStrandShapeAnalysis analyze:infos];
     XCTAssertTrue(analysis.isValid);
     XCTAssertFalse([analysis requiresTransformation]);
 }

@@ -162,11 +162,11 @@ CSShapeCompatibility CSMediaShapeIsCompatibleWith(CSMediaShape *target, CSMediaS
 
 @end
 
-// MARK: - ShapeChainAnalysis
+// MARK: - StrandShapeAnalysis
 
 /// Analysis of shape chain for a sequence of caps (cardinality + structure)
-/// Mirrors Rust: pub struct ShapeChainAnalysis
-@interface CSShapeChainAnalysis : NSObject
+/// Mirrors Rust: pub struct StrandShapeAnalysis
+@interface CSStrandShapeAnalysis : NSObject
 
 @property (nonatomic, copy, readonly) NSArray<CSCapShapeInfo *> *capInfos;
 @property (nonatomic, copy, readonly) NSArray<NSNumber *> *fanOutPoints;

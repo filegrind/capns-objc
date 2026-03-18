@@ -2,7 +2,7 @@
 //  PlanConverter.swift
 //  Bifaci
 //
-//  Converts CapExecutionPlan (node-centric, from planner) to ResolvedGraph
+//  Converts MachinePlan (node-centric, from planner) to ResolvedGraph
 //  (edge-centric, for executor).
 //  Mirrors Rust: src/orchestrator/plan_converter.rs
 //
@@ -18,7 +18,7 @@ import Foundation
 
 // MARK: - Plan Converter
 
-/// Convert CapExecutionPlan to ResolvedGraph for execution.
+/// Convert MachinePlan to ResolvedGraph for execution.
 ///
 /// The planner creates execution plans where caps are nodes with edges
 /// representing data flow. The orchestrator expects caps to be edge labels
@@ -30,7 +30,7 @@ import Foundation
 /// - Returns: ResolvedGraph suitable for execute_dag
 /// - Throws: ParseOrchestrationError if conversion fails
 public func planToResolvedGraph(
-    _ plan: CSCapExecutionPlan,
+    _ plan: CSMachinePlan,
     registry: any CapRegistryProtocol
 ) async throws -> ResolvedGraph {
     // Phase 1: Reject ForEach/Collect/Merge/Split — caller must decompose
@@ -55,7 +55,7 @@ public func planToResolvedGraph(
 
     // Build reverse adjacency for finding predecessors
     var predecessorOf: [String: String] = [:]
-    for case let capEdge as CSCapEdge in plan.edges {
+    for case let capEdge as CSMachinePlanEdge in plan.edges {
         predecessorOf[capEdge.toNode] = capEdge.fromNode
     }
 
@@ -98,7 +98,7 @@ public func planToResolvedGraph(
         let outMedia = cap.capUrn.getOutSpec()
 
         // Find all edges leading into this cap node
-        for case let capEdge as CSCapEdge in plan.edges {
+        for case let capEdge as CSMachinePlanEdge in plan.edges {
             guard capEdge.toNode == nodeId else { continue }
             var fromNode = capEdge.fromNode
 

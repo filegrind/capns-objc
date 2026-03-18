@@ -10,7 +10,7 @@
 #import "CSCardinality.h"
 
 @class CSCap;
-@class CSCapExecutionPlan;
+@class CSMachinePlan;
 @class CSCapInputFile;
 @class CSCardinalityChainAnalysis;
 
@@ -42,16 +42,16 @@ typedef NS_ENUM(NSInteger, CSPlannerErrorCode) {
 // MARK: - Step Type Enum
 
 /// Type of step in a capability chain path
-/// Mirrors Rust: CapChainStepType
-typedef NS_ENUM(NSInteger, CSCapChainStepType) {
+/// Mirrors Rust: StrandStepType
+typedef NS_ENUM(NSInteger, CSStrandStepType) {
     /// A real capability step
-    CSCapChainStepTypeCap,
+    CSStrandStepTypeCap,
     /// Fan-out: iterate over list items
-    CSCapChainStepTypeForEach,
+    CSStrandStepTypeForEach,
     /// Collect: gather iteration results
-    CSCapChainStepTypeCollect,
+    CSStrandStepTypeCollect,
     /// Wrap single item in list
-    CSCapChainStepTypeWrapInList,
+    CSStrandStepTypeWrapInList,
 };
 
 // MARK: - Supporting Structures
@@ -66,14 +66,14 @@ typedef NS_ENUM(NSInteger, CSCapChainStepType) {
 @end
 
 /// Information about a step in a cap chain
-/// Mirrors Rust: CapChainStepInfo
-@interface CSCapChainStepInfo : NSObject
+/// Mirrors Rust: StrandStep
+@interface CSStrandStep : NSObject
 /// Cap URN string (for Cap steps; nil for cardinality transitions)
 @property (nonatomic, copy, nullable) NSString *capUrn;
 @property (nonatomic, copy, nullable) NSString *preferredCap;
 @property (nonatomic, strong, nullable) NSDictionary *metadata;
 /// Step type (Cap, ForEach, Collect, WrapInList)
-@property (nonatomic, assign) CSCapChainStepType stepType;
+@property (nonatomic, assign) CSStrandStepType stepType;
 /// Input media spec for this step
 @property (nonatomic, copy, nullable) NSString *fromSpec;
 /// Output media spec for this step
@@ -91,11 +91,11 @@ typedef NS_ENUM(NSInteger, CSCapChainStepType) {
 @end
 
 /// Information about a cap chain path
-/// Mirrors Rust: CapChainPathInfo
-@interface CSCapChainPathInfo : NSObject
+/// Mirrors Rust: Strand
+@interface CSStrand : NSObject
 @property (nonatomic, copy) NSString *sourceSpec;
 @property (nonatomic, copy) NSString *targetSpec;
-@property (nonatomic, strong) NSArray<CSCapChainStepInfo *> *steps;
+@property (nonatomic, strong) NSArray<CSStrandStep *> *steps;
 /// Total steps including cardinality transitions
 @property (nonatomic, assign) NSInteger totalSteps;
 /// Only real cap steps (for sorting)
@@ -125,10 +125,10 @@ typedef NS_ENUM(NSInteger, CSCapChainStepType) {
 @property (nonatomic, strong) NSArray<CSArgumentInfo *> *allSlots;
 @end
 
-// MARK: - CapPlanBuilder
+// MARK: - MachinePlanBuilder
 
 /// Builder for creating cap execution plans
-@interface CSCapPlanBuilder : NSObject
+@interface CSMachinePlanBuilder : NSObject
 
 /// Create a new plan builder with the given registries
 - (instancetype)initWithCapRegistry:(id<CSCapRegistryProtocol>)capRegistry
@@ -146,7 +146,7 @@ typedef NS_ENUM(NSInteger, CSCapChainStepType) {
 - (void)buildPlanFromSource:(NSString *)sourceMedia
                    toTarget:(NSString *)targetMedia
                  inputFiles:(NSArray<CSCapInputFile *> *)inputFiles
-                 completion:(void (^)(CSCapExecutionPlan * _Nullable plan, NSError * _Nullable error))completion;
+                 completion:(void (^)(CSMachinePlan * _Nullable plan, NSError * _Nullable error))completion;
 
 /// Analyze what transformations would be needed for a path
 - (void)analyzePathCardinalityFromSource:(NSString *)sourceMedia
@@ -154,10 +154,10 @@ typedef NS_ENUM(NSInteger, CSCapChainStepType) {
                               completion:(void (^)(CSCardinalityChainAnalysis * _Nullable analysis, NSError * _Nullable error))completion;
 
 /// Build a plan from a pre-defined path
-- (void)buildPlanFromPath:(CSCapChainPathInfo *)path
+- (void)buildPlanFromPath:(CSStrand *)path
                      name:(NSString *)name
         inputCardinality:(CSInputCardinality)cardinality
-              completion:(void (^)(CSCapExecutionPlan * _Nullable plan, NSError * _Nullable error))completion;
+              completion:(void (^)(CSMachinePlan * _Nullable plan, NSError * _Nullable error))completion;
 
 /// Get all possible target media specs from a given source
 - (void)getReachableTargetsFromSource:(NSString *)sourceMedia

@@ -10,12 +10,12 @@
 #import "CSArgumentBinding.h"
 #import "CSCardinality.h"
 
-// MARK: - CapEdge
+// MARK: - MachinePlanEdge
 
-@implementation CSCapEdge
+@implementation CSMachinePlanEdge
 
 + (instancetype)directFrom:(NSString *)from to:(NSString *)to {
-    CSCapEdge *edge = [[CSCapEdge alloc] init];
+    CSMachinePlanEdge *edge = [[CSMachinePlanEdge alloc] init];
     edge.fromNode = from;
     edge.toNode = to;
     edge.edgeType = CSEdgeTypeDirect;
@@ -23,7 +23,7 @@
 }
 
 + (instancetype)iterationFrom:(NSString *)from to:(NSString *)to {
-    CSCapEdge *edge = [[CSCapEdge alloc] init];
+    CSMachinePlanEdge *edge = [[CSMachinePlanEdge alloc] init];
     edge.fromNode = from;
     edge.toNode = to;
     edge.edgeType = CSEdgeTypeIteration;
@@ -31,7 +31,7 @@
 }
 
 + (instancetype)collectionFrom:(NSString *)from to:(NSString *)to {
-    CSCapEdge *edge = [[CSCapEdge alloc] init];
+    CSMachinePlanEdge *edge = [[CSMachinePlanEdge alloc] init];
     edge.fromNode = from;
     edge.toNode = to;
     edge.edgeType = CSEdgeTypeCollection;
@@ -39,7 +39,7 @@
 }
 
 + (instancetype)jsonFieldFrom:(NSString *)from to:(NSString *)to field:(NSString *)field {
-    CSCapEdge *edge = [[CSCapEdge alloc] init];
+    CSMachinePlanEdge *edge = [[CSMachinePlanEdge alloc] init];
     edge.fromNode = from;
     edge.toNode = to;
     edge.edgeType = CSEdgeTypeJsonField;
@@ -48,7 +48,7 @@
 }
 
 + (instancetype)jsonPathFrom:(NSString *)from to:(NSString *)to path:(NSString *)path {
-    CSCapEdge *edge = [[CSCapEdge alloc] init];
+    CSMachinePlanEdge *edge = [[CSMachinePlanEdge alloc] init];
     edge.fromNode = from;
     edge.toNode = to;
     edge.edgeType = CSEdgeTypeJsonPath;
@@ -58,9 +58,9 @@
 
 @end
 
-// MARK: - CapNode
+// MARK: - MachineNode
 
-@implementation CSCapNode
+@implementation CSMachineNode
 
 + (instancetype)capNode:(NSString *)nodeId capUrn:(NSString *)capUrn {
     return [self capNode:nodeId capUrn:capUrn bindings:@{} preferredCap:nil];
@@ -71,7 +71,7 @@
 }
 
 + (instancetype)capNode:(NSString *)nodeId capUrn:(NSString *)capUrn bindings:(NSDictionary<NSString *, CSArgumentBinding *> *)bindings preferredCap:(nullable NSString *)preferredCap {
-    CSCapNode *node = [[CSCapNode alloc] init];
+    CSMachineNode *node = [[CSMachineNode alloc] init];
     node.nodeId = nodeId;
     node.capUrn = capUrn;
     node.argBindings = bindings;
@@ -80,7 +80,7 @@
 }
 
 + (instancetype)forEachNode:(NSString *)nodeId inputNode:(NSString *)inputNode bodyEntry:(NSString *)bodyEntry bodyExit:(NSString *)bodyExit {
-    CSCapNode *node = [[CSCapNode alloc] init];
+    CSMachineNode *node = [[CSMachineNode alloc] init];
     node.nodeId = nodeId;
     node.inputNode = inputNode;
     node.bodyEntry = bodyEntry;
@@ -90,7 +90,7 @@
 }
 
 + (instancetype)collectNode:(NSString *)nodeId inputNodes:(NSArray<CSNodeId> *)inputNodes {
-    CSCapNode *node = [[CSCapNode alloc] init];
+    CSMachineNode *node = [[CSMachineNode alloc] init];
     node.nodeId = nodeId;
     node.inputNodes = inputNodes;
     node.nodeDescription = @"Fan-in: collect results into vector";
@@ -98,7 +98,7 @@
 }
 
 + (instancetype)inputSlotNode:(NSString *)nodeId slotName:(NSString *)slotName mediaUrn:(NSString *)mediaUrn cardinality:(CSInputCardinality)cardinality {
-    CSCapNode *node = [[CSCapNode alloc] init];
+    CSMachineNode *node = [[CSMachineNode alloc] init];
     node.nodeId = nodeId;
     node.slotName = slotName;
     node.expectedMediaUrn = mediaUrn;
@@ -108,7 +108,7 @@
 }
 
 + (instancetype)outputNode:(NSString *)nodeId outputName:(NSString *)outputName sourceNode:(NSString *)sourceNode {
-    CSCapNode *node = [[CSCapNode alloc] init];
+    CSMachineNode *node = [[CSMachineNode alloc] init];
     node.nodeId = nodeId;
     node.outputName = outputName;
     node.sourceNode = sourceNode;
@@ -119,7 +119,7 @@
 + (instancetype)wrapInListNode:(NSString *)nodeId
                   itemMediaUrn:(NSString *)itemMediaUrn
                   listMediaUrn:(NSString *)listMediaUrn {
-    CSCapNode *node = [[CSCapNode alloc] init];
+    CSMachineNode *node = [[CSMachineNode alloc] init];
     node.nodeId = nodeId;
     node.wrapItemMediaUrn = itemMediaUrn;
     node.wrapListMediaUrn = listMediaUrn;
@@ -145,12 +145,12 @@
 
 @end
 
-// MARK: - CapExecutionPlan
+// MARK: - MachinePlan
 
-@implementation CSCapExecutionPlan
+@implementation CSMachinePlan
 
 + (instancetype)planWithName:(NSString *)name {
-    CSCapExecutionPlan *plan = [[CSCapExecutionPlan alloc] init];
+    CSMachinePlan *plan = [[CSMachinePlan alloc] init];
     plan.name = name;
     plan.nodes = [NSMutableDictionary dictionary];
     plan.edges = [NSMutableArray array];
@@ -159,7 +159,7 @@
     return plan;
 }
 
-- (void)addNode:(CSCapNode *)node {
+- (void)addNode:(CSMachineNode *)node {
     NSString *nodeId = node.nodeId;
 
     // Track entry/output nodes
@@ -174,17 +174,17 @@
     self.nodes[nodeId] = node;
 }
 
-- (void)addEdge:(CSCapEdge *)edge {
+- (void)addEdge:(CSMachinePlanEdge *)edge {
     [self.edges addObject:edge];
 }
 
-- (nullable CSCapNode *)getNode:(NSString *)nodeId {
+- (nullable CSMachineNode *)getNode:(NSString *)nodeId {
     return self.nodes[nodeId];
 }
 
 - (NSError * _Nullable)validate {
     // Check all edge references exist
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if (!self.nodes[edge.fromNode]) {
             return [NSError errorWithDomain:@"CSPlannerError"
                                        code:1
@@ -222,7 +222,7 @@
     return nil;
 }
 
-- (nullable NSArray<CSCapNode *> *)topologicalOrder:(NSError **)error {
+- (nullable NSArray<CSMachineNode *> *)topologicalOrder:(NSError **)error {
     NSMutableDictionary<NSString *, NSNumber *> *inDegree = [NSMutableDictionary dictionary];
     NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *adj = [NSMutableDictionary dictionary];
 
@@ -233,7 +233,7 @@
     }
 
     // Build adjacency list and count in-degrees
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         inDegree[edge.toNode] = @([inDegree[edge.toNode] integerValue] + 1);
         [adj[edge.fromNode] addObject:edge.toNode];
     }
@@ -246,13 +246,13 @@
         }
     }
 
-    NSMutableArray<CSCapNode *> *result = [NSMutableArray array];
+    NSMutableArray<CSMachineNode *> *result = [NSMutableArray array];
 
     while (queue.count > 0) {
         NSString *nodeId = queue.firstObject;
         [queue removeObjectAtIndex:0];
 
-        CSCapNode *node = self.nodes[nodeId];
+        CSMachineNode *node = self.nodes[nodeId];
         if (node) {
             [result addObject:node];
         }
@@ -280,11 +280,11 @@
 }
 
 + (instancetype)singleCapPlan:(NSString *)capUrn inputMedia:(NSString *)inputMedia outputMedia:(NSString *)outputMedia filePathArgName:(NSString *)filePathArgName {
-    CSCapExecutionPlan *plan = [self planWithName:[NSString stringWithFormat:@"Single cap: %@", capUrn]];
+    CSMachinePlan *plan = [self planWithName:[NSString stringWithFormat:@"Single cap: %@", capUrn]];
 
     // Add input slot
     NSString *inputId = @"input_slot";
-    [plan addNode:[CSCapNode inputSlotNode:inputId
+    [plan addNode:[CSMachineNode inputSlotNode:inputId
                                   slotName:@"input"
                                   mediaUrn:inputMedia
                                cardinality:CSInputCardinalitySingle]];
@@ -293,19 +293,19 @@
     NSString *capId = @"cap_0";
     CSArgumentBinding *filePathBinding = [CSArgumentBinding inputFilePath];
     NSDictionary *bindings = @{filePathArgName: filePathBinding};
-    [plan addNode:[CSCapNode capNode:capId capUrn:capUrn bindings:bindings]];
-    [plan addEdge:[CSCapEdge directFrom:inputId to:capId]];
+    [plan addNode:[CSMachineNode capNode:capId capUrn:capUrn bindings:bindings]];
+    [plan addEdge:[CSMachinePlanEdge directFrom:inputId to:capId]];
 
     // Add output node
     NSString *outputId = @"output";
-    [plan addNode:[CSCapNode outputNode:outputId outputName:@"result" sourceNode:capId]];
-    [plan addEdge:[CSCapEdge directFrom:capId to:outputId]];
+    [plan addNode:[CSMachineNode outputNode:outputId outputName:@"result" sourceNode:capId]];
+    [plan addEdge:[CSMachinePlanEdge directFrom:capId to:outputId]];
 
     return plan;
 }
 
 + (instancetype)linearChainPlan:(NSArray<NSString *> *)capUrns inputMedia:(NSString *)inputMedia outputMedia:(NSString *)outputMedia filePathArgNames:(NSArray<NSString *> *)filePathArgNames {
-    CSCapExecutionPlan *plan = [self planWithName:@"Linear cap chain"];
+    CSMachinePlan *plan = [self planWithName:@"Linear cap chain"];
 
     if (capUrns.count == 0) {
         return plan;
@@ -313,7 +313,7 @@
 
     // Add input slot
     NSString *inputId = @"input_slot";
-    [plan addNode:[CSCapNode inputSlotNode:inputId
+    [plan addNode:[CSMachineNode inputSlotNode:inputId
                                   slotName:@"input"
                                   mediaUrn:inputMedia
                                cardinality:CSInputCardinalitySingle]];
@@ -332,15 +332,15 @@
             bindings = @{argName: filePathBinding};
         }
 
-        [plan addNode:[CSCapNode capNode:capId capUrn:urn bindings:bindings]];
-        [plan addEdge:[CSCapEdge directFrom:prevId to:capId]];
+        [plan addNode:[CSMachineNode capNode:capId capUrn:urn bindings:bindings]];
+        [plan addEdge:[CSMachinePlanEdge directFrom:prevId to:capId]];
         prevId = capId;
     }
 
     // Add output node
     NSString *outputId = @"output";
-    [plan addNode:[CSCapNode outputNode:outputId outputName:@"result" sourceNode:prevId]];
-    [plan addEdge:[CSCapEdge directFrom:prevId to:outputId]];
+    [plan addNode:[CSMachineNode outputNode:outputId outputName:@"result" sourceNode:prevId]];
+    [plan addEdge:[CSMachinePlanEdge directFrom:prevId to:outputId]];
 
     return plan;
 }
@@ -349,7 +349,7 @@
 
 - (BOOL)hasForeachOrCollect {
     for (NSString *nodeId in self.nodes) {
-        CSCapNode *node = self.nodes[nodeId];
+        CSMachineNode *node = self.nodes[nodeId];
         if ([node isFanOut] || [node isFanIn]) {
             return YES;
         }
@@ -359,10 +359,10 @@
 
 - (nullable NSString *)findFirstForeach {
     NSError *error = nil;
-    NSArray<CSCapNode *> *topo = [self topologicalOrder:&error];
+    NSArray<CSMachineNode *> *topo = [self topologicalOrder:&error];
     if (!topo) return nil;
 
-    for (CSCapNode *node in topo) {
+    for (CSMachineNode *node in topo) {
         if ([node isFanOut]) {
             return node.nodeId;
         }
@@ -370,7 +370,7 @@
     return nil;
 }
 
-- (nullable CSCapExecutionPlan *)extractPrefixTo:(NSString *)targetNodeId
+- (nullable CSMachinePlan *)extractPrefixTo:(NSString *)targetNodeId
                                            error:(NSError **)error {
     if (!self.nodes[targetNodeId]) {
         if (error) {
@@ -383,7 +383,7 @@
 
     // Build reverse adjacency: toNode -> [fromNode]
     NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *reverseAdj = [NSMutableDictionary dictionary];
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if (!reverseAdj[edge.toNode]) {
             reverseAdj[edge.toNode] = [NSMutableArray array];
         }
@@ -408,21 +408,21 @@
     }
 
     // Build sub-plan with ancestor nodes (skip original Output nodes)
-    CSCapExecutionPlan *subPlan = [CSCapExecutionPlan planWithName:
+    CSMachinePlan *subPlan = [CSMachinePlan planWithName:
         [NSString stringWithFormat:@"%@ [prefix to %@]", self.name, targetNodeId]];
 
     for (NSString *nodeId in ancestors) {
-        CSCapNode *node = self.nodes[nodeId];
+        CSMachineNode *node = self.nodes[nodeId];
         if (!node) continue;
         if (node.outputName) continue; // skip Output nodes
         [subPlan addNode:node];
     }
 
     // Add edges where both endpoints are in ancestors and neither is an Output
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if ([ancestors containsObject:edge.fromNode] && [ancestors containsObject:edge.toNode]) {
-            CSCapNode *fromNode = self.nodes[edge.fromNode];
-            CSCapNode *toNode = self.nodes[edge.toNode];
+            CSMachineNode *fromNode = self.nodes[edge.fromNode];
+            CSMachineNode *toNode = self.nodes[edge.toNode];
             if (fromNode.outputName || toNode.outputName) continue;
             [subPlan addEdge:edge];
         }
@@ -430,8 +430,8 @@
 
     // Add synthetic Output connected to target
     NSString *outputId = [NSString stringWithFormat:@"%@_prefix_output", targetNodeId];
-    [subPlan addNode:[CSCapNode outputNode:outputId outputName:@"prefix_result" sourceNode:targetNodeId]];
-    [subPlan addEdge:[CSCapEdge directFrom:targetNodeId to:outputId]];
+    [subPlan addNode:[CSMachineNode outputNode:outputId outputName:@"prefix_result" sourceNode:targetNodeId]];
+    [subPlan addEdge:[CSMachinePlanEdge directFrom:targetNodeId to:outputId]];
 
     NSError *validateError = [subPlan validate];
     if (validateError) {
@@ -441,10 +441,10 @@
     return subPlan;
 }
 
-- (nullable CSCapExecutionPlan *)extractForeachBody:(NSString *)foreachNodeId
+- (nullable CSMachinePlan *)extractForeachBody:(NSString *)foreachNodeId
                                        itemMediaUrn:(NSString *)itemMediaUrn
                                               error:(NSError **)error {
-    CSCapNode *foreachNode = self.nodes[foreachNodeId];
+    CSMachineNode *foreachNode = self.nodes[foreachNodeId];
     if (!foreachNode) {
         if (error) {
             *error = [NSError errorWithDomain:@"CSPlannerError" code:1
@@ -468,7 +468,7 @@
 
     // Build forward adjacency
     NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *forwardAdj = [NSMutableDictionary dictionary];
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if (!forwardAdj[edge.fromNode]) {
             forwardAdj[edge.fromNode] = [NSMutableArray array];
         }
@@ -490,7 +490,7 @@
 
         NSArray<NSString *> *children = forwardAdj[nodeId];
         for (NSString *child in children) {
-            CSCapNode *childNode = self.nodes[child];
+            CSMachineNode *childNode = self.nodes[child];
             if (!childNode) continue;
 
             // Don't include Output or Collect nodes from original plan
@@ -513,29 +513,29 @@
     [bodyNodes addObject:bodyExit];
 
     // Build body sub-plan
-    CSCapExecutionPlan *bodyPlan = [CSCapExecutionPlan planWithName:
+    CSMachinePlan *bodyPlan = [CSMachinePlan planWithName:
         [NSString stringWithFormat:@"%@ [foreach body %@]", self.name, foreachNodeId]];
 
     // Add synthetic InputSlot for per-item input
     NSString *inputId = [NSString stringWithFormat:@"%@_body_input", foreachNodeId];
-    [bodyPlan addNode:[CSCapNode inputSlotNode:inputId
+    [bodyPlan addNode:[CSMachineNode inputSlotNode:inputId
                                      slotName:@"item_input"
                                      mediaUrn:itemMediaUrn
                                   cardinality:CSInputCardinalitySingle]];
 
     // Add body nodes
     for (NSString *nodeId in bodyNodes) {
-        CSCapNode *node = self.nodes[nodeId];
+        CSMachineNode *node = self.nodes[nodeId];
         if (node) {
             [bodyPlan addNode:node];
         }
     }
 
     // Add edge from synthetic input to body_entry
-    [bodyPlan addEdge:[CSCapEdge directFrom:inputId to:bodyEntry]];
+    [bodyPlan addEdge:[CSMachinePlanEdge directFrom:inputId to:bodyEntry]];
 
     // Add edges where both endpoints are body nodes (skip Iteration/Collection edges)
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if ([bodyNodes containsObject:edge.fromNode] && [bodyNodes containsObject:edge.toNode]) {
             if (edge.edgeType == CSEdgeTypeIteration || edge.edgeType == CSEdgeTypeCollection) {
                 continue;
@@ -546,8 +546,8 @@
 
     // Add synthetic Output connected to body_exit
     NSString *outputId = [NSString stringWithFormat:@"%@_body_output", foreachNodeId];
-    [bodyPlan addNode:[CSCapNode outputNode:outputId outputName:@"item_result" sourceNode:bodyExit]];
-    [bodyPlan addEdge:[CSCapEdge directFrom:bodyExit to:outputId]];
+    [bodyPlan addNode:[CSMachineNode outputNode:outputId outputName:@"item_result" sourceNode:bodyExit]];
+    [bodyPlan addEdge:[CSMachinePlanEdge directFrom:bodyExit to:outputId]];
 
     NSError *validateError = [bodyPlan validate];
     if (validateError) {
@@ -557,7 +557,7 @@
     return bodyPlan;
 }
 
-- (nullable CSCapExecutionPlan *)extractSuffixFrom:(NSString *)sourceNodeId
+- (nullable CSMachinePlan *)extractSuffixFrom:(NSString *)sourceNodeId
                                     sourceMediaUrn:(NSString *)sourceMediaUrn
                                              error:(NSError **)error {
     if (!self.nodes[sourceNodeId]) {
@@ -571,7 +571,7 @@
 
     // Build forward adjacency
     NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *forwardAdj = [NSMutableDictionary dictionary];
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if (!forwardAdj[edge.fromNode]) {
             forwardAdj[edge.fromNode] = [NSMutableArray array];
         }
@@ -595,12 +595,12 @@
         }
     }
 
-    CSCapExecutionPlan *subPlan = [CSCapExecutionPlan planWithName:
+    CSMachinePlan *subPlan = [CSMachinePlan planWithName:
         [NSString stringWithFormat:@"%@ [suffix from %@]", self.name, sourceNodeId]];
 
     // Add synthetic InputSlot
     NSString *inputId = [NSString stringWithFormat:@"%@_suffix_input", sourceNodeId];
-    [subPlan addNode:[CSCapNode inputSlotNode:inputId
+    [subPlan addNode:[CSMachineNode inputSlotNode:inputId
                                     slotName:@"collected_input"
                                     mediaUrn:sourceMediaUrn
                                  cardinality:CSInputCardinalitySingle]];
@@ -608,16 +608,16 @@
     // Add descendant nodes (skip source — replaced by InputSlot; skip original InputSlots)
     for (NSString *nodeId in descendants) {
         if ([nodeId isEqualToString:sourceNodeId]) continue;
-        CSCapNode *node = self.nodes[nodeId];
+        CSMachineNode *node = self.nodes[nodeId];
         if (!node) continue;
         if (node.slotName) continue; // skip original InputSlot nodes
         [subPlan addNode:node];
     }
 
     // Rewire edges: source -> child becomes inputSlot -> child
-    for (CSCapEdge *edge in self.edges) {
+    for (CSMachinePlanEdge *edge in self.edges) {
         if ([edge.fromNode isEqualToString:sourceNodeId] && [descendants containsObject:edge.toNode]) {
-            [subPlan addEdge:[CSCapEdge directFrom:inputId to:edge.toNode]];
+            [subPlan addEdge:[CSMachinePlanEdge directFrom:inputId to:edge.toNode]];
         } else if ([descendants containsObject:edge.fromNode]
                    && [descendants containsObject:edge.toNode]
                    && ![edge.fromNode isEqualToString:sourceNodeId]) {
@@ -640,7 +640,7 @@
 @implementation CSNodeExecutionResult
 @end
 
-// MARK: - CapChainExecutionResult
+// MARK: - MachineResult
 
-@implementation CSCapChainExecutionResult
+@implementation CSMachineResult
 @end

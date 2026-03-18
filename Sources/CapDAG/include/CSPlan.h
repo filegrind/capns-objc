@@ -10,8 +10,8 @@
 #import "CSCardinality.h"
 
 @class CSArgumentBinding;
-@class CSCapNode;
-@class CSCapEdge;
+@class CSMachineNode;
+@class CSMachinePlanEdge;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -48,11 +48,11 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
     CSEdgeTypeCollection
 };
 
-// MARK: - CapEdge
+// MARK: - MachinePlanEdge
 
 /// An edge in the execution plan
-/// Mirrors Rust: pub struct CapEdge
-@interface CSCapEdge : NSObject
+/// Mirrors Rust: pub struct MachinePlanEdge
+@interface CSMachinePlanEdge : NSObject
 
 /// Source node
 @property (nonatomic, copy) CSNodeId fromNode;
@@ -86,11 +86,11 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 
 @end
 
-// MARK: - CapNode
+// MARK: - MachineNode
 
 /// A node in the execution DAG
-/// Mirrors Rust: pub struct CapNode and pub enum ExecutionNodeType
-@interface CSCapNode : NSObject
+/// Mirrors Rust: pub struct MachineNode and pub enum ExecutionNodeType
+@interface CSMachineNode : NSObject
 
 /// Unique identifier for this node
 @property (nonatomic, copy) CSNodeId nodeId;
@@ -173,20 +173,20 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 
 @end
 
-// MARK: - CapExecutionPlan
+// MARK: - MachinePlan
 
 /// The structured execution plan for a cap chain
-/// Mirrors Rust: pub struct CapExecutionPlan
-@interface CSCapExecutionPlan : NSObject
+/// Mirrors Rust: pub struct MachinePlan
+@interface CSMachinePlan : NSObject
 
 /// Human-readable name for this execution plan
 @property (nonatomic, copy) NSString *name;
 
 /// All nodes in the DAG (nodeId -> node)
-@property (nonatomic, strong) NSMutableDictionary<CSNodeId, CSCapNode *> *nodes;
+@property (nonatomic, strong) NSMutableDictionary<CSNodeId, CSMachineNode *> *nodes;
 
 /// Edges describing data flow
-@property (nonatomic, strong) NSMutableArray<CSCapEdge *> *edges;
+@property (nonatomic, strong) NSMutableArray<CSMachinePlanEdge *> *edges;
 
 /// Entry point nodes (InputSlots)
 @property (nonatomic, strong) NSMutableArray<CSNodeId> *entryNodes;
@@ -201,19 +201,19 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 + (instancetype)planWithName:(NSString *)name;
 
 /// Add a node to the plan
-- (void)addNode:(CSCapNode *)node;
+- (void)addNode:(CSMachineNode *)node;
 
 /// Add an edge to the plan
-- (void)addEdge:(CSCapEdge *)edge;
+- (void)addEdge:(CSMachinePlanEdge *)edge;
 
 /// Get a node by ID
-- (nullable CSCapNode *)getNode:(NSString *)nodeId;
+- (nullable CSMachineNode *)getNode:(NSString *)nodeId;
 
 /// Validate the plan structure
 - (NSError * _Nullable)validate;
 
 /// Get topological ordering of nodes
-- (nullable NSArray<CSCapNode *> *)topologicalOrder:(NSError **)error;
+- (nullable NSArray<CSMachineNode *> *)topologicalOrder:(NSError **)error;
 
 /// Create a plan for a single cap execution
 + (instancetype)singleCapPlan:(NSString *)capUrn inputMedia:(NSString *)inputMedia outputMedia:(NSString *)outputMedia filePathArgName:(NSString *)filePathArgName;
@@ -228,16 +228,16 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 - (nullable NSString *)findFirstForeach;
 
 /// Extract prefix sub-plan from entry points to target node (inclusive)
-- (nullable CSCapExecutionPlan *)extractPrefixTo:(NSString *)targetNodeId
+- (nullable CSMachinePlan *)extractPrefixTo:(NSString *)targetNodeId
                                            error:(NSError **)error;
 
 /// Extract ForEach body as standalone plan with synthetic InputSlot and Output
-- (nullable CSCapExecutionPlan *)extractForeachBody:(NSString *)foreachNodeId
+- (nullable CSMachinePlan *)extractForeachBody:(NSString *)foreachNodeId
                                        itemMediaUrn:(NSString *)itemMediaUrn
                                               error:(NSError **)error;
 
 /// Extract suffix sub-plan from source node to output nodes
-- (nullable CSCapExecutionPlan *)extractSuffixFrom:(NSString *)sourceNodeId
+- (nullable CSMachinePlan *)extractSuffixFrom:(NSString *)sourceNodeId
                                     sourceMediaUrn:(NSString *)sourceMediaUrn
                                              error:(NSError **)error;
 
@@ -269,11 +269,11 @@ typedef NS_ENUM(NSInteger, CSEdgeType) {
 
 @end
 
-// MARK: - CapChainExecutionResult
+// MARK: - MachineResult
 
 /// Overall result of executing a cap chain
-/// Mirrors Rust: pub struct CapChainExecutionResult
-@interface CSCapChainExecutionResult : NSObject
+/// Mirrors Rust: pub struct MachineResult
+@interface CSMachineResult : NSObject
 
 /// Whether the entire chain executed successfully
 @property (nonatomic, assign) BOOL success;
