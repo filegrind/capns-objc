@@ -179,6 +179,17 @@ private let HEARTBEAT_TIMEOUT: TimeInterval = 10.0
 
 /// A managed plugin binary.
 @available(macOS 10.15.4, iOS 13.4, *)
+/// Why a plugin was killed. Determines whether pending requests get ERR frames.
+enum ShutdownReason {
+    /// App is exiting or plugin binary removed. No ERR frames — relay connection
+    /// is closing anyway and there are no callers left to notify.
+    case appExit
+    /// OOM watchdog killed the plugin while it was actively processing requests.
+    /// Pending requests MUST get ERR frames with code "OOM_KILLED" so callers
+    /// can fail fast instead of hanging forever.
+    case oomKill
+}
+
 private class ManagedPlugin {
     let path: String
     var pid: pid_t?
@@ -198,10 +209,12 @@ private class ManagedPlugin {
     /// Last death error message (includes stderr if available). Used for ERR frames
     /// sent when attempting to write to a dead plugin.
     var lastDeathMessage: String?
-    /// Set to true before calling killProcess() to signal that the death is
-    /// intentional. handlePluginDeath checks this to avoid treating ordered
-    /// shutdowns as unexpected crashes.
-    var orderedShutdown: Bool
+    /// Set before calling killProcess() to signal why the death occurred.
+    /// `handlePluginDeath` checks this to determine ERR frame behavior:
+    /// - `nil` → unexpected crash → ERR "PLUGIN_DIED"
+    /// - `.oomKill` → OOM watchdog kill → ERR "OOM_KILLED"
+    /// - `.appExit` → clean shutdown → no ERR frames
+    var shutdownReason: ShutdownReason?
     /// Physical memory footprint in MB (self-reported via heartbeat response meta).
     var memoryFootprintMb: UInt64
     /// Resident set size in MB (self-reported via heartbeat response meta).
@@ -217,7 +230,7 @@ private class ManagedPlugin {
         self.helloFailed = false
         self.pendingHeartbeats = [:]
         self.lastDeathMessage = nil
-        self.orderedShutdown = false
+        self.shutdownReason = nil
         self.memoryFootprintMb = 0
         self.memoryRssMb = 0
     }
@@ -404,7 +417,7 @@ public final class PluginHost: @unchecked Sendable {
                 plugin.helloFailed = false
             } else {
                 // Plugin path no longer on disk — removed or replaced by new version.
-                plugin.orderedShutdown = true
+                plugin.shutdownReason = .appExit
                 plugin.killProcess()
                 plugin.writerLock.lock()
                 plugin.writer = nil
@@ -837,21 +850,21 @@ public final class PluginHost: @unchecked Sendable {
 
     /// Handle a plugin death (reader thread detected EOF/error).
     ///
-    /// Three cases:
-    /// 1. **Ordered shutdown** (`orderedShutdown == true`): We asked for this.
-    ///    Clean up routing tables, no ERR frames, no error messages.
-    /// 2. **Unexpected death with pending work**: Genuine crash mid-flight.
-    ///    Send ERR for pending requests, store death message.
-    /// 3. **Unexpected death, idle**: Plugin exited on its own (OS jetsam,
-    ///    resource reclaim, natural exit after completing work). Clean up,
-    ///    no ERR frames — next request will respawn it.
+    /// Three cases based on `shutdownReason`:
+    /// 1. **`nil`** (unexpected death): Genuine crash. Send ERR "PLUGIN_DIED"
+    ///    for all pending requests, store death message.
+    /// 2. **`.oomKill`**: OOM watchdog killed the plugin while it was
+    ///    actively processing. Send ERR "OOM_KILLED" for all pending requests
+    ///    so callers fail fast instead of hanging.
+    /// 3. **`.appExit`**: Clean shutdown. No ERR frames — the relay
+    ///    connection is closing anyway.
     private func handlePluginDeath(pluginIdx: Int) {
         stateLock.lock()
         let plugin = plugins[pluginIdx]
         plugin.running = false
         plugin.writer = nil
-        let wasOrdered = plugin.orderedShutdown
-        plugin.orderedShutdown = false  // Reset for potential respawn
+        let reason = plugin.shutdownReason
+        plugin.shutdownReason = nil  // Reset for potential respawn
 
         // Check process status and kill if still running.
         // The reader thread got EOF on stdout, but the process may still be alive
@@ -943,21 +956,32 @@ public final class PluginHost: @unchecked Sendable {
             incomingRxids.removeValue(forKey: entry.key)
         }
 
-        // Unordered death is always an error — a plugin should only exit when
-        // orderedShutdown was set. Send PLUGIN_DIED for ALL pending work.
+        // Determine error code and message based on shutdown reason.
+        // Both unexpected deaths and OOM kills send ERR frames for pending work.
+        // Only appExit suppresses ERR frames (relay is closing, no callers left).
         let pluginPath = plugin.path
 
-        let errorMessage: String?
-        if !wasOrdered {
+        let errInfo: (code: String, message: String)?
+        switch reason {
+        case nil:
+            // Unexpected death — genuine crash mid-flight
             let exitSuffix = exitInfo.isEmpty ? "" : " (\(exitInfo))"
-            if stderrContent.isEmpty {
-                errorMessage = "Plugin \(pluginPath) exited unexpectedly\(exitSuffix). stderr:"
-            } else {
-                errorMessage = "Plugin \(pluginPath) exited unexpectedly\(exitSuffix). stderr:\n\(stderrContent)"
-            }
-            plugin.lastDeathMessage = errorMessage
-        } else {
-            errorMessage = nil
+            let msg = stderrContent.isEmpty
+                ? "Plugin \(pluginPath) exited unexpectedly\(exitSuffix)."
+                : "Plugin \(pluginPath) exited unexpectedly\(exitSuffix). stderr:\n\(stderrContent)"
+            errInfo = (code: "PLUGIN_DIED", message: msg)
+            plugin.lastDeathMessage = msg
+        case .oomKill:
+            // OOM watchdog killed the plugin — callers must be notified
+            let exitSuffix = exitInfo.isEmpty ? "" : " (\(exitInfo))"
+            let msg = stderrContent.isEmpty
+                ? "Plugin \(pluginPath) killed by OOM watchdog\(exitSuffix)."
+                : "Plugin \(pluginPath) killed by OOM watchdog\(exitSuffix). stderr:\n\(stderrContent)"
+            errInfo = (code: "OOM_KILLED", message: msg)
+            plugin.lastDeathMessage = msg
+        case .appExit:
+            // Clean shutdown — no ERR frames, relay is closing
+            errInfo = nil
             plugin.lastDeathMessage = nil
         }
 
@@ -971,15 +995,15 @@ public final class PluginHost: @unchecked Sendable {
         rebuildCapabilities()
         stateLock.unlock()
 
-        // Send ERR frames for all pending work on unordered death.
-        if let msg = errorMessage {
+        // Send ERR frames for all pending work (unexpected death and OOM kill).
+        if let info = errInfo {
             for entry in failedOutgoing {
-                var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: msg)
+                var err = Frame.err(id: entry.rid, code: info.code, message: info.message)
                 err.seq = entry.nextSeq
                 sendToRelay(err)
             }
             for entry in failedIncoming {
-                var err = Frame.err(id: entry.rid, code: "PLUGIN_DIED", message: msg)
+                var err = Frame.err(id: entry.rid, code: info.code, message: info.message)
                 err.routingId = entry.xid
                 err.seq = entry.nextSeq
                 sendToRelay(err)
@@ -1370,7 +1394,7 @@ public final class PluginHost: @unchecked Sendable {
                 try? stderr.close()
                 plugin.stderrHandle = nil
             }
-            plugin.orderedShutdown = true
+            plugin.shutdownReason = .appExit
             plugin.killProcess()
             plugin.running = false
         }
@@ -1402,8 +1426,10 @@ public final class PluginHost: @unchecked Sendable {
         }
     }
 
-    /// Kill a specific plugin process by PID.
-    /// Sets `orderedShutdown` so the death handler treats it as intentional.
+    /// Kill a specific plugin process by PID for memory pressure.
+    /// Sets `shutdownReason = .oomKill` so the death handler sends ERR frames
+    /// with "OOM_KILLED" for all pending requests, allowing callers to fail
+    /// fast instead of hanging forever.
     /// Thread-safe — can be called from any thread while `run()` is active.
     /// Returns `true` if the plugin was found and killed.
     @discardableResult
@@ -1413,7 +1439,7 @@ public final class PluginHost: @unchecked Sendable {
             stateLock.unlock()
             return false
         }
-        plugin.orderedShutdown = true
+        plugin.shutdownReason = .oomKill
         stateLock.unlock()
         plugin.killProcess()
         return true
